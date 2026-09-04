@@ -1,0 +1,208 @@
+{
+  "registros": 30000,
+  "notas_gritadas": 26306,
+  "pct_gritadas": 87.7,
+  "simbolos_clinicos": {
+    "+": {
+      "notas_origen": 349,
+      "notas_destino": 0,
+      "pct_conservado": 0.0
+    },
+    "?": {
+      "notas_origen": 100,
+      "notas_destino": 0,
+      "pct_conservado": 0.0
+    },
+    "(": {
+      "notas_origen": 439,
+      "notas_destino": 0,
+      "pct_conservado": 0.0
+    },
+    "<": {
+      "notas_origen": 5,
+      "notas_destino": 0,
+      "pct_conservado": 0.0
+    },
+    ">": {
+      "notas_origen": 2,
+      "notas_destino": 0,
+      "pct_conservado": 0.0
+    }
+  },
+  "simbolos_perdidos": 895,
+  "simbolos_convertidos": {
+    "-": {
+      "notas_origen": 739,
+      "conservan_separador": 283,
+      "pct": 38.3,
+      "separador": ","
+    }
+  },
+  "notas_modificadas_ortografia": 29567,
+  "notas_modificadas_normalizacion": 8277,
+  "tokens_anadidos_normalizacion": 26701,
+  "sustituciones_distintas": 5725,
+  "sustituciones_aplicadas": 30654,
+  "notas_con_cambio_estructural": 5249,
+  "tokens_borrados": 6223,
+  "tokens_insertados": 5844,
+  "sustituciones_solo_tilde": 23397,
+  "sustituciones_cambio_real": 7257,
+  "sustituciones_sobre_termino_frecuente": 60,
+  "muestra_riesgo": [
+    {
+      "original": "pacinete",
+      "corregido": "paciente",
+      "freq_corpus": 122,
+      "veces": 119
+    },
+    {
+      "original": "dm",
+      "corregido": "pre",
+      "freq_corpus": 115,
+      "veces": 1
+    },
+    {
+      "original": "dolro",
+      "corregido": "dolor",
+      "freq_corpus": 111,
+      "veces": 106
+    },
+    {
+      "original": "ue",
+      "corregido": "que",
+      "freq_corpus": 69,
+      "veces": 69
+    },
+    {
+      "original": "apciente",
+      "corregido": "paciente",
+      "freq_corpus": 67,
+      "veces": 63
+    },
+    {
+      "original": "consutla",
+      "corregido": "consulta",
+      "freq_corpus": 62,
+      "veces": 56
+    },
+    {
+      "original": "vertigo",
+      "corregido": "aa",
+      "freq_corpus": 59,
+      "veces": 1
+    },
+    {
+      "original": "paicnete",
+      "corregido": "paciente",
+      "freq_corpus": 57,
+      "veces": 54
+    },
+    {
+      "original": "dlp",
+      "corregido": "aa",
+      "freq_corpus": 55,
+      "veces": 1
+    },
+    {
+      "original": "olor",
+      "corregido": "dolor",
+      "freq_corpus": 48,
+      "veces": 1
+    },
+    {
+      "original": "apra",
+      "corregido": "para",
+      "freq_corpus": 38,
+      "veces": 38
+    },
+    {
+      "original": "or",
+      "corregido": "epoc",
+      "freq_corpus": 33,
+      "veces": 1
+    },
+    {
+      "original": "deirva",
+      "corregido": "deriva",
+      "freq_corpus": 32,
+      "veces": 32
+    },
+    {
+      "original": "mcuho",
+      "corregido": "mucho",
+      "freq_corpus": 30,
+      "veces": 30
+    },
+    {
+      "original": "tien",
+      "corregido": "tiene",
+      "freq_corpus": 29,
+      "veces": 28
+    }
+  ],
+  "notas_vacias_tras_limpieza": 10,
+  "typos_sin_corregir": 62,
+  "detalle_typos": [
+    {
+      "typo": "pacinete",
+      "correccion": "paciente",
+      "en_origen": 117,
+      "sin_corregir": 1
+    },
+    {
+      "typo": "apciente",
+      "correccion": "paciente",
+      "en_origen": 67,
+      "sin_corregir": 1
+    },
+    {
+      "typo": "paicnete",
+      "correccion": "paciente",
+      "en_origen": 56,
+      "sin_corregir": 2
+    },
+    {
+      "typo": "consutla",
+      "correccion": "consulta",
+      "en_origen": 62,
+      "sin_corregir": 1
+    },
+    {
+      "typo": "dolro",
+      "correccion": "dolor",
+      "en_origen": 111,
+      "sin_corregir": 3
+    },
+    {
+      "typo": "malestra",
+      "correccion": "malestar",
+      "en_origen": 29,
+      "sin_corregir": 6
+    },
+    {
+      "typo": "evolcuion",
+      "correccion": "evolución",
+      "en_origen": 22,
+      "sin_corregir": 0
+    },
+    {
+      "typo": "abodminal",
+      "correccion": "abdominal",
+      "en_origen": 13,
+      "sin_corregir": 0
+    },
+    {
+      "typo": "refeire",
+      "correccion": "refiere",
+      "en_origen": 48,
+      "sin_corregir": 48
+    },
+    {
+      "typo": "hipotirodismo",
+      "correccion": "hipotiroidismo",
+      "en_origen": 2,
+      "sin_corregir": 0
+    }
+  ]
+}
