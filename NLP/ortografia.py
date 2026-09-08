@@ -2,6 +2,9 @@
 Fase 2. Correccion ortografica de notas de triage.
 
 Este modulo solo orquesta. La logica vive en:
+    lexico.py        el vocabulario clinico: 23.767 formas de cuatro fuentes
+    pesos.py         cuanto pesa cada palabra, o sea cuanto hay que protegerla
+    enmascarado.py   aparta lo clinico y lo arregla contra el lexico
     reglas.py        que no se toca (siglas, numeros, entidades, forma)
     candidatos.py    cual de las sugerencias se aplica
     vocabulario.py   SymSpell, para los typos que LanguageTool no propone
@@ -9,7 +12,29 @@ Este modulo solo orquesta. La logica vive en:
     lt_compat.py     diferencias de API entre versiones de LanguageTool
 
 CADENA
-    correcciones directas -> LanguageTool (categoria TYPOS) -> SymSpell
+    correcciones directas
+      -> ENMASCARADO CLINICO      aparta la terminologia y la corrige por lexico
+      -> LanguageTool (TYPOS)     solo sobre lo que quedo fuera
+      -> SymSpell                 solo sobre lo que LanguageTool marco
+
+EL ORDEN CAMBIO, Y ESA ES LA CORRECCION DE FONDO
+    La version anterior corregia primero y vetaba despues: LanguageTool proponia
+    y ocho guardias intentaban frenar los cambios peligrosos. Bastaba que un
+    guardia tuviera un agujero para que pasara un cambio malo, y lo tenia:
+
+        AÑOÑ -> anón      'añoñ' y 'anón' plegaban al mismo 'anon' porque
+                          sin_tildes() trataba la eñe como acento. Eso hacia
+                          verdadera a es_restauracion_tilde(), que es la primera
+                          rama de candidatos.elegir() y retorna antes de
+                          consultar a ninguno de los ocho guardias.
+
+    Ahora la terminologia se aparta ANTES. 'epistaxis' no se corrompe porque el
+    corrector nunca la recibe, no porque un guardia la rescate a tiempo.
+
+    Y como los terminos ya no dependen de LanguageTool, se pueden arreglar
+    contra un lexico medico, que es lo que el corrector de espanol nunca pudo
+    hacer: su diccionario no contiene 'abdominal' como termino clinico ni
+    'dislipidemia' ni 'valsalva'.
 
 PRINCIPIO
     La asimetria del error no es simetrica. Dejar 'dias' sin tilde le cuesta
@@ -23,9 +48,15 @@ import language_tool_python
 
 import candidatos
 import casing
+import contexto
+import enmascarado
+import lexico
 import linguistica
 import lt_compat
+import pesos
 import reglas
+import sugerencias
+import terminologia
 import vocabulario
 from limpieza import tokenizar
 
@@ -33,7 +64,12 @@ CATEGORIAS_PERMITIDAS = {"TYPOS"}
 USAR_VOCABULARIO = True
 RESTAURAR_MAYUSCULAS = True
 
+# La capa de contexto. Es lo unico del pipeline que puede arreglar una palabra
+# bien escrita pero equivocada ('ala' por 'a la'), y tambien lo mas caro.
+USAR_CONTEXTO = True
+
 _LT = None
+_CAMBIOS_CONTEXTO = []
 
 
 # ==========================================================
@@ -44,10 +80,29 @@ def cargar_siglas(ruta=reglas.RUTA_SIGLAS):
     return reglas.cargar(ruta)
 
 
+def cargar_lexico_clinico():
+    """
+    Lee lexico_clinico.json, que es lo que decide que palabras no llegan al
+    corrector. Sin el, pesos.py se queda solo con el diccionario a mano y la
+    morfologia, que es como estaba antes de este cambio.
+    """
+    entradas = lexico.cargar()
+    if entradas:
+        print(f"  lexico clinico: {entradas:,} formas "
+              f"(umbral de proteccion {pesos.UMBRAL_PROTECCION})")
+    else:
+        print("  AVISO: falta lexico_clinico.json. Corre antes: python lexico.py")
+    return entradas
+
+
 def construir_lexico(textos):
     """Frecuencias del corpus y diccionario de SymSpell, del mismo material."""
     textos = list(textos)
     candidatos.construir_lexico(textos)
+
+    # pesos.py usa la frecuencia para reconocer la jerga del servicio: una
+    # palabra que el hospital repite y ningun diccionario conoce
+    pesos.usar_conteo(candidatos.CONTEO)
 
     if USAR_VOCABULARIO:
         entradas = vocabulario.construir(textos)
@@ -76,6 +131,35 @@ def aplicar_directas(texto):
 
 
 DOMINANCIA_PARA_ESCRIBIR = 0.85
+
+
+def es_sigla_real(token):
+    """
+    True si el token es una sigla de verdad, y no un termino clinico que el
+    diccionario guarda en la misma bolsa.
+
+    POR QUE HACE FALTA DISTINGUIRLOS
+        diccionario_siglas.json mezcla dos cosas en SIGLAS: abreviaturas
+        (HTA, EKG, EPOC) y terminos clinicos completos (palpacion,
+        auscultacion, hemodinamicamente, vertigo, sincope). La restauracion de
+        tilde se saltaba para todo lo que estuviera en SIGLAS, asi que esos
+        terminos quedaban congelados sin acento para siempre. Medido contra el
+        conjunto de referencia, era una de las tres causas de omision.
+
+        Una sigla no lleva tilde; un termino si. Lo que los separa con
+        evidencia es como los escribe el hospital: casing.py aprendio de las
+        11.415 notas bien escritas que 'hta', 'ekg' y 'epoc' van en mayuscula,
+        y que 'palpacion' y 'vertigo' no.
+
+    Sin lexico de capitalizacion se cae al criterio anterior, que es
+    conservador: se saltan todas las entradas del diccionario.
+    """
+    token = reglas.normalizar(token)
+    if not token:
+        return False
+    if casing.disponible():
+        return casing.es_sigla(token)
+    return token in reglas.SIGLAS
 
 
 def restaurar_mayusculas(texto, texto_original=None):
@@ -173,6 +257,79 @@ def _mayusculas_alineadas(texto, texto_original, conocidas):
     return salida
 
 
+def aplicar_contexto(texto, nota):
+    """
+    Ultima pasada: arregla las palabras que existen pero no caben donde estan.
+
+    Recorre de derecha a izquierda para que los offsets pendientes sigan siendo
+    validos, y se salta todo lo que el enmascarado aparto. Cada cambio pasa
+    ademas por el guardian clinico, igual que los de LanguageTool y SymSpell:
+    que la evidencia venga de un modelo de lenguaje no lo exime del criterio
+    medico.
+    """
+    cambios = []
+    for m in reversed(list(reglas.RE_PALABRA.finditer(texto))):
+        palabra = m.group(0)
+        inicio, fin = m.start(), m.end()
+
+        # terminologia clinica: no se toca, y ni siquiera se evalua
+        if nota.protegido(inicio, fin):
+            continue
+        if pesos.peso(palabra)[0] >= pesos.UMBRAL_PROTECCION:
+            continue
+
+        posibles = sugerencias.generar(palabra)
+        if not posibles:
+            continue
+
+        # Si entre los candidatos esta la misma palabra acentuada, esa es la
+        # unica que se considera. Restaurar una tilde no puede cambiar el
+        # concepto -- deja las mismas letras -- mientras que cualquier otro
+        # cambio si. Medido: sin esta regla 'Psicologa' se convirtio en
+        # 'psicologia' teniendo 'psicóloga' en la lista.
+        acentuadas = [c for c in posibles if reglas.es_restauracion_tilde(palabra, c)]
+        if acentuadas:
+            posibles = acentuadas
+
+        decision = contexto.elegir(texto[:inicio], palabra, texto[fin:], posibles)
+        if decision is None:
+            continue
+
+        elegido, ganancia = decision
+
+        # MISMOS guardias que la correccion por lexico, y por la misma razon.
+        # Medido contra el conjunto de referencia, sin ellos la capa de
+        # contexto bajo la precision de 97,8% a 95,6% con tres danos:
+        #
+        #   canadnan       -> canadian        ingles del vocabulario biomedico
+        #   LEVOFLOXACIBNA -> levofloxacino   farmaco, y en el genero contrario
+        #   Psicologa      -> psicologia      cuando la correccion era la tilde
+        #
+        # Que la evidencia venga de un modelo de lenguaje no exime del criterio
+        # clinico. Las divisiones en dos palabras ('a la') se saltan el
+        # guardian porque no son una palabra que comparar.
+        if " " not in elegido and not enmascarado.admisible(palabra, elegido):
+            continue
+
+        texto = texto[:inicio] + elegido + texto[fin:]
+        cambios.append((palabra, elegido, round(ganancia, 2)))
+
+    if cambios:
+        _CAMBIOS_CONTEXTO.extend(cambios)
+    return texto
+
+
+def resumen_contexto(minimo=1):
+    """Que cambio la capa de contexto y con cuanta ganancia. Para auditar."""
+    from collections import Counter
+    conteo = Counter((o, r) for o, r, _g in _CAMBIOS_CONTEXTO)
+    ganancias = {}
+    for o, r, g in _CAMBIOS_CONTEXTO:
+        ganancias[(o, r)] = max(ganancias.get((o, r), 0), g)
+    return [(o, r, n, ganancias[(o, r)])
+            for (o, r), n in conteo.most_common() if n >= minimo]
+
+
 def corregir(texto, texto_original=None):
     """
     texto: salida de limpieza.limpiar()
@@ -196,6 +353,19 @@ def corregir(texto, texto_original=None):
 
     texto = aplicar_directas(texto)
 
+    # PASO NUEVO, Y EL MAS IMPORTANTE DEL MODULO.
+    # Antes de que LanguageTool vea la nota, enmascarado.py aparta la
+    # terminologia clinica y arregla la que venia mal escrita usando el lexico
+    # medico. Lo que sale de aqui ya trae 'abodominal' convertido en
+    # 'abdominal', y trae marcados los rangos que el corrector no puede tocar.
+    #
+    # Es la inversion de politica: antes se corregia y ocho guardias intentaban
+    # vetar; ahora lo clinico no llega al corrector, asi que no hay veto que
+    # pueda fallar.
+    nota = enmascarado.enmascarar(texto)
+    texto = nota.texto
+    protegidos = protegidos | nota.palabras_protegidas()
+
     lt = iniciar_languagetool()
     try:
         matches = lt.check(texto)
@@ -218,6 +388,23 @@ def corregir(texto, texto_original=None):
         if fin <= inicio:
             continue
 
+        # El tramo es terminologia clinica: solo se admite ponerle una tilde.
+        #
+        # Es la unica operacion que no puede cambiar el concepto, porque por
+        # construccion deja las mismas letras. Y ahora es de verdad segura: la
+        # eñe dejo de plegarse como acento, asi que 'añoñ'/'anón' ya no cuenta
+        # como restauracion de tilde y no puede colarse por esta puerta.
+        if nota.protegido(inicio, fin):
+            norm = reglas.normalizar(texto[inicio:fin])
+            if es_sigla_real(norm):
+                continue
+            acentuado = next(
+                (c for c in sugerencias if reglas.es_restauracion_tilde(norm, c)), None)
+            if acentuado is None:
+                continue
+            texto = texto[:inicio] + acentuado + texto[fin:]
+            continue
+
         original = texto[inicio:fin]
         senalados.add(reglas.normalizar(original))
 
@@ -226,7 +413,7 @@ def corregir(texto, texto_original=None):
         # debe recibirlo igual. Las siglas y los numeros quedan fuera.
         if reglas.esta_protegido(original, protegidos):
             norm = reglas.normalizar(original)
-            if norm in reglas.SIGLAS or reglas.tiene_numero(original):
+            if es_sigla_real(norm) or reglas.tiene_numero(original):
                 continue
             acentuado = next(
                 (c for c in sugerencias if reglas.es_restauracion_tilde(norm, c)), None
@@ -254,6 +441,20 @@ def corregir(texto, texto_original=None):
                       and not reglas.es_palabra_conocida(p),
             senalados=senalados,
         )
+
+    # PASO NUEVO: la capa de contexto.
+    #
+    # Lo que llega aqui ya paso por el diccionario, el lexico clinico,
+    # LanguageTool y SymSpell. Lo que sobrevive a todos ellos y sigue estando
+    # mal es, por definicion, una palabra que EXISTE: 'ala' por 'a la',
+    # 'cordada' por 'cortada', 'gral' por 'general'. Ningun corrector
+    # ortografico las ve, porque su criterio es si la palabra existe y existe.
+    #
+    # Va al final a proposito. Es la capa mas cara (un pase del modelo por
+    # candidato) y la mas arriesgada, asi que solo ve lo que nadie mas supo
+    # arreglar, y nunca ve la terminologia: los rangos protegidos se saltan.
+    if USAR_CONTEXTO and contexto.disponible():
+        texto = aplicar_contexto(texto, nota)
 
     texto = re.sub(r"[ \t]+", " ", texto).strip()
 

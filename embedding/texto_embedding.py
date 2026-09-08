@@ -30,6 +30,18 @@ QUE SE LE QUITA AL RESPALDO
 
 import re
 
+import recorte
+
+# "extractivo"  la nota real, sin bloque institucional ni tramite. Es el modo
+#               que manda: conserva el lenguaje, que es lo que bge-m3 lee.
+# "canonico"    la frase construida desde la estructura. Se deja para poder
+#               comparar las dos formas sobre el mismo corpus.
+MODO_TEXTO = "extractivo"
+
+# Marca de nota sin contenido clinico. No es una frase: es una etiqueta, para
+# que se pueda filtrar en vez de confundirse con un cuadro real.
+SIN_CONTENIDO = "sin contenido clinico"
+
 RE_ESPACIOS = re.compile(r"\s+")
 
 RE_ADMIN = re.compile(
@@ -191,6 +203,59 @@ def _necesita_respaldo(sintomas, negados, inciertos, texto_norm, spans):
 
 
 def construir(categoria, sintomas, negados, inciertos, valores,
+              embarazo, pediatrico, texto_norm, spans=(), texto=None):
+    """
+    El texto que se le manda a bge-m3.
+
+    MODO 'extractivo' (el que manda ahora)
+        Se conserva la nota tal como la escribio quien atendio al paciente,
+        quitandole los bloques que sobran. Medido sobre la nota 803472:
+
+            138 palabras -> 23, y lo que queda es
+            'en silla de ruedas con acompanante ... le han dado varias
+             epistaxis de dificil control ahora presento sangrado ahora
+             paciente sin epistaxis, normocardico'
+
+        Eso es lenguaje, que es lo que bge-m3 sabe leer, y conserva lo que la
+        version canonica tiraba: que fueron VARIAS, que son de DIFICIL CONTROL,
+        que AHORA ya no sangra y que esta NORMOCARDICO.
+
+    MODO 'canonico' (el anterior, se deja para poder comparar)
+        Construia la frase desde la estructura extraida. Medido sobre las
+        30.000 notas: 15.829 textos distintos, 51,9% de las notas compartiendo
+        texto con otra, mediana de 5 palabras, y 999 notas produciendo la
+        cadena identica 'categoria gastrointestinal. sintoma dolor abdominal.'
+        Texto identico es vector identico, y eso es lo que colapsaba el
+        clustering.
+
+    La estructura no se pierde: sigue en el registro como categoria_principal,
+    sintomas, signos_negados y valores. Son dos cosas distintas -- una para
+    filtrar y contar, otra para medir parecido -- y estaban mezcladas en un
+    solo campo.
+    """
+    if MODO_TEXTO == "extractivo":
+        # se recorta sobre el texto CON tildes. texto_norm esta plegado para
+        # cruzar spans con el catalogo, y eso sirve para detectar, no para
+        # entregarle la frase al modelo: 'dificil' no es lo que escribieron.
+        recortado = recorte.recortar(texto if texto is not None else texto_norm)
+        if recortado:
+            return recortado
+        # El recorte se llevo todo. Antes aqui se caia a la frase canonica, y
+        # eso se quito a proposito: una nota que decia 'ap: niega; aa: niega' o
+        # 'me derivaron de la EPS' terminaba con un texto como
+        # 'categoria neurologico. sintoma cefalea.' que no describe a NADIE en
+        # particular y que otras 926 notas compartian palabra por palabra.
+        #
+        # Una nota sin contenido tiene que quedar marcada como tal, no
+        # disfrazada de cuadro clinico. Quien consuma el JSON puede filtrarla
+        # por este valor o por confianza <= 0.3.
+        return SIN_CONTENIDO
+
+    return _canonico(categoria, sintomas, negados, inciertos, valores,
+                     embarazo, pediatrico, texto_norm, spans)
+
+
+def _canonico(categoria, sintomas, negados, inciertos, valores,
               embarazo, pediatrico, texto_norm, spans=()):
     partes = []
 

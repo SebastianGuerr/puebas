@@ -46,10 +46,10 @@ funcionando con sus otras defensas.
 """
 
 import re
-import unicodedata
 from collections import Counter
 
 import linguistica
+import morfologia
 import reglas
 import terminologia
 
@@ -81,10 +81,10 @@ _FORMA = {}                   # sin tildes -> forma real mas frecuente
 RE_PALABRA = re.compile(r"[a-záéíóúüñ]+(?:-[a-záéíóúüñ]+)*")
 
 
-def sin_tildes(palabra):
-    return "".join(
-        c for c in unicodedata.normalize("NFD", palabra) if not unicodedata.combining(c)
-    )
+# Una sola definicion para todo el paquete. La de morfologia.py conserva la eñe,
+# que es una letra y no un acento: plegarla hacia 'n' juntaba 'año' con 'ano' en
+# la misma entrada del indice y convertia 'AÑOÑ' en 'anón'.
+sin_tildes = morfologia.sin_tildes
 
 
 # ==========================================================
@@ -225,6 +225,21 @@ def sugerir(palabra):
     # comparte 6 letras iniciales. Las 3 corrupciones estan a distancia 2 y
     # comparten como mucho 3.
     if freq_original <= FRECUENCIA_TYPO:
+        # Empate a la distancia minima: hay dos o mas palabras igual de cerca y
+        # no hay forma de saber cual quiso escribir el personal. El desempate
+        # por frecuencia elige la mas comun, que no es la correcta:
+        #
+        #   consltante(1)  ->  constante(2.847)     distancia 1   ELEGIDA
+        #                  ->  consultante(31)      distancia 1
+        #
+        # 'consultante' es la buena y pierde por ser mas rara. Como el original
+        # tambien es raro, no hay evidencia de ningun lado: se abstiene.
+        if len(empatadas) > 1:
+            terminologia.anotar_abstencion(
+                palabra,
+                f"{len(empatadas)} candidatos a distancia {mejor.distance}, "
+                f"ninguno decidible")
+            return None
         if mejor.distance <= 1:
             return forma
         if _prefijo_comun(plano, mejor.term) >= PREFIJO_COMUN_MINIMO:
@@ -238,6 +253,44 @@ def sugerir(palabra):
         return forma
 
     return None
+
+
+def vecinos(palabra, distancia=2, maximo=5):
+    """
+    Palabras del corpus a distancia <= n, ordenadas de mas a menos frecuente.
+
+    Se diferencia de sugerir() en que NO decide: devuelve la lista y deja que
+    decida quien llame. La usa sugerencias.py para alimentar a la capa de
+    contexto, donde el desempate lo hace la frase y no la frecuencia.
+
+    Y a diferencia de sugerir(), aqui NO se filtra por frecuencia: la palabra
+    correcta puede ser tan rara como el error. 'cortada' aparece una sola vez
+    en 30.000 notas y es la correccion buena de 'cordada'; exigirle frecuencia
+    la dejaba fuera del alcance del corrector para siempre.
+    """
+    if not disponible() or len(palabra) < LONGITUD_MINIMA:
+        return []
+
+    from symspellpy import Verbosity
+
+    plano = sin_tildes(palabra.lower())
+    try:
+        sugerencias = _SYM.lookup(plano, Verbosity.ALL, max_edit_distance=distancia)
+    except Exception:
+        return []
+
+    salida = []
+    for s in sorted(sugerencias, key=lambda s: (s.distance, -s.count)):
+        forma = _FORMA.get(s.term, s.term)
+        # NO se descarta por s.term == plano. El indice esta plegado, asi que
+        # 'psicologa' y 'psicóloga' comparten clave; saltarla dejaba fuera
+        # justamente la restauracion de tilde, que es la correccion mas segura
+        # que existe. Medido: por eso 'Psicologa' termino en 'psicologia'.
+        if forma != palabra and forma not in salida:
+            salida.append(forma)
+        if len(salida) >= maximo:
+            break
+    return salida
 
 
 def corregir_texto(texto, es_corregible, senalados=None):

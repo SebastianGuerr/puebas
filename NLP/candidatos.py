@@ -43,6 +43,12 @@ RATIO_DESEMPATE = 3           # el ganador debe superar al segundo por este fact
 UMBRAL_TERMINO = 10           # a partir de aqui el original se considera termino real
 FACTOR_TERMINO = 5            # y su correccion debe ser N veces mas frecuente
 
+# Cuanto debe superar la correccion al original cuando el original figura en el
+# vocabulario de spaCy. Es mas bajo que FACTOR_TERMINO a proposito: aqui ya se
+# sabe que el token NO es terminologia clinica (pesos.py lo habria apartado), y
+# el unico riesgo que queda es cambiar una palabra corriente por otra.
+FACTOR_RESPALDO = 2
+
 CONTEO = Counter()
 
 
@@ -72,9 +78,19 @@ def elegir(original, sugerencias, protegidos=()):
         if reglas.es_restauracion_tilde(original, cand):
             return cand
 
-    # 2. palabra que spaCy reconoce: se deja como esta
-    if reglas.es_palabra_conocida(original):
-        return None
+    # 2. palabra que spaCy reconoce: ya NO es un veto, es una exigencia de
+    #    respaldo. es_core_news_md se entreno con texto web y su vocabulario
+    #    contiene faltas de ortografia frecuentes: 'conciente', 'transplante',
+    #    'aprox', 'fibre'. Tratarlo como veto absoluto las congelaba para
+    #    siempre -- medido, 106 de 106 notas con 'conciente' quedaron intactas
+    #    aunque LanguageTool proponia 'consciente' correctamente.
+    #
+    #    La proteccion de la terminologia clinica ya no depende de esto: la hace
+    #    pesos.py antes, y lo que pesa se aparta en enmascarado.py y nunca llega
+    #    hasta aqui. Lo que queda es una palabra corriente del espanol, y para
+    #    cambiarla basta con exigir que el corpus del hospital respalde el
+    #    cambio por goleada.
+    exige_respaldo = reglas.es_palabra_conocida(original)
 
     viables = []
     for cand in sugerencias[:MAX_CANDIDATOS]:
@@ -97,14 +113,39 @@ def elegir(original, sugerencias, protegidos=()):
 
     viables.sort()
 
-    # 3. original repetido en el corpus: es terminologia
+    # 3. original repetido en el corpus: es terminologia.
+    #
+    #    Y AHORA SE EXIGE ADEMAS QUE LO PAREZCA. La regla decia 'lo que el
+    #    hospital repite mucho es un termino real', y en un corpus donde todos
+    #    cometen la misma falta eso es falso:
+    #
+    #      conciente(106) -> consciente(243)   se exigian 530: rechazado
+    #
+    #    'conciente' se repite 106 veces porque es una falta comun, no porque
+    #    sea terminologia. Medido, quedaba sin corregir en 106 de 106 notas.
+    #    'taquicardica' si tiene morfemas medicos y sigue protegida por la regla,
+    #    que es para lo que se escribio.
     freq_original = frecuencia(original)
-    if freq_original >= UMBRAL_TERMINO:
+    if freq_original >= UMBRAL_TERMINO and terminologia.es_terminologia(original):
         if -viables[0][1] < freq_original * FACTOR_TERMINO:
             return None
 
     distancia_minima = viables[0][0]
     empatados = [v for v in viables if v[0] == distancia_minima]
+
+    # 3bis. el original figura en el vocabulario de spaCy. Puede ser una palabra
+    #       legitima o una falta tan comun que entro al corpus web con el que se
+    #       entreno el modelo. Lo que las separa es como escribe el hospital: si
+    #       la correccion aplasta al original en las notas, era una falta.
+    #
+    #         conciente(106)  -> consciente(243)   ratio 2.3   se aplica
+    #         dias(4.891)     -> día(12)           ratio 0.002 se rechaza
+    if exige_respaldo:
+        mejor_freq = -empatados[0][1]
+        if mejor_freq < max(freq_original * FACTOR_RESPALDO, FRECUENCIA_DESEMPATE):
+            terminologia.anotar_abstencion(
+                original, "palabra del vocabulario sin respaldo del corpus")
+            return None
 
     # 4. un solo candidato a la distancia minima, en palabra larga
     if len(empatados) == 1 and len(original) >= LONGITUD_CANDIDATO_UNICO:

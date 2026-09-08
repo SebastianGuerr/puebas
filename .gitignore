@@ -36,7 +36,7 @@ __pycache__/
 # que lo alimenta, porque eso es lo que se edita a mano.
 
 # fase 1-3, las genera NLP/procesar.py
-NLP/triage_limpio.csv
+NLP/triage_limpio*.csv
 NLP/reporte_cambios.csv
 
 # cache de correcciones ortograficas (10 MB). Se rehace sola en la siguiente
@@ -45,6 +45,16 @@ NLP/cache_correcciones.json
 
 # lexico de capitalizacion, lo genera NLP/casing.py leyendo la tabla de triage
 NLP/lexico_casing.json
+
+# lexico clinico, lo genera NLP/lexico.py desde el modelo biomedico y los
+# diccionarios del proyecto. Se regenera con 'python lexico.py'.
+NLP/lexico_clinico.json
+
+# muestra estratificada, la genera NLP/escaneo.py
+NLP/muestra_revision.csv
+
+# texto de referencia, lo genera NLP/referencia.py aplicando las anotaciones
+NLP/referencia.csv
 
 # fase 4, las genera embedding/estructurar.py
 NLP/triage_estructurado.json
@@ -91,3 +101,7 @@ _[!_]*
 # que triage_limpio.csv se sobreescribe: es el unico registro del punto de
 # partida contra el que se comparan las mejoras.
 !NLP/linea_base.json
+
+# Las correcciones hechas a mano SI se versionan: son trabajo humano que no se
+# puede regenerar, y son la unica vara para medir el corrector.
+!NLP/referencia_correcciones.json

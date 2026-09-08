@@ -54,8 +54,22 @@ LIMITE_LEXICO = 200000      # registros usados solo para contar frecuencias
 
 N_HILOS = 4
 GUARDAR_CADA = 2000
-USAR_CACHE = True           # False al cambiar umbrales: la cache guarda decisiones viejas
 NORMALIZAR = True           # agrega la columna texto_normalizado (fase 3)
+
+# La cache guarda la correccion de cada texto distinto: es lo que hace que una
+# corrida repetida cueste minutos en vez de horas. El problema es que guarda la
+# decision del codigo vigente cuando se escribio.
+#
+# Medido: cache_correcciones.json era del 2 de septiembre y triage_limpio.csv se
+# genero el 4, con el corrector ya cambiado. La corrida reutilizo decisiones
+# viejas y la medicion contra el conjunto de referencia terminó midiendo una
+# mezcla de dos versiones -- 'FLUXETINA' se corregia bien con el codigo nuevo y
+# en el CSV seguia sin corregir.
+#
+# Por eso la version entra en la clave. Al tocar el corrector se sube el numero
+# y la cache vieja deja de aplicar sola, sin depender de acordarse de borrarla.
+USAR_CACHE = True
+VERSION_CORRECTOR = "2-enmascarado-clinico"
 
 
 
@@ -93,9 +107,12 @@ def clave_cache(texto_limpio, protegidos):
     original: 'de pereira' se corrige si venia en minuscula y se respeta si
     venia 'de Pereira'. La clave tiene que incluir esa diferencia.
     """
-    if not protegidos:
-        return texto_limpio
-    return texto_limpio + "\x00" + ",".join(sorted(protegidos))
+    base = texto_limpio
+    if protegidos:
+        base = texto_limpio + "\x00" + ",".join(sorted(protegidos))
+    # la version entra en la clave: al cambiar el corrector, la cache vieja deja
+    # de aplicar sola en vez de contaminar la corrida con decisiones anteriores
+    return VERSION_CORRECTOR + "\x00" + base
 
 
 def preparar(df):
@@ -187,6 +204,11 @@ def main():
 
     print("Cargando diccionarios...")
     ortografia.cargar_siglas()
+
+    # El lexico clinico es lo que decide que palabras NO llegan al corrector.
+    # Se genera aparte con 'python lexico.py' porque extraerlo del modelo
+    # biomedico cuesta segundos y no cambia entre corridas.
+    ortografia.cargar_lexico_clinico()
 
     # El lexico de capitalizacion es lo que devuelve la proteccion a las notas
     # gritadas, que son el 87,7% del corpus. Sin el, detectar_protegidos() y el

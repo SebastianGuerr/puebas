@@ -529,6 +529,9 @@ def extraer(oid, texto):
     registro["confianza"] = calcular_confianza(sintomas, categoria, valores)
     registro["texto"] = texto
     registro["embedding_texto"] = texto_embedding.construir(
+        # el texto CON tildes: el modo extractivo conserva la frase real y
+        # texto_norm viene plegado para poder cruzar spans con el catalogo
+        texto=texto,
         categoria=categoria,
         sintomas=sintomas,
         negados=negados,

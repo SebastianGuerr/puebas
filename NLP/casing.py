@@ -94,9 +94,8 @@ _LEXICO = {}          # token en minuscula -> SIGLA | NOMBRE | COMUN
 _OBSERVACIONES = {}   # token -> {"MAYUS": n, "Inicial": n, "minus": n}
 
 
-def sin_tildes(palabra):
-    return "".join(c for c in unicodedata.normalize("NFD", str(palabra))
-                   if not unicodedata.combining(c))
+# delegada a morfologia.py: la eñe es una letra, no un acento
+from morfologia import sin_tildes  # noqa: E402
 
 
 def texto_gritado(texto):

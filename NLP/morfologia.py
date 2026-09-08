@@ -24,6 +24,8 @@ EL PRINCIPIO
 import re
 import unicodedata
 
+from rapidfuzz.distance import DamerauLevenshtein
+
 # Se incluyen + * < > desde que limpieza.py dejo de borrarlos: son contenido
 # clinico dentro de la nota, pero pegados al borde de un token siguen siendo
 # puntuacion, y sin quitarlos 'hvda?' y 'mejoria+' no coincidian con el
@@ -44,9 +46,34 @@ def normalizar(token):
     return str(token).strip(PUNTUACION).lower()
 
 
+# La 'n' con virgulilla se descompone igual que una vocal acentuada: 'ñ' es
+# 'n' + U+0303. Si se pliega como si fuera una tilde, la eñe desaparece y dos
+# palabras distintas se vuelven la misma. Medido en el corpus, eso produjo:
+#
+#     AÑOÑ -> anon == anon <- anón     y se aplico 'anón' (la anona, una fruta)
+#
+# El dano no es que se pierda un acento: es que es_restauracion_tilde() devuelve
+# True y esa rama es la PRIMERA de candidatos.elegir(), la que retorna sin pasar
+# por la longitud minima, el piso de frecuencia ni el guardian clinico. Un par
+# que solo difiere en la eñe entra por la puerta que no tiene guardias.
+#
+# En castellano la eñe es una letra, no una vocal acentuada, y en un corpus
+# clinico la diferencia es contenido: 'ano' y 'año', 'cana' y 'caña', 'pena' y
+# 'peña'. Se protege con un centinela antes de descomponer y se restaura despues.
+_CENTINELA_ENE = "\x01"
+
+
 def sin_tildes(palabra):
-    return "".join(c for c in unicodedata.normalize("NFD", str(palabra))
-                   if not unicodedata.combining(c))
+    """
+    Pliega los acentos y CONSERVA la eñe.
+
+    'clavícula' -> 'clavicula'      la tilde es ortografia
+    'año'       -> 'año'            la eñe es una letra distinta
+    """
+    texto = str(palabra).replace("ñ", _CENTINELA_ENE).replace("Ñ", _CENTINELA_ENE * 2)
+    plano = "".join(c for c in unicodedata.normalize("NFD", texto)
+                    if not unicodedata.combining(c))
+    return plano.replace(_CENTINELA_ENE * 2, "Ñ").replace(_CENTINELA_ENE, "ñ")
 
 
 def tiene_numero(token):
@@ -276,7 +303,36 @@ def conserva_morfemas(original, candidato):
         return True
     if not propios <= morfemas(candidato):
         return False
-    return sin_tildes(original)[:LETRAS_RAIZ] == sin_tildes(candidato)[:LETRAS_RAIZ]
+    return _misma_raiz(sin_tildes(original), sin_tildes(candidato))
+
+
+def _misma_raiz(original, candidato):
+    """
+    Las raices coinciden, admitiendo UNA transposicion.
+
+    La version anterior exigia que los primeros LETRAS_RAIZ caracteres fueran
+    identicos, y con eso rechazaba justo el typo mas comun de la terminologia
+    medica, que es el cambio de dos letras contiguas dentro de la raiz:
+
+        dilispidemia -> dislipidemia     'dilis' != 'disli'   se rechazaba
+
+    Es la misma raiz con dos letras intercambiadas, no otra palabra. Se compara
+    con distancia de edicion y se admite hasta 1, que cubre la transposicion y
+    la letra sobrante sin abrir la puerta a raices distintas: 'onice' y 'ciste'
+    (de onicectomia y cistectomia) siguen a distancia 4.
+    """
+    a, b = original[:LETRAS_RAIZ], candidato[:LETRAS_RAIZ]
+    if a == b:
+        return True
+    # las mismas letras en otro orden: al truncar la raiz, una transposicion se
+    # convierte en una rotacion y la distancia sube de 1 a 2.
+    #     dilispidemia / dislipidemia  ->  'dilis' / 'disli'   distancia 2
+    # Comparar el conjunto de letras la reconoce sin aflojar el criterio: dos
+    # raices realmente distintas no son anagramas ('onice' y 'ciste', de
+    # onicectomia y cistectomia, no comparten ni las letras).
+    if sorted(a) == sorted(b):
+        return True
+    return DamerauLevenshtein.distance(a, b) <= 1
 
 
 # ==========================================================

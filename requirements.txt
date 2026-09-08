@@ -19,15 +19,24 @@ seaborn==0.13.2
 
 # NLP / text processing
 spacy==3.7.5
-scispacy==0.5.5
 medspacy==1.3.1
 symspellpy==6.7.8
 rapidfuzz==3.14.6
 flashtext==2.7
 sentence-transformers==3.2.1
 torch==2.6.0
-stanza==1.9.2
 language-tool-python==2.8.1
+
+# Solo para generar lexico_clinico.json (NLP/lexico.py). El pipeline en
+# ejecucion NO los necesita: lee el JSON ya construido.
+transformers==4.57.6
+
+# QUITADAS Y POR QUE
+#   scispacy  sus modelos son en INGLES (en_core_sci_*). No hay version
+#             espanola, asi que sobre este corpus no reconoce nada. Nunca se
+#             importo desde ningun archivo del proyecto.
+#   stanza    nunca se importo. Su modelo espanol es bueno pero duplica lo que
+#             ya hace spaCy, y mas lento.
 
 # Utilities
 pydantic==2.9.2
