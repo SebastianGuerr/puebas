@@ -1,76 +1,64 @@
 """
-Enmascarado clinico: aparta la terminologia ANTES de que la vea el corrector.
+Enmascarado clínico: aparta la terminología antes de que la vea el corrector.
 
-QUE HACE, EN UNA LINEA
-    Recorre la nota, decide con pesos.py que palabras son clinicas, arregla las
-    que estan mal escritas usando el lexico medico, y devuelve la lista de
-    tramos que el corrector de espanol no puede tocar.
+QUÉ HACE
+    Recorre la nota, decide con el peso clínico qué palabras son terminología,
+    arregla contra el léxico médico las que están mal escritas y devuelve los
+    tramos que el corrector de español no puede tocar.
 
-EL ORDEN IMPORTA Y ESTE ES EL CAMBIO DE FONDO
-    Antes:   limpieza -> LanguageTool propone -> ocho guardias vetan
-    Ahora:   limpieza -> se aparta lo clinico -> LanguageTool ve solo el resto
+POR QUÉ EL ORDEN IMPORTA
+    El esquema anterior era: limpiar, dejar que LanguageTool propusiera y vetar
+    después lo que no procedía. La protección dependía entonces de que ningún
+    veto tuviera un hueco. Aquí la terminología se aparta primero, de modo que
+    un término no se corrompe porque el corrector nunca llega a recibirlo.
 
-    La diferencia no es de eficiencia sino de garantia. En el esquema viejo la
-    proteccion dependia de que ningun guardia tuviera un agujero; en este,
-    'epistaxis' no se corrompe porque el corrector nunca la recibe.
+POR QUÉ SE PROTEGEN RANGOS Y NO SE SUSTITUYE EL TEXTO
+    La forma habitual de enmascarar es reemplazar la palabra por un marcador,
+    correr el corrector y restaurar. Aquí no se hace, por dos motivos:
 
-POR QUE PROTEGE RANGOS Y NO SUSTITUYE EL TEXTO
-    La forma habitual de enmascarar es cambiar la palabra por un marcador
-    ('epistaxis' -> 'MSK001'), correr el corrector y devolver el original. Aca
-    no se hace, por dos razones medidas:
+        el marcador rompe el contexto   LanguageTool decide por oración, y
+            sembrarla de marcadores le quita la información con la que decide,
+            empeorando las correcciones del texto que sí hay que corregir.
+        el marcador se puede corromper  si el corrector decide cambiarlo, la
+            restauración falla y se pierde el término.
 
-      el marcador rompe el contexto  LanguageTool decide por oracion. Sembrar
-          la frase de marcadores le quita justo la informacion con la que
-          decide, y empeora las correcciones del texto que SI hay que corregir.
-      el marcador se puede corromper  si el corrector decide cambiar 'MSK001',
-          la restauracion falla y se pierde el termino.
+    En su lugar se protegen rangos de caracteres: el corrector ve la nota entera
+    con su contexto intacto y simplemente se descarta cualquier propuesta suya
+    que caiga dentro de un rango protegido.
 
-    Se protegen rangos de caracteres. El corrector ve la nota entera y con su
-    contexto intacto; simplemente se descarta cualquier propuesta suya que caiga
-    dentro de un rango protegido. El resultado es el mismo y no hay marcador que
-    se pueda romper.
-
-EL PROBLEMA DEL HUEVO Y LA GALLINA, Y COMO SE RESUELVE
-    Para apartar 'abodominal' hay que reconocerlo como termino clinico, pero
-    esta mal escrito y ningun diccionario lo contiene. Si solo se apartara lo
-    que coincide exacto, los terminos mal escritos -- que son justo los que hay
-    que arreglar -- quedarian expuestos al corrector de espanol, que es donde se
-    corrompen.
+EL PROBLEMA DE PARTIDA, Y CÓMO SE RESUELVE
+    Para apartar un término mal escrito hay que reconocerlo como término, pero
+    justamente por estar mal escrito no figura en ningún léxico. Si solo se
+    apartara lo que coincide de forma exacta, los términos mal escritos —que son
+    los que hay que arreglar— quedarían expuestos al corrector de español, que
+    es donde se corrompen.
 
     Se resuelve en dos pasadas:
 
-      1. exacta   la palabra esta en el lexico clinico. Se aparta tal cual.
-      2. difusa   la palabra pesa lo suficiente para ser clinica pero no esta en
-                  el lexico. Se busca la forma del lexico a distancia <= 2 y, si
-                  hay UNA sola, se corrige y se aparta ya corregida.
+        1. exacta   la palabra está en el léxico clínico y se aparta tal cual.
+        2. difusa   la palabra pesa lo suficiente para ser clínica pero no está
+                    en el léxico. Se busca la forma más cercana y, si hay una
+                    sola candidata, se corrige y se aparta ya corregida.
 
-    La segunda pasada es la que arregla los casos que el corrector de espanol
-    nunca pudo, porque el destino no estaba en su diccionario:
-
-        abodominal         -> abdominal
-        dilispidemia       -> dislipidemia
-        craneazoencefalico -> craneoencefálico
-        vasalva            -> valsalva
-        venfalaxina        -> venlafaxina
-
-    Y ante el empate se abstiene: si dos terminos clinicos estan a la misma
-    distancia, elegir uno inventa un diagnostico. 'añoñ' no encuentra nada y se
-    queda como esta, que es la respuesta correcta.
+    La segunda pasada arregla los casos que el corrector de español nunca pudo
+    resolver, porque la forma correcta no estaba en su diccionario. Ante un
+    empate se abstiene: si dos términos clínicos están a la misma distancia,
+    elegir uno equivale a inventar un diagnóstico.
 """
 
-import lexico
-import linguistica
-import morfologia
-import pesos
-import reglas
-import terminologia
+from NLP.fase2_ortografia import pesos
+from NLP.fase2_ortografia import terminologia
+from NLP.nucleo import linguistica
+from NLP.nucleo import morfologia
+from NLP.nucleo import reglas
+from NLP.recursos import lexico
 
 # ==========================================================
 # CONFIGURACION
 # ==========================================================
 
 # Longitud minima para intentar el arreglo por lexico. Por debajo, la distancia
-# de edicion deja de discriminar: a dos ediciones de una palabra de 4 letras hay
+# de edicion deja de discriminar: a dos ediciones de una palabra corta esta
 # medio diccionario.
 LONGITUD_MINIMA_CORRECCION = 6
 
@@ -79,64 +67,58 @@ CORREGIR_CON_LEXICO = True
 
 def admisible(original, candidato):
     """
-    Filtra las correcciones por lexico. Salieron las dos de una medicion contra
-    el conjunto de referencia, donde esta pasada bajo la precision de 97,6% a
-    93,3% antes de existir.
+    True si una corrección propuesta por el léxico puede aplicarse.
 
-    EL CANDIDATO TIENE QUE EXISTIR EN EL HOSPITAL
-        El vocabulario del modelo biomedico se construyo sobre literatura
-        clinica, que es bilingue, y trae ingles: 'oncology', 'canadian',
-        'levofloxacino'. Sin este filtro produjo
+    Impone cuatro condiciones, todas necesarias porque el léxico mide parecido
+    de escritura y no de significado:
 
-            Oncologia -> oncology      canadnan -> canadian
+    1. Si el candidato viene del vocabulario biomédico, el corpus tiene que
+       haberlo escrito alguna vez. Ese vocabulario se construyó sobre literatura
+       clínica bilingüe y contiene términos en inglés; sin este filtro, una
+       palabra española acababa convertida en su equivalente inglés. Las fuentes
+       curadas no pasan por esta condición: cada entrada suya es una decisión
+       deliberada y puede ser legítima aunque el corpus todavía no la use.
 
-        Una correccion que el hospital no escribio nunca no es una correccion.
-        Las fuentes curadas (diccionario, catalogo, externo) no pasan por aqui:
-        ahi cada entrada es una decision deliberada y puede ser legitima aunque
-        el corpus todavia no la traiga.
+    2. Original y candidato deben coincidir en ser adjetivo o no serlo. Aquí se
+       aplica sin exigir morfemas médicos, a diferencia de la regla general:
+       si la palabra llegó hasta esta función es porque el candidato ya es
+       terminología, así que la condición sobra.
 
-    Y TIENE QUE PASAR POR EL GUARDIAN CLINICO
-        El lexico mide parecido de escritura, no de significado. Sin consultar a
-        terminologia.py produjo
+    3. No se alcanza un nombre de principio activo desde una palabra que no lo
+       parece. En la nomenclatura internacional, hasta la terminación distingue
+       moléculas distintas.
 
-            ECOGRAFICO -> ecografía     un adjetivo convertido en sustantivo
-
-        que es exactamente lo que morfologia.cambia_categoria() existe para
-        frenar. Que la correccion venga de un lexico medico no la exime del
-        criterio clinico: son dos preguntas distintas.
+    4. Y en cualquier caso, la corrección tiene que pasar por el guardián
+       clínico. Que venga de un léxico médico no la exime del criterio clínico:
+       son dos preguntas diferentes.
     """
     if lexico.fuente(candidato) == lexico.BIOMEDICO and pesos.frecuencia(candidato) < 1:
         return False
 
-    # Adjetivo contra sustantivo, sin exigir morfemas medicos.
-    #
-    # morfologia.cambia_categoria() solo se activa cuando una de las dos
-    # palabras tiene morfemas de la lista, y por eso dejo pasar
-    #
-    #     ovarico -> ovario      un adjetivo convertido en sustantivo
-    #
-    # Ninguna de las dos los tiene, pero aca esa condicion sobra: si la palabra
-    # llego hasta esta funcion es porque el candidato SI es terminologia -- sale
-    # del lexico clinico. Se puede aplicar la regla completa.
+    # adjetivo contra sustantivo, sin exigir morfemas medicos (ver punto 2)
     if morfologia.es_adjetivo_por_forma(original) != morfologia.es_adjetivo_por_forma(candidato):
         return False
 
-    # Un nombre de principio activo no se alcanza desde una palabra que no lo
-    # es. 'LEVOFLOXACIBNA' -> 'levofloxacino' cambia ademas el genero del
-    # farmaco, que en la nomenclatura internacional distingue moleculas.
+    # un principio activo no se alcanza desde una palabra que no lo parece
     if morfologia.parece_farmaco(candidato) and not morfologia.parece_farmaco(original):
         return False
 
     return terminologia.admite(original, candidato)
 
-# nombre anterior, por si algo lo importaba
+# alias del nombre anterior de la funcion, por compatibilidad
 _admisible = admisible
 
 
 class Nota:
     """
-    El resultado de enmascarar: el texto (quiza ya con terminos arreglados) y
-    los rangos que el corrector no puede tocar.
+    Resultado del enmascarado de una nota.
+
+        texto     la nota, posiblemente con términos ya corregidos contra el
+                  léxico
+        rangos    pares (inicio, fin) sobre `texto` que el corrector no puede
+                  tocar
+        cambios   correcciones aplicadas, como (original, corregido, motivo)
+        motivos   por palabra, el motivo del peso clínico que se le asignó
     """
 
     __slots__ = ("texto", "rangos", "cambios", "motivos")
@@ -148,10 +130,11 @@ class Nota:
         self.motivos = motivos      # {palabra: motivo del peso}
 
     def protegido(self, inicio, fin):
-        """True si el tramo [inicio, fin) toca algun rango protegido."""
+        """True si el tramo indicado se solapa con algún rango protegido."""
         return any(inicio < r_fin and fin > r_ini for r_ini, r_fin in self.rangos)
 
     def palabras_protegidas(self):
+        """Conjunto de palabras apartadas, en minúscula."""
         return {self.texto[i:f].lower() for i, f in self.rangos}
 
 
@@ -161,10 +144,14 @@ class Nota:
 
 def enmascarar(texto, corregir=CORREGIR_CON_LEXICO):
     """
-    texto: salida de limpieza.limpiar(), en minusculas.
+    Enmascara una nota ya limpia y en minúsculas.
 
-    Devuelve una Nota con los terminos clinicos apartados y, si venian mal
-    escritos y el lexico lo permite, ya corregidos.
+    Devuelve una Nota con los términos clínicos apartados y, cuando venían mal
+    escritos y el léxico permite arreglarlos, ya corregidos. El texto se
+    reconstruye por tramos porque una corrección puede cambiar su longitud, y
+    los rangos protegidos deben referirse al texto de salida.
+
+    Con `corregir` en False se limita a apartar, sin tocar la escritura.
     """
     texto = str(texto or "")
     if not texto:
@@ -187,16 +174,13 @@ def enmascarar(texto, corregir=CORREGIR_CON_LEXICO):
         # que ningun diccionario del espanol la reconozca es la senal de typo
         desconocida = not linguistica.en_vocabulario(palabra)
 
-        # SEGUNDA PASADA, la que resuelve el huevo y la gallina.
+        # segunda pasada: un termino mal escrito no esta en ningun lexico, pero
+        # se sabe que ninguna palabra del espanol lo reconoce. Sobre esos, y
+        # solo sobre esos, se busca la forma clinica mas cercana.
         #
-        # Un termino mal escrito no esta en ningun lexico. Lo que si se sabe de
-        # el es que ninguna palabra del espanol lo reconoce: es candidato a
-        # typo. Sobre esos, y solo sobre esos, se busca la forma clinica mas
-        # cercana.
-        #
-        # La condicion de que spaCy NO la conozca es lo que evita tocar el
-        # espanol corriente: 'dificil' esta mal escrita pero spaCy la conoce, y
-        # arreglarle la tilde es trabajo de LanguageTool, no del lexico medico.
+        # Exigir que spaCy NO la conozca es lo que evita tocar el espanol
+        # corriente: una palabra comun a la que le falta la tilde es trabajo de
+        # LanguageTool, no del lexico medico.
         if (corregir and lexico.disponible() and desconocida and not en_lexico
                 and len(palabra) >= LONGITUD_MINIMA_CORRECCION
                 and not morfologia.tiene_numero(palabra)):
@@ -205,23 +189,15 @@ def enmascarar(texto, corregir=CORREGIR_CON_LEXICO):
                 reemplazo = candidato
                 cambios.append((palabra, candidato, f"lexico:{lexico.fuente(candidato)}"))
 
-        # QUE SE APARTA, Y LA EXCEPCION QUE COSTO DOS CORRECCIONES
+        # Que se aparta: lo ya arreglado contra el lexico y lo que pesa por si
+        # mismo. Pero un peso alto no basta cuando la unica evidencia es la
+        # forma de la palabra, porque prefijos como 'dis-' o 'ante-' son
+        # corrientes en espanol y no solo medicos, de modo que una palabra mal
+        # escrita puede heredar peso de un morfema que en realidad no tiene.
         #
-        # Se aparta lo que ya esta arreglado contra el lexico, y lo que pesa por
-        # si mismo. Pero un peso alto NO basta cuando la unica evidencia es la
-        # forma de la palabra:
-        #
-        #     disponbilidad -> peso 0.70 por el 'morfema' dis-
-        #     anteceente    -> peso 0.70 por el 'morfema' ante-
-        #
-        # 'dis' y 'ante' son prefijos corrientes del espanol, no solo medicos, y
-        # con ellos morfologia.morfemas() da falsos positivos. Medido: esas dos
-        # palabras quedaban protegidas y el corrector nunca las arreglaba, que
-        # es un punto de cobertura perdido por un morfema inventado.
-        #
-        # La regla: si la palabra no esta en ningun lexico, ningun termino
-        # clinico se le parece, y encima el espanol no la reconoce, entonces la
-        # forma miente. Es un typo, y va al corrector.
+        # De ahi la regla: si la palabra no esta en ningun lexico, ningun
+        # termino clinico se le parece y el espanol tampoco la reconoce,
+        # entonces la forma engana. Se trata como error y va al corrector.
         if reemplazo != palabra:
             proteger = True
         elif desconocida and not en_lexico:
@@ -245,7 +221,10 @@ def enmascarar(texto, corregir=CORREGIR_CON_LEXICO):
 
 
 def diagnosticar(texto):
-    """Que se aparto y que se arreglo en una nota. Para revisar casos puntuales."""
+    """
+    Qué se apartó y qué se arregló en una nota, con el peso de cada palabra.
+    Herramienta de inspección manual.
+    """
     nota = enmascarar(texto)
     return {
         "texto_entrada": texto,

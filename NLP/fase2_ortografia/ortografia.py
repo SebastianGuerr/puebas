@@ -1,64 +1,62 @@
 """
-Fase 2. Correccion ortografica de notas de triage.
+Fase 2. Corrección ortográfica de las notas de triage.
 
-Este modulo solo orquesta. La logica vive en:
-    lexico.py        el vocabulario clinico: 23.767 formas de cuatro fuentes
-    pesos.py         cuanto pesa cada palabra, o sea cuanto hay que protegerla
-    enmascarado.py   aparta lo clinico y lo arregla contra el lexico
-    reglas.py        que no se toca (siglas, numeros, entidades, forma)
-    candidatos.py    cual de las sugerencias se aplica
-    vocabulario.py   SymSpell, para los typos que LanguageTool no propone
-    linguistica.py   spaCy, vocabulario amplio y entidades nombradas
-    lt_compat.py     diferencias de API entre versiones de LanguageTool
+Este módulo orquesta la fase; la lógica vive en los módulos del paquete:
 
-CADENA
-    correcciones directas
-      -> ENMASCARADO CLINICO      aparta la terminologia y la corrige por lexico
-      -> LanguageTool (TYPOS)     solo sobre lo que quedo fuera
-      -> SymSpell                 solo sobre lo que LanguageTool marco
+    recursos/lexico.py    el vocabulario clínico contra el que se decide
+    pesos.py              cuánto hay que proteger cada palabra
+    enmascarado.py        aparta lo clínico y lo corrige contra el léxico
+    nucleo/reglas.py      qué no se toca: siglas, números, entidades, forma
+    candidatos.py         cuál de las sugerencias se aplica
+    vocabulario.py        SymSpell, para los errores que LanguageTool no ve
+    sugerencias.py        candidatos declarados para la capa de contexto
+    contexto.py           si la palabra cabe donde está
+    terminologia.py       el veto clínico sobre cualquier cambio
 
-EL ORDEN CAMBIO, Y ESA ES LA CORRECCION DE FONDO
-    La version anterior corregia primero y vetaba despues: LanguageTool proponia
-    y ocho guardias intentaban frenar los cambios peligrosos. Bastaba que un
-    guardia tuviera un agujero para que pasara un cambio malo, y lo tenia:
+LA CADENA, EN ORDEN
+    correcciones directas declaradas
+      -> enmascarado clínico     aparta la terminología y la corrige por léxico
+      -> LanguageTool            solo sobre lo que quedó fuera del enmascarado
+      -> SymSpell                solo sobre lo que LanguageTool marcó
+      -> capa de contexto        solo sobre lo que nadie supo arreglar
+      -> restauración de siglas  devuelve a mayúscula lo que es sigla
 
-        AÑOÑ -> anón      'añoñ' y 'anón' plegaban al mismo 'anon' porque
-                          sin_tildes() trataba la eñe como acento. Eso hacia
-                          verdadera a es_restauracion_tilde(), que es la primera
-                          rama de candidatos.elegir() y retorna antes de
-                          consultar a ninguno de los ocho guardias.
+    Cada capa ve menos texto que la anterior, y la terminología clínica no llega
+    a ninguna: se aparta en el primer paso.
 
-    Ahora la terminologia se aparta ANTES. 'epistaxis' no se corrompe porque el
-    corrector nunca la recibe, no porque un guardia la rescate a tiempo.
+POR QUÉ ESE ORDEN
+    La versión anterior corregía primero y vetaba después, de modo que bastaba
+    un hueco en un veto para que pasara un cambio dañino. Al apartar la
+    terminología antes, un término no se corrompe porque el corrector nunca lo
+    recibe, y no porque una regla lo rescate a tiempo.
 
-    Y como los terminos ya no dependen de LanguageTool, se pueden arreglar
-    contra un lexico medico, que es lo que el corrector de espanol nunca pudo
-    hacer: su diccionario no contiene 'abdominal' como termino clinico ni
-    'dislipidemia' ni 'valsalva'.
+    Además, al no depender de LanguageTool, los términos pueden corregirse
+    contra un léxico médico, que es lo que un corrector de español no puede
+    hacer: su diccionario no contiene la terminología clínica.
 
-PRINCIPIO
-    La asimetria del error no es simetrica. Dejar 'dias' sin tilde le cuesta
-    poco al modelo de la fase siguiente; convertir 'midazolam' en 'madapolan' o
-    'Pereira' en 'perdida' le inyecta un dato falso. Ante la duda, no se corrige.
+EL PRINCIPIO
+    El coste del error no es simétrico. Dejar una palabra sin tilde apenas
+    afecta a las fases siguientes; convertir un fármaco o un topónimo en otra
+    palabra les inyecta un dato falso. Ante la duda, no se corrige.
 """
 
 import re
 
 import language_tool_python
 
-import candidatos
-import casing
-import contexto
-import enmascarado
-import lexico
-import linguistica
-import lt_compat
-import pesos
-import reglas
-import sugerencias
-import terminologia
-import vocabulario
-from limpieza import tokenizar
+from NLP.fase1_limpieza.limpieza import tokenizar
+from NLP.fase2_ortografia import candidatos
+from NLP.fase2_ortografia import contexto
+from NLP.fase2_ortografia import enmascarado
+from NLP.fase2_ortografia import pesos
+from NLP.fase2_ortografia import sugerencias
+from NLP.fase2_ortografia import terminologia
+from NLP.fase2_ortografia import vocabulario
+from NLP.nucleo import linguistica
+from NLP.nucleo import lt_compat
+from NLP.nucleo import reglas
+from NLP.recursos import casing
+from NLP.recursos import lexico
 
 CATEGORIAS_PERMITIDAS = {"TYPOS"}
 USAR_VOCABULARIO = True
@@ -67,6 +65,50 @@ RESTAURAR_MAYUSCULAS = True
 # La capa de contexto. Es lo unico del pipeline que puede arreglar una palabra
 # bien escrita pero equivocada ('ala' por 'a la'), y tambien lo mas caro.
 USAR_CONTEXTO = True
+
+# LA PALABRA ESTABLECIDA NO SE TOCA, SALVO QUE SEA UNA ABREVIATURA.
+#
+# La capa de contexto trabaja sobre palabras correctas -- para eso existe -- y
+# por tanto no tiene la senal que usan las capas anteriores, que es que ningun
+# diccionario reconozca el token. Sin ningun freno produjo, sobre palabras
+# corrientes que el corpus repite:
+#
+#     sufre       -> 'sobre'        un verbo comun sustituido
+#     instaurada  -> 'instalada'
+#     los         -> 'lamentamos'
+#
+# El corte combina las dos cosas que hacen improbable la errata: que el espanol
+# reconozca la palabra Y que el hospital la escriba muchas veces. Una errata
+# repetida decenas de veces con la misma forma deja de ser una errata.
+FRECUENCIA_PALABRA_ESTABLECIDA = 20
+
+# La excepcion, y hace falta. El freno anterior era demasiado romo: bloqueaba
+#
+#     gral -> general
+#
+# que es exactamente el caso para el que existe esta capa. 'gral' aparece 20
+# veces y spaCy la reconoce, asi que por frecuencia es indistinguible de una
+# palabra correcta.
+#
+# Lo que la distingue no es la frecuencia sino la FORMA: expandir una
+# abreviatura conserva todas sus letras y en el mismo orden ('g-r-a-l' esta
+# dentro de 'g-e-n-e-r-a-l'), y no la alarga sin limite. Las tres corrupciones
+# de arriba fallan la prueba -- 'sufre' no esta dentro de 'sobre', 'instaurada'
+# no esta dentro de 'instalada' -- y 'los' si esta dentro de 'lamentamos' pero
+# lo triplica en longitud, que es lo que descarta el tope.
+RATIO_EXPANSION_MAXIMO = 2.0
+
+
+def _es_expansion(original, candidato):
+    """
+    True si el candidato parece la forma larga de una abreviatura: contiene
+    todas las letras del original en orden y no lo alarga mas de lo permitido.
+    """
+    o, c = original.lower(), candidato.lower().replace(" ", "")
+    if len(c) <= len(o) or len(c) > RATIO_EXPANSION_MAXIMO * len(o):
+        return False
+    it = iter(c)
+    return all(letra in it for letra in o)
 
 _LT = None
 _CAMBIOS_CONTEXTO = []
@@ -77,26 +119,33 @@ _CAMBIOS_CONTEXTO = []
 # ==========================================================
 
 def cargar_siglas(ruta=reglas.RUTA_SIGLAS):
+    """Carga el diccionario de siglas del proyecto. Devuelve el conjunto."""
     return reglas.cargar(ruta)
 
 
 def cargar_lexico_clinico():
     """
-    Lee lexico_clinico.json, que es lo que decide que palabras no llegan al
-    corrector. Sin el, pesos.py se queda solo con el diccionario a mano y la
-    morfologia, que es como estaba antes de este cambio.
+    Carga el léxico clínico, que es lo que determina qué palabras no llegan al
+    corrector, y devuelve cuántas formas trae.
+
+    Si el archivo no existe avisa y sigue: el peso clínico se calcula entonces
+    solo con el diccionario escrito a mano y la morfología, con menos cobertura.
     """
     entradas = lexico.cargar()
     if entradas:
         print(f"  lexico clinico: {entradas:,} formas "
               f"(umbral de proteccion {pesos.UMBRAL_PROTECCION})")
     else:
-        print("  AVISO: falta lexico_clinico.json. Corre antes: python lexico.py")
+        print("  AVISO: falta lexico_clinico.json. Corre antes: python -m NLP.recursos.lexico")
     return entradas
 
 
 def construir_lexico(textos):
-    """Frecuencias del corpus y diccionario de SymSpell, del mismo material."""
+    """
+    Prepara todo lo que depende del corpus: el recuento de frecuencias, que
+    alimenta los desempates y la detección de jerga, y el diccionario de
+    SymSpell. Debe llamarse una vez antes de corregir la primera nota.
+    """
     textos = list(textos)
     candidatos.construir_lexico(textos)
 
@@ -113,6 +162,10 @@ def construir_lexico(textos):
 
 
 def iniciar_languagetool(idioma="es"):
+    """
+    Crea la instancia de LanguageTool la primera vez y la reutiliza, informando
+    de si sus atributos se leen bien en la versión instalada.
+    """
     global _LT
     if _LT is None:
         _LT = language_tool_python.LanguageTool(idioma)
@@ -121,10 +174,14 @@ def iniciar_languagetool(idioma="es"):
 
 
 # ==========================================================
-# CORRECCION
+# CORRECCIÓN
 # ==========================================================
 
 def aplicar_directas(texto):
+    """
+    Aplica las correcciones declaradas a mano en el diccionario. Son errores
+    conocidos, así que se sustituyen sin más comprobaciones.
+    """
     return reglas.RE_PALABRA.sub(
         lambda m: reglas.DIRECTAS.get(m.group(0), m.group(0)), texto
     )
@@ -135,24 +192,17 @@ DOMINANCIA_PARA_ESCRIBIR = 0.85
 
 def es_sigla_real(token):
     """
-    True si el token es una sigla de verdad, y no un termino clinico que el
-    diccionario guarda en la misma bolsa.
+    True si el token es una sigla de verdad y no un término clínico completo.
 
-    POR QUE HACE FALTA DISTINGUIRLOS
-        diccionario_siglas.json mezcla dos cosas en SIGLAS: abreviaturas
-        (HTA, EKG, EPOC) y terminos clinicos completos (palpacion,
-        auscultacion, hemodinamicamente, vertigo, sincope). La restauracion de
-        tilde se saltaba para todo lo que estuviera en SIGLAS, asi que esos
-        terminos quedaban congelados sin acento para siempre. Medido contra el
-        conjunto de referencia, era una de las tres causas de omision.
+    Hace falta distinguirlos porque el diccionario del proyecto guarda ambas
+    cosas en el mismo conjunto: abreviaturas como 'hta' o 'ekg' y términos como
+    'vertigo' o 'sincope'. Una sigla no lleva tilde y un término sí, de modo que
+    tratar todo el diccionario como siglas dejaba esos términos sin acentuar de
+    forma permanente.
 
-        Una sigla no lleva tilde; un termino si. Lo que los separa con
-        evidencia es como los escribe el hospital: casing.py aprendio de las
-        11.415 notas bien escritas que 'hta', 'ekg' y 'epoc' van en mayuscula,
-        y que 'palpacion' y 'vertigo' no.
-
-    Sin lexico de capitalizacion se cae al criterio anterior, que es
-    conservador: se saltan todas las entradas del diccionario.
+    La distinción se apoya en cómo escribe el hospital, según el léxico de
+    capitalización. Sin ese léxico se recurre al criterio conservador anterior:
+    se considera sigla toda entrada del diccionario.
     """
     token = reglas.normalizar(token)
     if not token:
@@ -164,41 +214,35 @@ def es_sigla_real(token):
 
 def restaurar_mayusculas(texto, texto_original=None):
     """
-    Devuelve las siglas clinicas a mayuscula: hta -> HTA, ekg -> EKG.
+    Devuelve las siglas clínicas a mayúscula ('hta' pasa a 'HTA').
 
-    TRES FUENTES DE EVIDENCIA, EN ESTE ORDEN
-      1. la nota misma. Si el token venia en mayusculas en el original y la
-         nota no esta gritada, ese es el dato mas fuerte que existe: lo
-         escribio quien atendio a ESE paciente. Es lo que faltaba para que
-         'DM no IR' conservara la sigla, porque 'ir' esta en
-         no_restaurar_mayuscula y el diccionario nunca la iba a devolver.
-      2. el corpus. En notas gritadas la fuente 1 no dice nada, asi que se
-         usan las siglas aprendidas por casing.py, y solo las que aparecen en
-         mayuscula casi siempre: convertir todos los 'puede ir al bano' en
-         'puede IR al bano' seria peor que no restaurar nada.
-      3. el diccionario, como estaba.
+    Solo escribe siglas: un nombre propio queda protegido de la corrección, pero
+    esta función no lo capitaliza.
 
-    'pereira' se protege de la correccion pero no se convierte en 'PEREIRA':
-    esta funcion solo escribe siglas.
+    Usa tres fuentes de evidencia, en este orden:
 
-    DOS ERRORES QUE ESTA FUNCION YA COMETIO
-      aplicar la fuente 1 en bloque. Si el token venia en mayuscula en ALGUNA
-          parte de la nota, se ponia en mayuscula en TODAS. Sobre 'hta dm ir
-          higado graso; puede ir al bano' producia 'puede IR al bano'. Por eso
-          la evidencia se lee por ocurrencia, alineando los dos textos.
-      confundir enfasis con sigla. En 'HIGADO GRASO' las mayusculas son enfasis
-          del que escribe, no una sigla, y la nota terminaba con 'HIGADO GRASO'
-          en medio de un texto normalizado. Por eso ademas de venir en
-          mayuscula, el token tiene que ser una sigla conocida: del diccionario
-          o aprendida del corpus.
+      1. La nota misma. Si el token venía en mayúsculas en el original y la nota
+         no está gritada, es el dato más fuerte que existe, porque lo escribió
+         quien atendió a ese paciente. La evidencia se lee POR OCURRENCIA, no
+         por palabra: si un token aparece dos veces con sentidos distintos, solo
+         se capitaliza donde de verdad venía en mayúscula.
+      2. El corpus. En una nota gritada la primera fuente no dice nada, así que
+         se recurre a las siglas aprendidas, exigiendo que aparezcan casi
+         siempre en mayúscula. Con un criterio más laxo, una palabra corriente
+         que a veces es sigla se capitalizaría en todos sus usos.
+      3. El diccionario del proyecto.
+
+    Además de venir en mayúscula, el token tiene que ser una sigla conocida. Sin
+    esa condición, el énfasis del que escribe (una lista de antecedentes en
+    mayúsculas) se confundiría con siglas y quedaría gritado dentro de un texto
+    ya normalizado.
     """
-    # Del lexico aprendido solo cuentan las que NO son palabra del espanol. En
-    # las notas se escriben en mayuscula listas enteras de antecedentes
-    # ('HIGADO GRASO'), asi que casing.py aprende 'higado' como sigla: es
-    # enfasis del que escribe, no una abreviatura. Lo que separa a una sigla de
-    # una palabra enfatizada es justamente que la sigla no existe como palabra.
-    # El diccionario escrito a mano si entra completo: ahi cada entrada es una
-    # decision deliberada.
+    # Del lexico aprendido solo cuentan las formas que NO son palabra del
+    # espanol: como en las notas se escriben en mayuscula listas enteras de
+    # antecedentes, el corpus aprende como siglas palabras que en realidad son
+    # enfasis, y lo que separa una sigla de una palabra enfatizada es que la
+    # sigla no existe como palabra. El diccionario escrito a mano entra
+    # completo, porque cada entrada suya es una decision deliberada.
     aprendidas = {t for t in casing.siglas()
                   if not reglas.es_palabra_conocida(t)} if casing.disponible() else set()
     conocidas = reglas.SIGLAS | aprendidas
@@ -229,12 +273,14 @@ def restaurar_mayusculas(texto, texto_original=None):
 
 def _mayusculas_alineadas(texto, texto_original, conocidas):
     """
-    Indices de los tokens de 'texto' que en la nota original venian en
-    mayuscula Y son siglas conocidas.
+    Índices de los tokens del texto corregido que en la nota original venían en
+    mayúscula y además son siglas conocidas.
 
-    Los dos textos no son identicos (la correccion cambia palabras y la
-    limpieza borra tokens), asi que se alinean con SequenceMatcher sobre la
-    version en minusculas y se copia la decision solo donde hay correspondencia.
+    Los dos textos no coinciden token a token, porque la limpieza elimina
+    símbolos y la corrección cambia palabras, así que se alinean sobre su
+    versión en minúsculas y la decisión se copia solo donde hay
+    correspondencia. Sobre una nota gritada devuelve un conjunto vacío: ahí las
+    mayúsculas no distinguen nada.
     """
     if not texto_original or reglas.texto_gritado(texto_original):
         return set()
@@ -259,13 +305,17 @@ def _mayusculas_alineadas(texto, texto_original, conocidas):
 
 def aplicar_contexto(texto, nota):
     """
-    Ultima pasada: arregla las palabras que existen pero no caben donde estan.
+    Última pasada: arregla las palabras que existen pero no caben donde están.
 
-    Recorre de derecha a izquierda para que los offsets pendientes sigan siendo
-    validos, y se salta todo lo que el enmascarado aparto. Cada cambio pasa
-    ademas por el guardian clinico, igual que los de LanguageTool y SymSpell:
-    que la evidencia venga de un modelo de lenguaje no lo exime del criterio
-    medico.
+    Recorre el texto de derecha a izquierda para que las posiciones pendientes
+    sigan siendo válidas tras cada sustitución, y se salta todo lo que el
+    enmascarado apartó. Devuelve el texto ya corregido y acumula los cambios
+    para el informe.
+
+    Cada cambio pasa por los mismos filtros que la corrección por léxico: que la
+    evidencia venga de un modelo de lenguaje no lo exime del criterio clínico.
+    Las divisiones en dos palabras se saltan ese filtro porque no hay una única
+    palabra que comparar.
     """
     cambios = []
     for m in reversed(list(reglas.RE_PALABRA.finditer(texto))):
@@ -278,15 +328,20 @@ def aplicar_contexto(texto, nota):
         if pesos.peso(palabra)[0] >= pesos.UMBRAL_PROTECCION:
             continue
 
+        # una palabra corriente que el hospital repite no es una errata; la
+        # excepcion son las abreviaturas, que ver _es_expansion()
+        establecida = (pesos.frecuencia(palabra) >= FRECUENCIA_PALABRA_ESTABLECIDA
+                       and reglas.es_palabra_conocida(reglas.normalizar(palabra)))
+
         posibles = sugerencias.generar(palabra)
+        if establecida:
+            posibles = [c for c in posibles if _es_expansion(palabra, c)]
         if not posibles:
             continue
 
-        # Si entre los candidatos esta la misma palabra acentuada, esa es la
-        # unica que se considera. Restaurar una tilde no puede cambiar el
-        # concepto -- deja las mismas letras -- mientras que cualquier otro
-        # cambio si. Medido: sin esta regla 'Psicologa' se convirtio en
-        # 'psicologia' teniendo 'psicóloga' en la lista.
+        # si entre los candidatos esta la misma palabra acentuada, es la unica
+        # que se considera: restaurar una tilde deja las mismas letras y no
+        # puede cambiar el concepto, mientras que cualquier otro cambio si
         acentuadas = [c for c in posibles if reglas.es_restauracion_tilde(palabra, c)]
         if acentuadas:
             posibles = acentuadas
@@ -297,18 +352,42 @@ def aplicar_contexto(texto, nota):
 
         elegido, ganancia = decision
 
-        # MISMOS guardias que la correccion por lexico, y por la misma razon.
-        # Medido contra el conjunto de referencia, sin ellos la capa de
-        # contexto bajo la precision de 97,8% a 95,6% con tres danos:
+        # mismos filtros que la correccion por lexico y por la misma razon; las
+        # divisiones en dos palabras no pasan por aqui porque no hay una unica
+        # palabra que comparar
+        # LAS DIVISIONES EN DOS PALABRAS TAMBIEN SE VALIDAN.
         #
-        #   canadnan       -> canadian        ingles del vocabulario biomedico
-        #   LEVOFLOXACIBNA -> levofloxacino   farmaco, y en el genero contrario
-        #   Psicologa      -> psicologia      cuando la correccion era la tilde
+        # Antes se saltaban todos los filtros, con el argumento de que no hay
+        # una unica palabra que comparar. La consecuencia era que la operacion
+        # mas arriesgada de la capa mas arriesgada resultaba ser la unica sin
+        # ningun control, y produjo
         #
-        # Que la evidencia venga de un modelo de lenguaje no exime del criterio
-        # clinico. Las divisiones en dos palabras ('a la') se saltan el
-        # guardian porque no son una palabra que comparar.
-        if " " not in elegido and not enmascarado.admisible(palabra, elegido):
+        #     afiliados  ->  'afilia dos'    'afiliado s'
+        #
+        # sobre una palabra que el espanol reconoce, que el corpus escribe 92
+        # veces y que LanguageTool no habia marcado. Partirla inventa dos
+        # palabras donde habia una correcta.
+        #
+        # No hay una palabra que comparar, pero si hay una pregunta que se puede
+        # responder: si la palabra de partida ya existe, no se parte.
+        #
+        # NO SE REVALIDAN LOS TROZOS, Y RETIRARLO FUE UNA CORRECCION.
+        #     Esta guarda comprobaba ademas que cada mitad existiera, con
+        #     reglas.es_palabra_conocida(). Esa funcion descarta los tokens muy
+        #     cortos, de modo que 'a', 'la', 'su' y 'al' no cuentan como
+        #     palabras y toda division legitima quedaba bloqueada:
+        #
+        #         ala -> 'a la'     asu -> 'a su'
+        #
+        #     que son justo los dos casos que justifican la existencia de esta
+        #     capa. La comprobacion sobraba: sugerencias._divisiones() ya exige
+        #     que las dos mitades sean palabras reales al generarlas, con un
+        #     criterio que si admite las funcionales. Revalidar aqui con una
+        #     regla mas estricta que la del generador solo podia restar.
+        if " " in elegido:
+            if reglas.es_palabra_conocida(reglas.normalizar(palabra)):
+                continue
+        elif not enmascarado.admisible(palabra, elegido):
             continue
 
         texto = texto[:inicio] + elegido + texto[fin:]
@@ -320,7 +399,10 @@ def aplicar_contexto(texto, nota):
 
 
 def resumen_contexto(minimo=1):
-    """Que cambio la capa de contexto y con cuanta ganancia. Para auditar."""
+    """
+    Cambios aplicados por la capa de contexto, con su número de apariciones y la
+    mayor ganancia observada. Se usa en el informe de auditoría de la corrida.
+    """
     from collections import Counter
     conteo = Counter((o, r) for o, r, _g in _CAMBIOS_CONTEXTO)
     ganancias = {}
@@ -332,19 +414,26 @@ def resumen_contexto(minimo=1):
 
 def corregir(texto, texto_original=None):
     """
-    texto: salida de limpieza.limpiar()
-    texto_original: la nota sin limpiar. Aporta las mayusculas, unica pista de
-                    que 'Pereira' o 'Hakim' no son errores de digitacion.
+    Corrige una nota y devuelve el texto resultante.
+
+        texto            la nota ya limpia, en minúsculas
+        texto_original   la nota sin limpiar. Aporta las mayúsculas, que son la
+                         única pista de que un token es un nombre propio y no un
+                         error de digitación.
+
+    Recorre la cadena completa descrita en la cabecera del módulo. Ante
+    cualquier fallo de LanguageTool sigue adelante sin sus propuestas, de modo
+    que una nota nunca queda sin procesar por un error del corrector.
     """
     if not texto:
         return texto
 
-    # En el 87,7% de las notas el original esta integramente en mayusculas, y
-    # ahi detectar_protegidos() y el NER no tienen contraste que leer: devolvian
-    # cero tokens protegidos. casing.restaurar() les devuelve la capitalizacion
-    # que el propio corpus dice que corresponde, y con eso las dos defensas
-    # vuelven a funcionar. Sobre una nota que ya venia con mayusculas y
-    # minusculas no toca nada, asi que este paso nunca degrada el caso bueno.
+    # La mayoria de las notas viene integramente en mayusculas, y ahi ni la
+    # deteccion por contraste ni el reconocedor de entidades tienen nada que
+    # leer. Restaurar la capitalizacion que el corpus indica devuelve el
+    # contraste y con el las dos defensas. Sobre una nota que ya venia con
+    # mayusculas y minusculas no se toca nada, asi que este paso no degrada
+    # nunca el caso bueno.
     referencia = casing.restaurar(texto_original) if texto_original else texto_original
 
     protegidos = reglas.detectar_protegidos(referencia)
@@ -353,15 +442,10 @@ def corregir(texto, texto_original=None):
 
     texto = aplicar_directas(texto)
 
-    # PASO NUEVO, Y EL MAS IMPORTANTE DEL MODULO.
-    # Antes de que LanguageTool vea la nota, enmascarado.py aparta la
-    # terminologia clinica y arregla la que venia mal escrita usando el lexico
-    # medico. Lo que sale de aqui ya trae 'abodominal' convertido en
-    # 'abdominal', y trae marcados los rangos que el corrector no puede tocar.
-    #
-    # Es la inversion de politica: antes se corregia y ocho guardias intentaban
-    # vetar; ahora lo clinico no llega al corrector, asi que no hay veto que
-    # pueda fallar.
+    # Antes de que LanguageTool vea la nota, el enmascarado aparta la
+    # terminologia clinica y arregla contra el lexico medico la que venia mal
+    # escrita. Lo que sale de aqui trae ya esos terminos corregidos y los
+    # rangos que el corrector no puede tocar.
     nota = enmascarado.enmascarar(texto)
     texto = nota.texto
     protegidos = protegidos | nota.palabras_protegidas()
@@ -388,12 +472,9 @@ def corregir(texto, texto_original=None):
         if fin <= inicio:
             continue
 
-        # El tramo es terminologia clinica: solo se admite ponerle una tilde.
-        #
-        # Es la unica operacion que no puede cambiar el concepto, porque por
-        # construccion deja las mismas letras. Y ahora es de verdad segura: la
-        # eñe dejo de plegarse como acento, asi que 'añoñ'/'anón' ya no cuenta
-        # como restauracion de tilde y no puede colarse por esta puerta.
+        # el tramo es terminologia clinica: lo unico que se admite es ponerle
+        # una tilde, que es la unica operacion que deja las mismas letras y por
+        # tanto no puede cambiar el concepto
         if nota.protegido(inicio, fin):
             norm = reglas.normalizar(texto[inicio:fin])
             if es_sigla_real(norm):
@@ -429,9 +510,8 @@ def corregir(texto, texto_original=None):
 
         texto = texto[:inicio] + reemplazo + texto[fin:]
 
-    # a minusculas ANTES de SymSpell: LanguageTool devuelve 'Valoración' con
-    # mayuscula al abrir frase, y SymSpell reprocesaba 'aloración' dejando
-    # 'Vvaloración'
+    # a minusculas antes de SymSpell: LanguageTool capitaliza al abrir frase, y
+    # sobre esa mayuscula el segundo corrector reprocesaba mal la palabra
     texto = texto.lower()
 
     if USAR_VOCABULARIO and vocabulario.disponible():
@@ -442,17 +522,13 @@ def corregir(texto, texto_original=None):
             senalados=senalados,
         )
 
-    # PASO NUEVO: la capa de contexto.
+    # Lo que llega a la capa de contexto ya paso por el diccionario, el lexico
+    # clinico, LanguageTool y SymSpell. Lo que sobrevive a todos ellos y sigue
+    # mal es, por definicion, una palabra que existe, y ningun corrector
+    # ortografico la ve.
     #
-    # Lo que llega aqui ya paso por el diccionario, el lexico clinico,
-    # LanguageTool y SymSpell. Lo que sobrevive a todos ellos y sigue estando
-    # mal es, por definicion, una palabra que EXISTE: 'ala' por 'a la',
-    # 'cordada' por 'cortada', 'gral' por 'general'. Ningun corrector
-    # ortografico las ve, porque su criterio es si la palabra existe y existe.
-    #
-    # Va al final a proposito. Es la capa mas cara (un pase del modelo por
-    # candidato) y la mas arriesgada, asi que solo ve lo que nadie mas supo
-    # arreglar, y nunca ve la terminologia: los rangos protegidos se saltan.
+    # Va al final a proposito: es la capa mas cara y la mas arriesgada, asi que
+    # solo ve lo que nadie mas supo arreglar, y nunca la terminologia.
     if USAR_CONTEXTO and contexto.disponible():
         texto = aplicar_contexto(texto, nota)
 
@@ -465,11 +541,15 @@ def corregir(texto, texto_original=None):
 
 
 # ==========================================================
-# AUDITORIA
+# AUDITORÍA
 # ==========================================================
 
 def diagnosticar(texto, texto_original=None):
-    """Por que se aplico o se descarto cada cambio."""
+    """
+    Una fila por aviso de LanguageTool sobre la nota, con la regla que lo
+    produjo, sus candidatos, el motivo por el que se aplicó o se descartó, y lo
+    que habría propuesto SymSpell. Herramienta de inspección manual.
+    """
     referencia = casing.restaurar(texto_original) if texto_original else texto_original
     protegidos = reglas.detectar_protegidos(referencia)
     ents = reglas.entidades(texto, referencia)

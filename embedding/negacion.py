@@ -1,33 +1,34 @@
 """
-Fase 4. Deteccion de negacion, incertidumbre y antecedente en espanol.
+Fase 4. Detección de negación, incertidumbre y antecedente en español clínico.
 
-POR QUE HACE FALTA
+POR QUÉ HACE FALTA
     'niega fiebre' y 'fiebre' contienen la misma palabra y significan lo
-    contrario. Para un clustering que agrupe por sintomas, un hallazgo negado
-    contado como presente es un dato falso, y en este corpus la negacion no es
-    marginal: 'niega' aparece 3.418 veces y 'sin' 3.684 sobre 30.000 notas.
+    contrario. Para un análisis que agrupe por síntomas, un hallazgo negado
+    contado como presente es un dato falso, y en este corpus la negación no es
+    marginal: los disparadores más comunes aparecen en miles de notas.
 
-POR QUE NO SE USA medspaCy TAL CUAL
-    Su motor ConText es solido, pero los disparadores que trae son ingleses
-    ('denies', 'no evidence of', 'ruled out') y no reaccionan a 'niega'. Lo que
-    sirve de ConText es el metodo: disparador, direccion, alcance y terminador.
-    Ese metodo esta implementado aqui con los disparadores del espanol clinico
-    colombiano medidos sobre el corpus.
+POR QUÉ NO SE USA medspaCy DIRECTAMENTE
+    Su motor ConText es sólido, pero los disparadores que trae son ingleses y no
+    reaccionan al español. Lo aprovechable de ConText es el método —disparador,
+    dirección, alcance y terminador— y es el que se implementa aquí, con los
+    disparadores del español clínico observados en el corpus.
 
-LO QUE SE MIDIO
-    niega .............. 3.418     sin .............. 3.684
-    no hay ..............  223     descarta .........    65
-    negativo ............   48     no refiere .......    45
-    ausencia de .........   27     no presenta ......    21
+LOS CUATRO ESTADOS
+    afirmado      el hallazgo está presente
+    negado        se afirma que no está
+    incierto      se plantea como sospecha, no como hecho
+    antecedente   ocurrió en el pasado; no es el motivo de consulta actual
 
-    Dos trampas que aparecieron al mirar los datos:
+LAS TRAMPAS QUE RESUELVE
+    Locuciones que empiezan como una negación sin serlo, y que sin excluirlas
+    dejarían negado todo lo que viene detrás.
 
-    'sin embargo' (181 veces) es un conector, no una negacion. Sin excluirlo,
-    todo lo que sigue a esa locucion quedaria marcado como negado.
+    Expresiones puente del tipo 'sin signos de', donde lo negado no es la
+    palabra siguiente sino lo que va después del 'de'.
 
-    'sin signos de' y 'sin criterios de' (1.692 veces) no niegan la palabra
-    siguiente sino lo que va despues del 'de': en 'sin signos de dificultad
-    respiratoria' lo negado es la dificultad respiratoria, no los signos.
+    La coma, que es ambigua: puede continuar una enumeración negada o cerrarla y
+    empezar una afirmación. Se resuelve con el vocabulario de síntomas conocidos
+    y con los adjetivos que afirman explícitamente un hallazgo.
 """
 
 import re
@@ -47,8 +48,8 @@ NEGACION_ADELANTE = [
 ]
 
 # niegan lo que viene ANTES
-# 'no' se deja fuera a proposito: hacia atras es demasiado ambiguo y en
-# 'posible neumonia, no hay fiebre' retro-negaba la neumonia.
+# 'no' se deja fuera a proposito: hacia atras es demasiado ambiguo y llegaba a
+# negar el diagnostico de la frase anterior.
 NEGACION_ATRAS = ["negativo", "negativa", "negativos", "negativas",
                   "ausente", "ausentes", "descartado", "descartada"]
 
@@ -74,9 +75,9 @@ TERMINADORES = [
     "se evidencia", "se observa", "si", "positivo para",
 ]
 
-# adjetivos que afirman el hallazgo al que acompanan. Si aparecen cerca, la
+# Adjetivos que afirman el hallazgo al que acompanan. Si aparecen cerca, la
 # enumeracion negada ya termino: en 'niega perdidas vaginales, movimientos
-# fetales activos' lo negado son las perdidas, y los movimientos estan presentes.
+# fetales activos' lo negado son las perdidas, no los movimientos.
 AFIRMADORES = [
     "activos", "activo", "activas", "activa", "presentes", "presente",
     "positivo", "positiva", "positivos", "positivas", "conservados",
@@ -101,7 +102,10 @@ RE_TOKEN = re.compile(r"[\wáéíóúüñ]+|[.;:,]")
 
 
 def _frases(lista):
-    """Ordena por longitud para que la locucion mas larga gane."""
+    """
+    Ordena los disparadores de más a menos palabras, para que al buscar gane
+    siempre la locución más larga y específica.
+    """
     return sorted(lista, key=lambda x: len(x.split()), reverse=True)
 
 
@@ -116,20 +120,26 @@ TERMINADORES = _frases(TERMINADORES)
 # ==========================================================
 
 def _tokenizar(texto):
+    """Palabras y signos de puntuación relevantes, en minúscula."""
     return RE_TOKEN.findall(str(texto).lower())
 
 
 def _coincide(tokens, i, frase):
+    """True si la frase aparece en los tokens a partir de la posición i."""
     partes = frase.split()
     return tokens[i:i + len(partes)] == partes
 
 
 def _es_excepcion(tokens, i):
+    """True si en esa posición empieza una locución que solo parece negación."""
     return any(_coincide(tokens, i, e) for e in EXCEPCIONES)
 
 
 def _saltar_puente(tokens, j):
-    """Avanza el inicio del alcance si hay un puente ('signos de', 'criterios de')."""
+    """
+    Adelanta el inicio del alcance cuando hay una expresión puente, para que la
+    negación caiga sobre el hallazgo y no sobre el sustantivo intermedio.
+    """
     for puente in PUENTES:
         partes = puente.split()
         if tokens[j:j + len(partes)] == partes:
@@ -138,25 +148,29 @@ def _saltar_puente(tokens, j):
 
 
 def _es_terminador(tokens, i):
+    """True si en esa posición hay algo que cierra el alcance del disparador."""
     return any(_coincide(tokens, i, t) for t in TERMINADORES)
 
 
 def _afirmacion_cercana(tokens, i, ventana=VENTANA_AFIRMADOR):
-    """True si en los proximos tokens hay un adjetivo que afirma el hallazgo."""
+    """True si dentro de la ventana hay un adjetivo que afirma el hallazgo."""
     return any(t in AFIRMADORES for t in tokens[i:i + ventana + 1])
 
 
 def marcar(texto, terminos_clinicos=None):
     """
-    Devuelve una lista de (token, estado) donde estado es uno de:
-        'afirmado', 'negado', 'incierto', 'antecedente'
+    Marca cada token del texto con su estado y devuelve la lista de pares
+    (token, estado).
 
-    terminos_clinicos: vocabulario de sintomas conocidos. Resuelve la coma, que
-    es ambigua: en 'niega fiebre, tos y disnea' continua una enumeracion negada,
-    pero en 'niega perdidas vaginales, movimientos fetales activos' cierra la
-    negacion y empieza una afirmacion. Sin el catalogo no hay como distinguirlas;
-    con el, la enumeracion sigue mientras el elemento siguiente sea un sintoma
-    conocido.
+    El recorrido busca un disparador, calcula dónde empieza su alcance —saltando
+    la expresión puente si la hay— y marca hacia adelante hasta encontrar un
+    terminador o agotar ALCANCE_MAXIMO tokens. Después se aplican los
+    disparadores que niegan hacia atrás.
+
+    `terminos_clinicos` es el vocabulario de síntomas conocidos y sirve para
+    resolver la coma: la enumeración negada continúa mientras lo que sigue sea un
+    síntoma del catálogo y no venga afirmado de forma explícita. Sin ese
+    vocabulario, la coma cierra siempre.
     """
     terminos_clinicos = terminos_clinicos or set()
     tokens = _tokenizar(texto)
@@ -198,7 +212,7 @@ def marcar(texto, terminos_clinicos=None):
             if tokens[j] == ",":
                 siguiente = tokens[j + 1] if j + 1 < len(tokens) else ""
                 # la enumeracion negada continua solo si lo que sigue es un
-                # sintoma del catalogo; en caso contrario la coma cierra
+                # sintoma conocido o un nexo; si no, la coma cierra el alcance
                 sigue_enumeracion = (siguiente in terminos_clinicos
                                      or siguiente in ("ni", "y", "o"))
                 # ...salvo que lo que viene este afirmado explicitamente
@@ -225,8 +239,12 @@ def marcar(texto, terminos_clinicos=None):
 
 def estado_de(texto, expresion, terminos_clinicos=None):
     """
-    Estado de una expresion concreta dentro del texto.
-    'niega fiebre', 'fiebre' -> 'negado'
+    Estado de una expresión concreta dentro del texto: para 'fiebre' en
+    'niega fiebre' devuelve 'negado'.
+
+    Si la expresión abarca varios tokens con estados distintos, gana el más
+    restrictivo, en el orden negado, incierto, antecedente. Una expresión que no
+    aparece en el texto se considera afirmada.
     """
     marcado = marcar(texto, terminos_clinicos)
     partes = _tokenizar(expresion)
@@ -245,5 +263,8 @@ def estado_de(texto, expresion, terminos_clinicos=None):
 
 
 def diagnosticar(texto, terminos_clinicos=None):
-    """Como quedo marcada cada palabra. Para revisar casos puntuales."""
+    """
+    Tokens del texto que quedaron marcados con algún estado distinto de
+    afirmado. Herramienta de inspección manual.
+    """
     return [(t, e) for t, e in marcar(texto, terminos_clinicos) if e != "afirmado"]

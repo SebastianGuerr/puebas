@@ -1,39 +1,41 @@
 """
-Eleccion del candidato de correccion.
+Elección del candidato de corrección.
 
-Separado de ortografia.py porque es la logica mas delicada del pipeline y la
-que concentra las mediciones. LanguageTool no ordena sus sugerencias por
-probabilidad clinica, asi que la eleccion la hace este modulo.
+LanguageTool propone varias sugerencias por error y no las ordena por
+probabilidad clínica, así que la elección la toma este módulo. Está separado del
+orquestador porque es la lógica más delicada de la fase y la que concentra los
+ajustes de umbral.
 
-PRIORIDAD
-  1. Restauracion de tilde. Si un candidato es la misma palabra acentuada, es
-     ese. 'palida' -> 'pálida', nunca -> 'salida'.
-  2. Palabra conocida. Fuera de las tildes, lo que spaCy reconoce se deja como
-     esta. Va DESPUES del paso 1 porque 'dias' figura en su vocabulario.
-  3. Menor distancia de edicion, con la frecuencia del corpus como desempate.
+ORDEN DE PRIORIDAD
+  1. Restauración de tilde. Si un candidato es la misma palabra acentuada, es
+     ese: 'palida' se corrige a 'pálida', nunca a 'salida'.
+  2. Filtro de viabilidad. Un candidato debe superar las reglas de protección,
+     el criterio de forma, un mínimo de apariciones en el corpus y el veto del
+     guardián clínico.
+  3. Menor distancia de edición, con la frecuencia en el corpus como desempate.
 
-MEDICIONES (corpus de 30.000 notas)
-  Orden por distancia, no por posicion en la lista
-      'fibre' -> ['libre','fibra','fiebre'] y 'trngo' -> ['Trajo','Trigo','Tango','Tengo'].
-      Tomar el primero producia 'tiene libre' y 'trajo dolor'.
+LOS UMBRALES, Y QUÉ EVITA CADA UNO
+    FRECUENCIA_CANDIDATO   una corrección que nadie escribió nunca en el
+                           hospital no es una corrección.
+    UMBRAL_TERMINO y       un original que se repite y además tiene forma de
+    FACTOR_TERMINO         término solo se corrige si el candidato lo supera con
+                           holgura.
+    FACTOR_RESPALDO        cuando el original figura en el vocabulario de spaCy,
+                           el corpus tiene que respaldar el cambio.
+    FRECUENCIA_DESEMPATE   y RATIO_DESEMPATE: ante varios candidatos igual de
+                           cercanos, uno debe dominar claramente.
 
-  FRECUENCIA_CANDIDATO = 3
-      Una correccion que el hospital nunca escribio no es una correccion:
-        desasturada -> desastrada(0)   bibasales -> binasales(0)   rechazados
-        trombolfebitis -> tromboflebitis(3)   daignosticaron -> diagnosticaron(11)
-
-  UMBRAL_TERMINO / FACTOR_TERMINO
-      Un original repetido es terminologia, no descuido:
-        taquicardica(43) -> taquicardia(120)  ratio 2.8   rechazado
-        dolro(126)       -> dolor(10370)      ratio  82   aceptado
+Cuando ningún candidato reúne evidencia suficiente, el módulo se abstiene y
+deja constancia en el registro de abstenciones. Elegir sin evidencia no mejora
+el texto: inventa información.
 """
 
 from collections import Counter
 
 from rapidfuzz.distance import DamerauLevenshtein
 
-import reglas
-import terminologia
+from NLP.fase2_ortografia import terminologia
+from NLP.nucleo import reglas
 
 MAX_CANDIDATOS = 10
 LONGITUD_CANDIDATO_UNICO = 6  # a partir de aqui se acepta un candidato unico
@@ -43,17 +45,22 @@ RATIO_DESEMPATE = 3           # el ganador debe superar al segundo por este fact
 UMBRAL_TERMINO = 10           # a partir de aqui el original se considera termino real
 FACTOR_TERMINO = 5            # y su correccion debe ser N veces mas frecuente
 
-# Cuanto debe superar la correccion al original cuando el original figura en el
-# vocabulario de spaCy. Es mas bajo que FACTOR_TERMINO a proposito: aqui ya se
-# sabe que el token NO es terminologia clinica (pesos.py lo habria apartado), y
-# el unico riesgo que queda es cambiar una palabra corriente por otra.
+# Cuanto debe superar la correccion al original cuando este figura en el
+# vocabulario de spaCy. Es mas bajo que FACTOR_TERMINO a proposito: llegado a
+# este punto ya se sabe que el token no es terminologia clinica, porque el peso
+# clinico lo habria apartado antes, y el unico riesgo que queda es cambiar una
+# palabra corriente por otra.
 FACTOR_RESPALDO = 2
 
 CONTEO = Counter()
 
 
 def construir_lexico(textos):
-    """Frecuencias de palabra sobre el corpus del hospital."""
+    """
+    Cuenta las palabras del corpus y deja el recuento disponible para todo el
+    módulo. Es la base de todos los desempates por frecuencia, así que debe
+    llamarse antes de empezar a corregir.
+    """
     CONTEO.clear()
     for t in textos:
         CONTEO.update(reglas.RE_PALABRA.findall(str(t).lower()))
@@ -61,6 +68,11 @@ def construir_lexico(textos):
 
 
 def frecuencia(expresion):
+    """
+    Apariciones de una expresión en el corpus. Para expresiones de varias
+    palabras devuelve la de la palabra menos frecuente, que es la que limita la
+    credibilidad del conjunto.
+    """
     partes = reglas.RE_PALABRA.findall(str(expresion).lower())
     if not partes:
         return 0
@@ -68,7 +80,16 @@ def frecuencia(expresion):
 
 
 def elegir(original, sugerencias, protegidos=()):
-    """Devuelve la correccion, o None si no hay evidencia suficiente."""
+    """
+    Devuelve la corrección que debe aplicarse, o None si no hay evidencia
+    suficiente para ninguna.
+
+        original     palabra tal como aparece en la nota
+        sugerencias  propuestas de LanguageTool, en su orden original
+        protegidos   tokens que esta nota concreta declara intocables
+
+    Toda salida None queda registrada como abstención, con el motivo.
+    """
     original = reglas.normalizar(original)
     if not original or reglas.tiene_numero(original):
         return None
@@ -78,18 +99,14 @@ def elegir(original, sugerencias, protegidos=()):
         if reglas.es_restauracion_tilde(original, cand):
             return cand
 
-    # 2. palabra que spaCy reconoce: ya NO es un veto, es una exigencia de
-    #    respaldo. es_core_news_md se entreno con texto web y su vocabulario
-    #    contiene faltas de ortografia frecuentes: 'conciente', 'transplante',
-    #    'aprox', 'fibre'. Tratarlo como veto absoluto las congelaba para
-    #    siempre -- medido, 106 de 106 notas con 'conciente' quedaron intactas
-    #    aunque LanguageTool proponia 'consciente' correctamente.
+    # 2. que spaCy reconozca el original ya no es un veto, sino una exigencia
+    #    de respaldo. Su vocabulario procede de texto web y contiene faltas de
+    #    ortografia frecuentes; tratarlo como veto absoluto las congelaba para
+    #    siempre, aunque LanguageTool propusiera la forma correcta.
     #
-    #    La proteccion de la terminologia clinica ya no depende de esto: la hace
-    #    pesos.py antes, y lo que pesa se aparta en enmascarado.py y nunca llega
-    #    hasta aqui. Lo que queda es una palabra corriente del espanol, y para
-    #    cambiarla basta con exigir que el corpus del hospital respalde el
-    #    cambio por goleada.
+    #    La proteccion de la terminologia clinica ya no depende de esto: la
+    #    resuelve antes el peso clinico, y lo que pesa se aparta en el
+    #    enmascarado y no llega hasta aqui.
     exige_respaldo = reglas.es_palabra_conocida(original)
 
     viables = []
@@ -113,18 +130,10 @@ def elegir(original, sugerencias, protegidos=()):
 
     viables.sort()
 
-    # 3. original repetido en el corpus: es terminologia.
-    #
-    #    Y AHORA SE EXIGE ADEMAS QUE LO PAREZCA. La regla decia 'lo que el
-    #    hospital repite mucho es un termino real', y en un corpus donde todos
-    #    cometen la misma falta eso es falso:
-    #
-    #      conciente(106) -> consciente(243)   se exigian 530: rechazado
-    #
-    #    'conciente' se repite 106 veces porque es una falta comun, no porque
-    #    sea terminologia. Medido, quedaba sin corregir en 106 de 106 notas.
-    #    'taquicardica' si tiene morfemas medicos y sigue protegida por la regla,
-    #    que es para lo que se escribio.
+    # 3. un original muy repetido se considera terminologia, pero se exige
+    #    ademas que TENGA FORMA de termino. Sin esa segunda condicion, en un
+    #    corpus donde todos cometen la misma falta, la falta se protege a si
+    #    misma por frecuente.
     freq_original = frecuencia(original)
     if freq_original >= UMBRAL_TERMINO and terminologia.es_terminologia(original):
         if -viables[0][1] < freq_original * FACTOR_TERMINO:
@@ -133,13 +142,10 @@ def elegir(original, sugerencias, protegidos=()):
     distancia_minima = viables[0][0]
     empatados = [v for v in viables if v[0] == distancia_minima]
 
-    # 3bis. el original figura en el vocabulario de spaCy. Puede ser una palabra
-    #       legitima o una falta tan comun que entro al corpus web con el que se
-    #       entreno el modelo. Lo que las separa es como escribe el hospital: si
-    #       la correccion aplasta al original en las notas, era una falta.
-    #
-    #         conciente(106)  -> consciente(243)   ratio 2.3   se aplica
-    #         dias(4.891)     -> día(12)           ratio 0.002 se rechaza
+    # 3bis. el original esta en el vocabulario de spaCy: puede ser una palabra
+    #       legitima o una falta tan comun que entro al corpus con el que se
+    #       entreno el modelo. Lo que las separa es como escribe el hospital,
+    #       asi que se exige que la correccion supere al original en las notas.
     if exige_respaldo:
         mejor_freq = -empatados[0][1]
         if mejor_freq < max(freq_original * FACTOR_RESPALDO, FRECUENCIA_DESEMPATE):
@@ -157,7 +163,7 @@ def elegir(original, sugerencias, protegidos=()):
     if mejor >= FRECUENCIA_DESEMPATE and mejor >= max(segunda * RATIO_DESEMPATE, 1):
         return empatados[0][2]
 
-    # varios candidatos igual de plausibles y ninguno domina: no hay forma de
-    # saber cual quiso escribir el personal, y elegir uno inventa informacion
+    # varios candidatos igual de plausibles y ninguno domina: no hay manera de
+    # saber cual se quiso escribir, y elegir uno inventaria informacion
     terminologia.anotar_abstencion(original, "varios candidatos sin uno dominante")
     return None

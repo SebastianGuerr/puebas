@@ -1,53 +1,48 @@
 """
-Generacion de candidatos para la capa de contexto.
+Generación de candidatos para la capa de contexto.
 
-POR QUE ESTE ARCHIVO EXISTE SEPARADO
-    contexto.py puntua candidatos pero no genera ninguno, a proposito: un
-    modelo de lenguaje que propone escribe lo que es frecuente, no lo que es
-    correcto, y medido produjo 'epistaxis -> epistasis' y 'midazolam ->
-    midazolan'. La garantia de que no puede inventar una palabra es que la
-    lista de candidatos venga de fuentes declaradas.
+POR QUÉ ES UN MÓDULO APARTE
+    La capa de contexto puntúa candidatos pero no genera ninguno, y eso es
+    deliberado: un modelo de lenguaje que propone escribe lo que es frecuente,
+    no lo que es correcto, y llega a proponer variantes inexistentes de un
+    término o de un principio activo. La garantía de que no puede inventar una
+    palabra es que la lista de candidatos proceda de fuentes declaradas.
 
-    Aqui viven esas fuentes. Cada candidato que salga de este modulo existe en
-    el lexico clinico (32.310 formas del CIE-10, el diccionario del proyecto y
-    el catalogo) o en el vocabulario que el propio hospital escribe.
+    Aquí viven esas fuentes. Todo candidato que salga de este módulo existe en
+    el léxico clínico o en el vocabulario que el propio hospital escribe.
 
-LAS TRES FUENTES, Y QUE CASO RESUELVE CADA UNA
+LAS CUATRO FUENTES, Y QUÉ CASO RESUELVE CADA UNA
+    léxico clínico    términos a distancia de edición corta. Es la misma
+                      búsqueda del léxico, pero devolviendo varios candidatos en
+                      lugar de uno: aquí no hace falta que el léxico decida,
+                      porque decide el contexto.
 
-    lexico clinico      'cordada' -> 'cortada', 'regio' -> 'región'
-                        Terminos y palabras a distancia de edicion <= 2. Es la
-                        misma busqueda de lexico.cercano(), pero devolviendo
-                        VARIOS candidatos en vez de uno: aqui no hace falta que
-                        el lexico decida, porque decide el contexto.
+    corpus            lo que el personal escribe realmente, con su frecuencia.
+                      Cubre la jerga y las abreviaturas de servicio, que no
+                      están en ningún diccionario médico porque no son
+                      terminología sino taquigrafía.
 
-    vocabulario del     'gral' -> 'general'
-    hospital            Lo que el personal escribe de verdad, con su
-                        frecuencia. Cubre la jerga y las abreviaturas de
-                        servicio, que no estan en ningun diccionario medico
-                        porque no son terminologia sino taquigrafia.
+    divisiones        dos palabras que se escribieron pegadas. Se prueba cada
+                      corte posible y se conservan los que dejan dos palabras
+                      reales, de modo que la regla genera los casos en lugar de
+                      enumerarlos.
 
-    division en dos     'ala' -> 'a la'
-                        Dos palabras pegadas al teclear. Se prueba cada corte
-                        posible y se conservan los que dejan DOS palabras
-                        reales. No hace falta enumerar los casos: la regla los
-                        genera. 'ala' produce 'a la'; 'dolor' no produce nada
-                        porque 'lor' no existe.
+    expansiones       la forma larga de una abreviatura de habla ('gral' por
+                      'general').
 
 LO QUE NO SE GENERA
-    Nada que no este en una de las tres fuentes. Si una palabra esta mal
-    escrita y su forma correcta no aparece ni en el CIE-10, ni en el
-    diccionario del proyecto, ni en las notas del hospital, el sistema se
-    abstiene. Es la misma politica del resto del proyecto: ante la falta de
-    evidencia, no se toca.
+    Nada que no esté en alguna de esas fuentes. Si una palabra está mal escrita
+    y su forma correcta no aparece ni en el léxico ni en las notas del hospital,
+    el sistema se abstiene.
 """
 
 import re
 
-import candidatos
-import lexico
-import vocabulario
-import linguistica
-import morfologia
+from NLP.fase2_ortografia import candidatos
+from NLP.fase2_ortografia import vocabulario
+from NLP.nucleo import linguistica
+from NLP.nucleo import morfologia
+from NLP.recursos import lexico
 
 # ==========================================================
 # CONFIGURACION
@@ -57,9 +52,8 @@ DISTANCIA_MAXIMA = 2
 MAX_POR_FUENTE = 5
 
 # Frecuencia minima en el corpus para que una mitad de una division cuente como
-# palabra real. Cubre las palabras cortisimas ('a', 'la', 'de') que ningun
-# vocabulario de spaCy reconoce por longitud, pero que el hospital escribe
-# miles de veces.
+# palabra real. Cubre las palabras muy cortas ('a', 'la', 'de'), que el
+# vocabulario de spaCy descarta por longitud pero el corpus escribe a millares.
 FRECUENCIA_MITAD = 20
 
 LONGITUD_MINIMA_DIVISION = 4   # por debajo, dividir no deja nada util
@@ -69,28 +63,22 @@ RE_ALFABETICA = re.compile(r"^[a-záéíóúüñ]+$")
 
 
 # ==========================================================
-# FUENTES
+# FUENTES DE CANDIDATOS
 # ==========================================================
 
 def _del_lexico(palabra):
-    """Formas del lexico clinico a distancia <= 2."""
+    """Formas del léxico clínico dentro de la distancia de edición máxima."""
     return lexico.vecinos(palabra, DISTANCIA_MAXIMA, MAX_POR_FUENTE)
 
 
 def _del_corpus(palabra):
     """
-    Palabras que el hospital escribe, a distancia <= 2.
+    Palabras del corpus dentro de la distancia de edición máxima.
 
-    NO se filtra por frecuencia, y esa decision costo un caso conocido. La
-    primera version exigia que el candidato fuera al menos el doble de
-    frecuente que el original, con la idea de no gastar evaluaciones en
-    candidatos sin respaldo. Medido:
-
-        cordada(1) -> cortada(1)    quedaba fuera, y es la correccion buena
-
-    El error y su correccion pueden ser igual de raros. La frecuencia era buen
-    criterio cuando ella misma tenia que decidir; ahora decide el contexto, y
-    filtrar antes solo le esconde la respuesta.
+    No se filtra por frecuencia: el error y su corrección pueden ser igual de
+    raros, y exigir respaldo aquí dejaba fuera correcciones válidas. La
+    frecuencia era un buen criterio cuando tenía que decidir por sí sola; ahora
+    decide el contexto, y filtrar antes solo le oculta la respuesta.
     """
     return vocabulario.vecinos(palabra, DISTANCIA_MAXIMA, MAX_POR_FUENTE)
 
@@ -105,28 +93,25 @@ _CACHE_EXPANSION = {}
 
 
 def _es_subsecuencia(corta, larga):
-    """True si las letras de 'corta' aparecen en 'larga' en el mismo orden."""
+    """True si las letras de la primera aparecen en la segunda en ese orden."""
     it = iter(larga)
     return all(c in it for c in corta)
 
 
 def _expansiones(palabra):
     """
-    'gral' -> ['general'].  La forma larga de una abreviatura de habla.
+    Formas largas de una abreviatura de habla, como 'general' para 'gral'.
 
-    POR QUE NO SIRVE LA DISTANCIA DE EDICION
-        Una abreviatura no es un vecino ortografico de su forma larga: es una
-        contraccion. Medido, 'gral' esta a distancia 3 de 'general', o sea
-        fuera del alcance de SymSpell con DISTANCIA_MAXIMA=2. Lo mismo pasa con
-        'qx'/'quirurgico', 'tto'/'tratamiento' o 'aprox'/'aproximadamente'.
+    La distancia de edición no sirve para esto: una abreviatura no es un vecino
+    ortográfico de su forma larga sino una contracción, y suele quedar fuera del
+    alcance del corrector. Lo que sí comparten es la secuencia de letras, que
+    aparece completa y en orden dentro de la palabra larga. Ese es el criterio, y
+    generaliza a todas las abreviaturas sin enumerar ninguna.
 
-        Lo que SI comparten es la secuencia de letras: g-r-a-l aparece dentro
-        de g-e-n-e-r-a-l en ese orden. Esa es la prueba clasica de abreviatura,
-        y generaliza a todas sin enumerar ninguna.
-
-    Se exige ademas que la forma larga sea corriente en el corpus. Cualquier
-    token corto es subsecuencia de decenas de palabras raras, y sin ese filtro
-    la lista de candidatos se llenaria de ruido.
+    Se exige además que la inicial coincida y que la forma larga sea corriente en
+    el corpus: cualquier token corto es subsecuencia de decenas de palabras
+    raras, y sin ese filtro la lista se llenaría de ruido. El resultado se guarda
+    en caché porque la búsqueda recorre todo el vocabulario.
     """
     if len(palabra) > LONGITUD_MAXIMA_ABREVIATURA or len(palabra) < 2:
         return []
@@ -154,7 +139,10 @@ def _expansiones(palabra):
 
 
 def _es_palabra(fragmento):
-    """True si el fragmento es una palabra real del espanol o del hospital."""
+    """
+    True si el fragmento es una palabra real, sea porque el corpus la escribe
+    con frecuencia o porque spaCy la reconoce.
+    """
     if not fragmento or not RE_ALFABETICA.match(fragmento):
         return False
     if candidatos.CONTEO.get(fragmento, 0) >= FRECUENCIA_MITAD:
@@ -164,15 +152,37 @@ def _es_palabra(fragmento):
 
 def _divisiones(palabra):
     """
-    'ala' -> ['a la'].  Dos palabras que se escribieron pegadas.
+    Divisiones de la palabra en dos que dejan dos palabras reales, como 'a la'
+    para 'ala'.
 
-    Se prueban todos los cortes y se conservan los que dejan dos palabras
-    reales. Un corte que produce un fragmento inexistente se descarta solo, asi
-    que la regla no necesita lista de casos: 'ala' funciona porque 'a' y 'la'
-    existen, y 'dolor' no produce nada porque 'lor' no existe.
+    Se prueban todos los cortes posibles y los que producen un fragmento
+    inexistente se descartan solos, de modo que la regla no necesita una lista de
+    casos.
     """
     if len(palabra) < LONGITUD_MINIMA_DIVISION - 1:
         return []
+
+    # UNA PALABRA QUE YA EXISTE NO SE PROPONE PARTIDA.
+    #
+    # Esta fuente existe para 'ala' -> 'a la', donde lo escrito es un pegado.
+    # Pero probaba todos los cortes de CUALQUIER palabra, y como los fragmentos
+    # cortos casi siempre existen, generaba divisiones de palabras correctas:
+    #
+    #     hablando   ->  'h ablando', 'ha blando', 'habl ando'
+    #     dorada     ->  'd orada', 'dora da'
+    #     afiliados  ->  'afilia dos', 'afiliado s'
+    #
+    # Esas propuestas son el origen de la particion de palabras: el modelo solo
+    # puntua lo que se le pasa, y se le estaban pasando. Ademas ocupaban sitio
+    # en la lista, que esta topada, y desplazaban al candidato bueno --
+    # 'cortada' quedaba en sexta posicion detras de cuatro divisiones inutiles.
+    #
+    # 'ala' sigue funcionando porque el espanol no la reconoce como palabra
+    # suelta en este corpus; lo que se corta es proponer divisiones de una
+    # palabra que ya es correcta, que nunca puede ser una correccion.
+    if linguistica.en_vocabulario(palabra):
+        return []
+
     salida = []
     for i in range(1, len(palabra)):
         izquierda, derecha = palabra[:i], palabra[i:]
@@ -182,13 +192,16 @@ def _divisiones(palabra):
 
 
 # ==========================================================
-# GENERACION
+# GENERACIÓN
 # ==========================================================
 
 def generar(palabra):
     """
-    Todos los candidatos para una palabra, sin repetir y sin la propia palabra.
-    Lista vacia si ninguna fuente aporta nada, que es el caso mayoritario.
+    Todos los candidatos para una palabra, sin repetidos y sin la palabra
+    misma, en el orden en que los aportan las cuatro fuentes.
+
+    Devuelve una lista vacía cuando ninguna fuente aporta nada, que es el caso
+    mayoritario: la mayor parte de las palabras de una nota están bien escritas.
     """
     palabra = morfologia.normalizar(palabra)
     if len(palabra) < LONGITUD_MINIMA - 1 or morfologia.tiene_numero(palabra):
@@ -206,7 +219,10 @@ def generar(palabra):
 
 
 def diagnosticar(palabra):
-    """De donde sale cada candidato. Para revisar casos puntuales."""
+    """
+    Qué aporta cada fuente para una palabra concreta, y la lista final.
+    Herramienta de inspección manual.
+    """
     palabra = morfologia.normalizar(palabra)
     return {
         "palabra": palabra,

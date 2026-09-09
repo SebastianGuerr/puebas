@@ -1,81 +1,55 @@
 """
-Capa de contexto: decidir si una palabra tiene sentido donde esta.
+Capa de contexto: decidir si una palabra tiene sentido donde está.
 
-EL PROBLEMA QUE NINGUNA CAPA ANTERIOR PUEDE RESOLVER
-    Un corrector ortografico comprueba que la palabra EXISTA. Por eso todas
-    estas sobreviven al pipeline entero:
+EL PROBLEMA QUE NINGUNA CAPA ANTERIOR RESUELVE
+    Un corrector ortográfico comprueba que la palabra EXISTA, de modo que no ve
+    los casos en que lo escrito está bien escrito pero es la palabra
+    equivocada:
 
-        ala      se irradia ala cadera        'ala' existe (de un ave)
-        cordada  sufre cordada en mano        'cordada' existe (de alpinistas)
-        regio    en regio tenar               'regio' existe (regio, real)
-        gral     malestar gral                spaCy la conoce
+        'se irradia ala cadera'      'ala' existe, pero era 'a la'
+        'sufre cordada en mano'      'cordada' existe, pero era 'cortada'
+        'malestar gral'              spaCy conoce 'gral', pero era 'general'
 
-    Estan bien escritas. Son la palabra equivocada. Se llaman errores de
-    palabra real, y no hay diccionario, distancia de edicion ni lexico que los
-    detecte: el criterio no es si la palabra existe sino si CABE AHI.
+    Son errores de palabra real, y no hay diccionario, distancia de edición ni
+    léxico que los detecte: el criterio no es si la palabra existe, sino si cabe
+    en ese hueco.
 
-QUE ES 'CABER AHI', OPERATIVAMENTE
-    La probabilidad condicional de la palabra dados sus vecinos. Se tapa la
-    palabra, se le pregunta al modelo que espera en ese hueco, y se compara.
+CÓMO SE MIDE
+    Con la probabilidad condicional de la palabra dados sus vecinos. Se tapa la
+    palabra, se pregunta al modelo qué espera en ese lugar y se compara lo
+    escrito con cada candidato. Es un codificador de tamaño medio que corre en
+    CPU y es determinista: la misma entrada produce siempre la misma salida.
 
-    Medido sobre 'se irradia ___ cadera' con
-    PlanTL-GOB-ES/roberta-base-biomedical-clinical-es:
+EL MODELO NO PROPONE, SOLO PUNTÚA
+    Una versión anterior dejaba que el modelo propusiera la corrección, y
+    proponía variantes inexistentes de términos y de principios activos, que es
+    exactamente lo que el proyecto entero existe para evitar. Un modelo de
+    lenguaje escribe lo que es frecuente, no lo que es correcto.
 
-        ala    log P = -9.91        a la   log P = -0.25
+    Aquí recibe una lista cerrada de candidatos, generada a partir del léxico
+    clínico y del vocabulario del hospital, y solo indica cuál encaja mejor.
+    Además, la terminología con peso clínico alto se aparta antes de llegar
+    hasta aquí, de modo que el modelo ni siquiera la ve.
 
-    Nueve unidades logaritmicas de diferencia. La senal no es sutil.
+LAS DOS CONDICIONES, Y POR QUÉ HACEN FALTA LAS DOS
+    Una probabilidad baja no basta para corregir: la terminología rara es
+    improbable por definición, y corregir todo lo improbable sería el mismo
+    error que corregir todo lo poco frecuente. Se exigen dos cosas a la vez:
 
-POR QUE ESTO NO ES 'METERLE UN LLM'
-    Es un encoder de 126M parametros que corre en CPU, es determinista (misma
-    entrada, misma salida, siempre) y no genera texto: solo puntua candidatos
-    que le pasa otro modulo. Todo cambio que produce queda registrado con su
-    ganancia numerica, asi que la auditoria del proyecto sigue funcionando.
+        1. lo escrito es improbable en ese hueco, y
+        2. hay un candidato ortográficamente cercano bastante más probable.
 
-EL ERROR DE DISENO QUE LA MEDICION ATRAPO, Y QUE DEFINE ESTE ARCHIVO
-    La primera version dejaba que el modelo PROPUSIERA la correccion. Medido:
+    La segunda condición es la que protege a un término correcto aunque sea
+    raro: es improbable, pero ninguno de sus vecinos lo supera.
 
-        epistaxis -> epistasis   +1.955   sangrado nasal -> interaccion genica
-        midazolam -> midazolan   +6.005   corrompe un farmaco
+COSTE
+    Del orden de decenas de milisegundos por evaluación en CPU, menos si se
+    agrupa por lotes. Solo se evalúan las palabras marcadas como sospechosas, y
+    el resultado se guarda en caché.
 
-    Exactamente el desastre que el proyecto entero existe para evitar. Un
-    modelo de lenguaje propone lo que es frecuente, no lo que es correcto.
-
-    Por eso aqui el modelo NO propone. Recibe una lista cerrada de candidatos
-    -- del lexico clinico y del vocabulario del hospital -- y solo dice cual
-    encaja mejor. Y ni siquiera llega a ver la terminologia: pesos.py la aparta
-    antes. Sobre esos mismos cuatro casos, con el enmascarado delante:
-
-        epistaxis  peso 0.95  apartada, el modelo nunca la ve
-        midazolam  peso 0.95  apartada
-        disnea     peso 0.95  apartada
-        tenar      peso 0.95  apartada  (del CIE-10)
-
-    Las dos corrupciones pasan de improbables a imposibles.
-
-LAS DOS CONDICIONES, Y POR QUE HACEN FALTA LAS DOS
-    Una probabilidad baja NO basta para corregir. La terminologia rara es
-    improbable por definicion: 'fazekas', 'stemi' y 'midazolam' tienen
-    probabilidad bajisima y son correctos. Corregir todo lo improbable seria
-    el mismo error que corregir todo lo poco frecuente, que ya costo caro.
-
-    Se exigen las dos cosas:
-        1. lo escrito es improbable en ese hueco, Y
-        2. existe un candidato ortograficamente cercano MUCHO mas probable.
-
-    La segunda salva a 'midazolam' aunque no estuviera protegido: es
-    improbable, pero ningun vecino suyo lo supera.
-
-COSTE MEDIDO
-    60 ms por evaluacion suelta, 32 ms por lotes de 16, en CPU con 4 hilos.
-    Sobre las 92.597 notas, suponiendo que un 10% traiga sospechosos, son unos
-    111.000 pases: cerca de una hora, una sola vez, y cacheable.
-
-INSTALACION
-    pip install transformers torch
-    La primera ejecucion baja el modelo (~500 MB). Despues es local.
-
-Si transformers no esta o el modelo no se puede cargar, el modulo se desactiva
-solo y el pipeline sigue con el resto de sus defensas.
+Requiere transformers y torch; la primera ejecución descarga el modelo. Si no
+están disponibles, el módulo se desactiva y el pipeline sigue con sus otras
+defensas.
 """
 
 import re
@@ -92,11 +66,10 @@ MODELO = "PlanTL-GOB-ES/roberta-base-biomedical-clinical-es"
 # es la ganancia. Se puso holgado a proposito para no perder casos.
 UMBRAL_SOSPECHA = -6.0
 
-# Cuanto tiene que superar el candidato a lo escrito para aplicarse. Medido
-# sobre los cuatro casos conocidos, todos ganan por mas de 2:
-#     ala -> a la      +9.65        regio -> región   +4.73
-#     gral -> general  +7.33        cordada -> cortada +2.50
-# Subirlo pierde 'cordada'; bajarlo empieza a aceptar reescrituras de estilo.
+# Cuanto tiene que superar el candidato a lo escrito para que se aplique. El
+# valor esta ajustado sobre los casos conocidos de error de palabra real:
+# subirlo pierde los mas ajustados, y bajarlo empieza a aceptar reescrituras de
+# estilo que no son correcciones.
 UMBRAL_GANANCIA = 2.0
 
 LONGITUD_MINIMA = 3      # tokens mas cortos no se evaluan
@@ -119,6 +92,10 @@ RE_ESPACIOS = re.compile(r"\s+")
 # ==========================================================
 
 def _cargar():
+    """
+    Carga el tokenizador y el modelo la primera vez y los reutiliza. Devuelve
+    None, con un aviso, si faltan las librerías o el modelo no se puede obtener.
+    """
     global _TOK, _MOD
     if _MOD is not None:
         return _MOD
@@ -140,6 +117,7 @@ def _cargar():
 
 
 def disponible():
+    """True si la capa está activada y el modelo se pudo cargar."""
     global _DISPONIBLE
     if _DISPONIBLE is None:
         _DISPONIBLE = ACTIVO and _cargar() is not None
@@ -147,7 +125,10 @@ def disponible():
 
 
 def iniciar():
-    """Carga el modelo por adelantado, para que no cueste en mitad del lote."""
+    """
+    Carga el modelo por adelantado e informa de los umbrales en uso, para que el
+    coste no recaiga sobre la primera nota del lote.
+    """
     if disponible():
         print(f"  modelo de contexto: {MODELO.split('/')[-1]} "
               f"(umbral sospecha {UMBRAL_SOSPECHA}, ganancia {UMBRAL_GANANCIA})")
@@ -155,23 +136,60 @@ def iniciar():
 
 
 # ==========================================================
-# PROBABILIDAD EN EL HUECO
+# PROBABILIDAD DE UNA PALABRA EN SU HUECO
 # ==========================================================
 
 def _recortar(izquierda, derecha):
-    """Ventana alrededor del hueco. Una nota de 400 palabras no aporta mas."""
+    """
+    Recorta el contexto a una ventana alrededor del hueco. El texto lejano no
+    aporta información sobre la palabra y sí multiplica el coste.
+    """
     mitad = MAX_CARACTERES // 2
     return izquierda[-mitad:], derecha[:mitad]
 
 
 def logprob(izquierda, palabra, derecha):
     """
-    log P(palabra | contexto), promediado si la palabra son varios subtokens.
+    Logaritmo de la probabilidad de la palabra dado su contexto: la SUMA sobre
+    sus subtokens, que es log P(palabra | contexto).
 
-    Se evalua en la MISMA posicion para todos los candidatos, que es lo que los
-    hace comparables. La primera version puntuaba la frase entera y eso
-    introducia un sesgo de longitud: 'gral' ganaba a 'general' por ser un solo
-    token, aunque al taparlo el modelo predecia 'general' con 96,8%.
+    POR QUÉ LA SUMA Y NO EL PROMEDIO, CON LA MEDICIÓN QUE LO DEMUESTRA
+        Esta función promediaba, dividiendo entre el número de subtokens, con el
+        argumento de que sumar favorecería a las palabras cortas. El argumento
+        está invertido: la probabilidad de una secuencia es el PRODUCTO de las
+        de sus partes, así que en logaritmos es la suma. Promediar no corrige un
+        sesgo, lo introduce, y en la dirección más dañina.
+
+        La razón es que cada subtoken se puntúa con los anteriores de la MISMA
+        palabra ya revelados como prefijo. Predecir 'ada' después de 'mor' es
+        casi seguro, y esa probabilidad alta sube la media. Cuantas más piezas
+        tiene un candidato, más fácil le resulta ganar, de modo que el
+        procedimiento premiaba justo lo que nunca hay que hacer: partir una
+        palabra en trozos.
+
+        Medido sobre seis casos con respuesta conocida, tres que hay que
+        corregir y tres que no:
+
+            promedio   acierta 3 de 6
+            suma       acierta 6 de 6
+
+                                        promedio        suma
+            afiliados -> 'afilia dos'    +0.92         -13.77   (no tocar)
+            dorada    -> 'morada'        +8.32          -0.21   (no tocar)
+            hablando  -> 'bailando'      +5.54          -2.24   (no tocar)
+            ala       -> 'a la'          +8.55          +6.25   (corregir)
+            cordada   -> 'cortada'       +2.48          +4.96   (corregir)
+            gral      -> 'general'       +7.07         +14.18   (corregir)
+
+        Las tres correcciones legítimas siguen aplicándose y las tres
+        corrupciones desaparecen, sin tocar ningún umbral.
+
+    Para saber si una palabra es RARA en su hueco hace falta la media, no la
+    suma: una palabra larga acumula logaritmos negativos por ser larga. Esa
+    medida es logprob_medio(), y es la que alimenta el filtro de sospecha.
+
+    Devuelve None si la capa no está disponible o si el texto no se puede
+    preparar. El resultado se guarda en caché por contexto y palabra.
     """
     if not disponible():
         return None
@@ -180,7 +198,7 @@ def logprob(izquierda, palabra, derecha):
 
     clave = (izquierda[-80:], palabra, derecha[:80])
     if clave in _CACHE:
-        return _CACHE[clave]
+        return _CACHE[clave][0]
 
     izq, der = _recortar(izquierda, derecha)
     sub = _TOK.encode(" " + palabra.strip(), add_special_tokens=False)
@@ -200,58 +218,180 @@ def logprob(izquierda, palabra, derecha):
                 salida = _MOD(**ids).logits[0, posiciones[0, 0]]
             total += torch.log_softmax(salida, -1)[sub[k]].item()
 
-    resultado = total / len(sub)
-    _CACHE[clave] = resultado
-    return resultado
+    _CACHE[clave] = (total, len(sub))
+    return total
+
+
+def logprob_medio(izquierda, palabra, derecha):
+    """
+    log P(palabra | contexto) dividido entre sus subtokens.
+
+    Mide si la palabra es rara en ese hueco, que es una pregunta distinta de
+    cual de dos candidatos es mas probable. Para lo primero hay que normalizar
+    -- una palabra larga acumula logaritmos negativos por ser larga -- y para
+    lo segundo NO, porque la probabilidad de la secuencia es el producto de las
+    de sus partes.
+    """
+    total = logprob(izquierda, palabra, derecha)
+    if total is None:
+        return None
+    n = _CACHE.get((izquierda[-80:], palabra, derecha[:80]), (None, 1))[1]
+    return total / max(n, 1)
+
+
+def _distancia(a, b):
+    """
+    Distancia de edicion entre dos formas, plegando tildes y espacios.
+
+    Se pliega porque aqui la distancia mide cuantas TECLAS separan lo escrito
+    del candidato, no cuanto difieren como cadenas: 'ala' -> 'a la' es una sola
+    insercion desde el punto de vista de quien escribe, y contar el espacio
+    aparte la alejaria sin motivo.
+    """
+    a = _sin_tildes(a.lower().replace(" ", ""))
+    b = _sin_tildes(b.lower().replace(" ", ""))
+    if a == b:
+        return 0
+    if len(a) < len(b):
+        a, b = b, a
+    previa = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        actual = [i]
+        for j, cb in enumerate(b, 1):
+            actual.append(min(previa[j] + 1, actual[j - 1] + 1, previa[j - 1] + (ca != cb)))
+        previa = actual
+    return previa[-1]
+
+
+def _sin_tildes(texto):
+    """Pliega los acentos conservando la enye, como el resto del paquete."""
+    from NLP.nucleo import morfologia
+    return morfologia.sin_tildes(texto)
+
+
+def _es_expansion(escrita, candidato):
+    """
+    True si el candidato es la forma larga de una abreviatura: contiene todas
+    las letras de lo escrito, en orden, sin alargarlo mas del doble.
+
+    EXPANDIR NO ES CORREGIR UNA ERRATA, Y POR ESO VA EN SU PROPIA TANDA
+        Ordenar por distancia de edicion arreglo 'cordada' -> 'cortada' y rompio
+        'gral' -> 'general':
+
+            gral -> oral      1 edicion    <- ganaba la tanda cercana
+            gral -> general   3 ediciones
+
+        'oral' esta mas cerca de 'gral' que 'general', pero quien escribio
+        'gral' no se equivoco de tecla: abrevio. Una abreviatura conserva todas
+        sus letras en orden, y esa forma la distingue de una errata sin depender
+        de cuantas ediciones haya de por medio.
+    """
+    e = _sin_tildes(escrita.lower())
+    c = _sin_tildes(candidato.lower().replace(" ", ""))
+    if len(c) <= len(e) or len(c) > 2 * len(e):
+        return False
+    it = iter(c)
+    return all(letra in it for letra in e)
 
 
 def es_sospechosa(izquierda, palabra, derecha):
-    """True si lo escrito es improbable en ese hueco."""
-    lp = logprob(izquierda, palabra, derecha)
+    """
+    True si lo escrito resulta improbable en ese hueco. Es un filtro de coste,
+    no una decisión: marca a qué palabras vale la pena buscarles candidatos.
+    """
+    lp = logprob_medio(izquierda, palabra, derecha)
     return lp is not None and lp < UMBRAL_SOSPECHA
 
 
 # ==========================================================
-# DECISION
+# DECISIÓN
 # ==========================================================
 
 def elegir(izquierda, escrita, derecha, candidatos):
     """
-    Devuelve (candidato, ganancia) si alguno encaja claramente mejor que lo
-    escrito, o None.
+    Devuelve el par (candidato, ganancia) si alguno encaja claramente mejor que
+    lo escrito, o None.
 
-    candidatos los genera OTRO modulo: el lexico clinico y el vocabulario del
-    hospital. Este archivo no inventa ninguno, y esa es la garantia de que no
-    puede introducir una palabra que nadie declaro.
+    Se descarta de entrada si lo escrito no resulta sospechoso, y al final si
+    ningún candidato supera la ganancia mínima. La lista de candidatos la genera
+    otro módulo a partir de fuentes declaradas: aquí no se inventa ninguno, y esa
+    es la garantía de que la capa no puede introducir una palabra que nadie
+    declaró.
     """
     if not disponible() or not candidatos:
         return None
     if len(escrita) < LONGITUD_MINIMA:
         return None
 
+    # La sospecha se mide con la media (¿es rara esta palabra aqui?) y la
+    # comparacion con la suma (¿cual de las dos es mas probable?). Son dos
+    # preguntas distintas y mezclarlas era el origen de las corrupciones.
+    medio = logprob_medio(izquierda, escrita, derecha)
+    if medio is None or medio >= UMBRAL_SOSPECHA:
+        return None
+
     base = logprob(izquierda, escrita, derecha)
-    if base is None or base >= UMBRAL_SOSPECHA:
+    if base is None:
         return None
 
-    mejor, mejor_lp = None, base
-    for candidato in list(candidatos)[:MAX_CANDIDATOS]:
-        if not candidato or candidato == escrita:
-            continue
-        lp = logprob(izquierda, candidato, derecha)
-        if lp is not None and lp > mejor_lp:
-            mejor, mejor_lp = candidato, lp
-
-    if mejor is None:
+    # LOS CANDIDATOS SE MIRAN POR TANDAS DE DISTANCIA DE EDICION, DE MENOR A
+    # MAYOR, Y SE PARA EN LA PRIMERA QUE DE UN GANADOR.
+    #
+    # EL CASO QUE LO OBLIGA
+    #     Esta funcion elegia por probabilidad y nada mas, ignorando cuanto se
+    #     parecia el candidato a lo escrito. Sobre 'paciente sufre cordada en
+    #     mano derecha':
+    #
+    #         cortada   1 edicion    ganancia  +5.41
+    #         mordida   2 ediciones  ganancia +10.49   <- ganaba
+    #
+    #     Y gana con razon, si solo se mira el modelo: 'sufre mordida en mano'
+    #     es mas frecuente en espanol que 'sufre cortada en mano'. Las dos son
+    #     lesiones plausibles de una mano, asi que el contexto no las separa.
+    #
+    #     Lo que si las separa es la ortografia: quien escribio 'cordada'
+    #     tecleo una letra de mas o de menos, y 'cortada' esta a una edicion
+    #     mientras que 'mordida' esta a dos. Una errata de una letra es mucho
+    #     mas probable que una de dos, y esa evidencia no estaba entrando en la
+    #     decision.
+    #
+    # POR QUE POR TANDAS Y NO SUMANDO UNA PENALIZACION
+    #     Penalizar la distancia obligaria a elegir cuantos puntos de
+    #     log-probabilidad vale una edicion, que es un numero inventado y habria
+    #     que recalibrarlo con cada cambio del modelo. Por tandas no hace falta:
+    #     si algo a una edicion ya convence, no se mira mas lejos. Y cuando no
+    #     hay nada cerca que convenza, las tandas siguientes se evaluan igual,
+    #     de modo que 'gral' -> 'general' (3 ediciones) sigue funcionando.
+    candidatos = [c for c in list(candidatos)[:MAX_CANDIDATOS]
+                  if c and c != escrita]
+    if not candidatos:
         return None
 
-    ganancia = mejor_lp - base
-    if ganancia < UMBRAL_GANANCIA:
-        return None
-    return mejor, ganancia
+    # Las expansiones de abreviatura van en su propia tanda, la primera: son
+    # otra operacion distinta de arreglar una errata (ver _es_expansion).
+    por_distancia = {}
+    for candidato in candidatos:
+        tanda = -1 if _es_expansion(escrita, candidato) else _distancia(escrita, candidato)
+        por_distancia.setdefault(tanda, []).append(candidato)
+
+    for distancia in sorted(por_distancia):
+        mejor, mejor_lp = None, base
+        for candidato in por_distancia[distancia]:
+            lp = logprob(izquierda, candidato, derecha)
+            if lp is not None and lp > mejor_lp:
+                mejor, mejor_lp = candidato, lp
+        if mejor is not None and mejor_lp - base >= UMBRAL_GANANCIA:
+            return mejor, mejor_lp - base
+
+    return None
 
 
 def diagnosticar(izquierda, escrita, derecha, candidatos):
-    """Que ve el modelo en un hueco concreto. Para revisar casos puntuales."""
+    """
+    Qué ve el modelo en un hueco concreto: la probabilidad de lo escrito, si lo
+    considera sospechoso, la de cada candidato y la decisión final. Herramienta
+    de inspección manual.
+    """
     if not disponible():
         return {"disponible": False}
     base = logprob(izquierda, escrita, derecha)
@@ -268,7 +408,10 @@ def diagnosticar(izquierda, escrita, derecha, candidatos):
 
 
 def esperado(izquierda, derecha, k=6):
-    """Que palabras espera el modelo en el hueco. Solo para inspeccionar."""
+    """
+    Las k palabras que el modelo espera en el hueco, con su probabilidad. Solo
+    sirve para inspeccionar: el pipeline nunca corrige con estas propuestas.
+    """
     if not disponible():
         return []
     import torch

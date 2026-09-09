@@ -1,45 +1,42 @@
 """
-Detector de siglas y terminos que el diccionario todavia no cubre.
+Detector de siglas y términos que el diccionario todavía no cubre.
 
-EL CONCEPTO
+EL CRITERIO
+    Perseguir siglas de una en una no escala: el conjunto de siglas del
+    castellano médico no está acotado y cada una que falta queda expuesta al
+    corrector, que la convierte en la palabra corriente más parecida.
 
-    Perseguir siglas una por una no escala. SMS y EDA fueron las de una semana,
-    IVA y DAD las de la siguiente, y SAHOS, VMNI, CPAP, RTS y FCF son las de
-    esta. El conjunto de siglas del castellano medico no esta acotado, y cada
-    una que falta queda expuesta al corrector: 'sahos' terminaba en 'manos'.
+    Lo que sí está acotado es la señal. Una sigla o un término del hospital es
+    un token que ningún diccionario del español reconoce y que, aun así, el
+    personal repite. Un error de digitación cumple lo primero pero se distingue
+    de una sigla porque tiene una corrección evidente y mucho más frecuente.
 
-    Lo que si esta acotado es la senal: una sigla o un termino del hospital es
-    un token que NINGUN diccionario del espanol reconoce y que aun asi el
-    personal repite. Un typo tambien cumple lo primero, pero se distingue porque
-    tiene una correccion obvia y mucho mas frecuente; una sigla no la tiene.
-
-    Esa distincion final requiere criterio medico, asi que el sistema no la
-    toma: detecta los candidatos, los ordena por frecuencia y te entrega la
-    lista para que decidas. Cada entrada que promuevas al diccionario queda
-    protegida para siempre.
+    Esa distinción final exige criterio médico, así que el módulo no la toma:
+    detecta los candidatos, los ordena por frecuencia y entrega la lista para
+    que la revise una persona. Cada entrada que se promueva al diccionario queda
+    protegida de forma permanente.
 
 USO
+    python -m NLP.recursos.detectar_siglas
 
-    python detectar_siglas.py
+    Lee la columna de texto de la base y escribe en salidas/ un CSV con el
+    token, su frecuencia, la corrección que propondría el corrector y un
+    veredicto preliminar:
 
-    Lee la columna de texto de la base y escribe siglas_detectadas.csv con:
-        token, frecuencia, sugerencia_del_corrector, veredicto
+        typo_probable   tiene una corrección frecuente a distancia corta
+        revisar         no tiene corrección clara: candidato a sigla o término
 
-    'veredicto' es una primera clasificacion automatica:
-        typo_probable   tiene correccion frecuente a distancia corta
-        revisar         no tiene correccion clara: candidato a sigla o termino
-
-    Las marcadas 'revisar' son las que hay que mirar. Las que resulten siglas o
-    terminos van a diccionario_siglas.json; el resto se ignora.
+    Las filas marcadas como 'revisar' son las que hay que mirar; las que
+    resulten siglas o términos clínicos se añaden al diccionario del proyecto.
 """
 
 import csv
 import re
 from collections import Counter
-from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-SALIDA = BASE_DIR / "siglas_detectadas.csv"
+from NLP import rutas
+
+SALIDA = rutas.SIGLAS_DETECTADAS
 
 FRECUENCIA_MINIMA = 5      # apariciones para considerar un token
 LONGITUD_MAXIMA = 8        # las siglas y abreviaturas son cortas
@@ -50,11 +47,22 @@ RE_TOKEN = re.compile(r"\b[a-záéíóúüñ]{2,%d}\b" % LONGITUD_MAXIMA)
 
 def candidatos(textos, conocidas=(), es_palabra=None, sugerir=None, frecuencias=None):
     """
-    textos:      corpus de notas
-    conocidas:   claves ya presentes en el diccionario
-    es_palabra:  funcion(token) -> bool, reconocimiento por LanguageTool/spaCy
-    sugerir:     funcion(token) -> str|None, la correccion que propondria SymSpell
-    frecuencias: Counter del corpus completo, para medir el ratio del typo
+    Tokens frecuentes que ningún diccionario reconoce, con su veredicto
+    preliminar.
+
+    Devuelve una lista de diccionarios, uno por candidato, ordenada de más a
+    menos frecuente.
+
+        textos       corpus de notas
+        conocidas    claves ya presentes en el diccionario del proyecto
+        es_palabra   función(token) -> bool que reconoce palabras del español
+        sugerir      función(token) -> str | None con la corrección propuesta
+        frecuencias  recuento del corpus completo, para comparar la frecuencia
+                     del token con la de su corrección
+
+    Un candidato se clasifica como error de digitación cuando su corrección es
+    al menos RATIO_TYPO veces más frecuente que él. En cualquier otro caso queda
+    para revisión manual.
     """
     conteo = Counter()
     for t in textos:
@@ -90,6 +98,13 @@ def candidatos(textos, conocidas=(), es_palabra=None, sugerir=None, frecuencias=
 
 
 def escribir(filas, ruta=SALIDA):
+    """
+    Escribe el CSV de candidatos y devuelve el par (a revisar, typos
+    probables).
+
+    Las filas a revisar van primero y ordenadas por frecuencia, porque son las
+    que hay que mirar y conviene empezar por las que más aparecen.
+    """
     revisar = [f for f in filas if f["veredicto"] == "revisar"]
     revisar.sort(key=lambda f: -f["frecuencia"])
     typos = [f for f in filas if f["veredicto"] == "typo_probable"]
@@ -105,15 +120,19 @@ def escribir(filas, ruta=SALIDA):
 
 
 def main():
+    """
+    Ejecuta la detección sobre la tabla de triage: carga el diccionario, arma el
+    léxico de frecuencias del corpus, busca los candidatos y escribe el CSV.
+    """
     import language_tool_python
     import pandas as pd
 
-    import ambiguedad
-    import ortografia
-    import reglas
-    import vocabulario
-    from conexion_bd import obtener_engine
-    from procesar import COLUMNA, LIMITE_LEXICO, TABLA
+    from NLP.recursos import ambiguedad
+    from NLP.fase2_ortografia import ortografia
+    from NLP.nucleo import reglas
+    from NLP.fase2_ortografia import vocabulario
+    from NLP.nucleo.conexion_bd import obtener_engine
+    from NLP.procesar import COLUMNA, LIMITE_LEXICO, TABLA
 
     print("Conectando BD...")
     engine = obtener_engine()
@@ -128,7 +147,7 @@ def main():
     ortografia.construir_lexico(df[COLUMNA])
     ambiguedad.usar_languagetool(language_tool_python.LanguageTool("es"))
 
-    import candidatos as mod_candidatos
+    from NLP.fase2_ortografia import candidatos as mod_candidatos
 
     filas = candidatos(
         df[COLUMNA],

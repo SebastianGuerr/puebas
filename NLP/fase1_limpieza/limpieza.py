@@ -1,29 +1,37 @@
 """
 Fase 1. Limpieza de formato.
 
-Unico proposito: normalizar la forma del texto. No corrige palabras, no separa,
-no interpreta. Lo que entra sale con las mismas palabras: solo cambian
-mayusculas, espacios, saltos de linea y simbolos.
+Normaliza la forma del texto y nada más: no corrige palabras, no separa
+términos y no interpreta contenido. Lo que entra sale con las mismas palabras y
+en el mismo orden; solo cambian mayúsculas, espacios, saltos de línea y
+símbolos.
 
-DECISIONES QUE NO SON OBVIAS
+Interfaz del módulo:
 
-  Se conserva la puntuacion de frase (. , ; :)
-      LanguageTool segmenta por oraciones. Sin puntuacion pierde el contexto
-      que necesita para decidir una correccion.
+    limpiar(texto)                      texto normalizado en minúsculas
+    limpiar_conservando_original(texto) además, el original con sus mayúsculas
+    tokenizar, normalizar_token         utilidades de token
+    es_vacio, analizar                  control de calidad del lote
 
-  Se conservan / % ° y los decimales
-      '120/80', '39.5', '95%' son datos clinicos. Eliminando la barra,
-      '120/80' se volvia '120 80' y la tension arterial dejaba de ser un dato.
+CRITERIOS QUE NO SON EVIDENTES
 
-  Se conserva la estructura de lineas
-      'AP: HTA \\n AA: NIEGA' colapsado en una sola linea pierde la separacion
-      entre antecedentes patologicos y alergicos. Para leerlo da igual; para
-      extraer entidades despues, no.
+  Se conserva la puntuación de frase (. , ; :)
+      LanguageTool segmenta por oraciones; sin puntuación pierde el contexto
+      que necesita para decidir una corrección.
 
-  Se preservan las mayusculas del original en un campo aparte
-      ortografia.py las necesita: son la unica senal de que 'Pereira' o
-      'Hakim' no son errores de digitacion. limpiar() no puede destruirlas
-      sin avisar, por eso existe limpiar_conservando_original().
+  Se conservan la barra, el porcentaje, el grado y los decimales
+      '120/80', '39.5' y '95%' son datos clínicos. Al eliminar la barra,
+      '120/80' pasa a '120 80' y la tensión arterial deja de ser un dato.
+
+  Se conserva la separación entre apartados
+      'AP: HTA' y 'AA: NIEGA' fundidos en una sola línea pierden la frontera
+      entre antecedentes patológicos y alérgicos, que las fases siguientes
+      necesitan para acotar el alcance de la negación.
+
+  Se devuelve aparte el original con sus mayúsculas
+      Son la única señal de que un término es un nombre propio y no un error de
+      digitación. Como limpiar() las destruye, quien las necesite debe usar
+      limpiar_conservando_original().
 """
 
 import re
@@ -45,19 +53,18 @@ LARGO_MAXIMO = 20000          # corta notas absurdamente largas
 
 PUNTUACION = ".,;:"
 
-# Simbolos que en una nota clinica son contenido y no adorno. Medido sobre las
-# 30.000 notas, la version anterior de CONSERVADOS los borraba todos:
+# Simbolos que en una nota clinica son contenido y no adorno:
 #
 #   +   suma hallazgos. 'cefalea sin mejoria + dolor en rodilla' son DOS
-#       sintomas; sin el signo quedaban fusionados en uno. 349 notas.
-#   ?   marca sospecha. 'HVDA ?' es una hipotesis diagnostica, y al perder el
-#       signo pasaba a leerse como un diagnostico afirmado. 100 notas.
-#   ()  aclara una sigla o un dato: 'DM (insulinorrequiriente)'. 439 notas.
-#   <>  comparan una medida: 'sat < 90'. 7 notas.
+#       sintomas; sin el signo quedan fusionados en uno.
+#   ?   marca sospecha. 'hvda ?' es una hipotesis diagnostica, y al perder el
+#       signo pasa a leerse como un diagnostico afirmado.
+#   ()  aclara una sigla o un dato: 'dm (insulinorrequiriente)'.
+#   <>  comparan una medida: 'sat < 90'.
 #
-# El asterisco NO esta aca a proposito: en el corpus es vinneta de lista, no
+# El asterisco queda fuera a proposito: en el corpus es vinneta de lista, no
 # contenido, y se convierte en separador mas abajo para conservar lo unico que
-# aporta, que es la separacion entre items.
+# aporta, que es la division entre items.
 SIMBOLOS_CLINICOS = r"+?()<>"
 CONSERVADOS = r"\w\s.,;:/%°\-+?()<>áéíóúüñÁÉÍÓÚÜÑ"
 
@@ -72,26 +79,19 @@ RE_REPETIDOS = re.compile(r"(.)\1{%d,}" % MAX_REPETICIONES)
 RE_ESPACIO_PUNT = re.compile(r"[ ]*(?<!\d)([.,;:])[ ]*|[ ]*([.,;:])[ ]*(?!\d)")
 RE_PUNT_REPETIDA = re.compile(r"([.,;:])[.,;: ]*\1+")
 # El guion suelto de las listas clinicas separa items, no une palabras:
-# 'HTA - DM - Artrosis' son tres antecedentes distintos. Borrarlo dejaba
-# 'hta dm artrosis', una sola cadena donde antes habia tres hallazgos, que es
-# el mismo dano que borrar el '+'. Se convierte en coma para conservar la
-# division.
+# 'hta - dm - artrosis' son tres antecedentes distintos, y borrarlo los funde en
+# una sola cadena. Se convierte en coma para conservar la division.
 RE_GUION_SUELTO = re.compile(r"(?<![\w])-+(?![\w])|(?<=\s)-+(?=\s)")
 
-# El asterisco tiene dos usos en el corpus, y solo uno importa.
-#
-# El mayoritario, medido sobre las 1.017 notas que lo traen, es una marca al
-# final de la nota ('TENGO DOLOR EN LA CABEZA*'). No separa nada y se descarta
-# sin mas: para eso basta con que no este en CONSERVADOS.
-#
-# El minoritario es vinneta de lista ('* cefalea  * emesis'), donde el simbolo
-# si marca division entre items. Solo en ese caso se convierte en separador,
-# que es lo que hace este patron: exige que el asterisco tenga texto a ambos
-# lados, con lo que la marca final no coincide.
+# El asterisco tiene dos usos en el corpus y solo uno importa. El mayoritario es
+# una marca al final de la nota, que no separa nada y se descarta por no figurar
+# en CONSERVADOS. El minoritario es vinneta de lista ('* cefalea  * emesis'),
+# donde si marca division entre items: este patron exige texto a ambos lados,
+# con lo que reconoce la vinneta y no la marca final.
 RE_VINNETA = re.compile(r"(?<=\S)\s+\*+(?=\s*\w)|(?<=^)\*+(?=\s*\w)")
 
-# Parentesis pegados a la palabra: 'dm(ir)' -> 'dm (ir)'. Sin esto el token
-# que ve LanguageTool es 'dm(ir)' y no lo reconoce ni como sigla ni como
+# Parentesis pegados a la palabra: 'dm(ir)' -> 'dm (ir)'. Sin separarlos, el
+# token que ve LanguageTool es 'dm(ir)' y no lo reconoce ni como sigla ni como
 # palabra.
 RE_PARENTESIS_PEGADO = re.compile(r"(?<=[\w])\(|\)(?=[\w])")
 
@@ -118,7 +118,11 @@ RE_ENCABEZADO = re.compile(
 # ==========================================================
 
 def _normalizar_unicode(texto):
-    """Unifica la representacion de acentos y quita caracteres invisibles."""
+    """
+    Unifica la representación de los acentos y sustituye los caracteres que no
+    se ven: controles, espacios de ancho cero, comillas tipográficas y guiones
+    largos.
+    """
     texto = unicodedata.normalize("NFC", texto)
     texto = RE_CONTROL.sub(" ", texto)
     texto = RE_INVISIBLES.sub(" ", texto)
@@ -128,7 +132,10 @@ def _normalizar_unicode(texto):
 
 
 def _normalizar_estructura(texto):
-    """Un salto de linea por separador logico; encabezados clinicos abren linea."""
+    """
+    Deja un solo salto de línea por separación lógica y fuerza que cada
+    encabezado de historia clínica abra línea, esté donde esté en el original.
+    """
     texto = RE_TABS.sub(" ", texto)
     texto = RE_SALTOS.sub("\n", texto)
     texto = RE_ENCABEZADO.sub(lambda m: "\n" + m.group(1) + ":", texto)
@@ -138,10 +145,13 @@ def _normalizar_estructura(texto):
 
 def limpiar(texto):
     """
-    'MC: DOLOR!!!\\n\\nAP: HTA' -> 'mc: dolor\\nap: hta'
+    Devuelve el texto normalizado en minúsculas, con las mismas palabras del
+    original y en el mismo orden.
 
-    Devuelve el texto normalizado en minusculas. Las mismas palabras del
-    original, en el mismo orden.
+        'MC: DOLOR!!!\\n\\nAP: HTA'  ->  'mc: dolor; ap: hta'
+
+    Acepta None y valores vacíos, para los que devuelve cadena vacía. Las notas
+    que superan LARGO_MAXIMO se truncan.
     """
     if texto is None:
         return ""
@@ -157,9 +167,8 @@ def limpiar(texto):
     texto = _normalizar_estructura(texto)
     texto = texto.lower()
 
-    # la vinneta se convierte ANTES de descartar simbolos: RE_SIMBOLOS no la
-    # conserva, y hacerlo al reves borraba el asterisco y dejaba a RE_VINNETA
-    # sin nada que separar
+    # la vinneta se convierte ANTES de descartar simbolos: el asterisco no esta
+    # en CONSERVADOS, asi que al reves se borraria antes de poder separar nada
     texto = RE_VINNETA.sub("; ", texto)
     texto = RE_SIMBOLOS.sub(" ", texto)
     texto = RE_REPETIDOS.sub(lambda m: m.group(1) * MAX_REPETICIONES, texto)
@@ -184,11 +193,11 @@ def limpiar(texto):
 
 def limpiar_conservando_original(texto):
     """
-    Devuelve (texto_limpio, texto_original_normalizado).
+    Devuelve el par (texto_limpio, texto_original_normalizado).
 
-    El segundo conserva las mayusculas: ortografia.detectar_protegidos() las
-    usa para reconocer nombres propios y siglas. Sin el, 'Pereira' termina
-    convertido en 'perdida'.
+    El segundo mantiene las mayúsculas del original y solo se le aplican las
+    normalizaciones de Unicode y estructura. Es lo que permite reconocer
+    nombres propios y siglas más adelante.
     """
     if texto is None:
         return "", ""
@@ -202,17 +211,20 @@ def limpiar_conservando_original(texto):
 # ==========================================================
 
 def tokenizar(texto):
-    """Palabras en minuscula, sin numeros ni puntuacion. Para contar frecuencias."""
+    """Palabras en minúscula, sin números ni puntuación. Para contar frecuencias."""
     return RE_TOKEN.findall(str(texto).lower())
 
 
 def normalizar_token(token):
-    """Quita puntuacion de los bordes de un token, conservando el interior."""
+    """Recorta la puntuación de los bordes de un token, conservando el interior."""
     return token.strip(PUNTUACION + " /%°-").lower()
 
 
 def es_vacio(texto):
-    """True si la nota no aporta contenido (vacia, guiones, 'n/a', puntuacion)."""
+    """
+    True si la nota no aporta contenido: está vacía, solo trae puntuación o se
+    reduce a una negación administrativa del tipo 'n/a' o 'ninguno'.
+    """
     limpio = limpiar(texto)
     if not limpio:
         return True
@@ -222,7 +234,11 @@ def es_vacio(texto):
 
 
 def analizar(textos):
-    """Estadisticas de un lote. Para verificar que la limpieza no rompio nada."""
+    """
+    Estadísticas de un lote ya limpio: registros, notas vacías, notas con
+    estructura multilínea y densidad de palabras. Sirve para comprobar que la
+    limpieza no destruyó contenido antes de seguir con las fases siguientes.
+    """
     total = len(textos)
     vacios = sum(1 for t in textos if es_vacio(t))
     limpios = [limpiar(t) for t in textos]

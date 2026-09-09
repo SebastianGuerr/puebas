@@ -1,47 +1,58 @@
 """
-Conjunto de referencia: las correcciones hechas a mano, y como se miden.
+Conjunto de referencia: las correcciones hechas a mano y cómo se miden.
 
-POR QUE ANOTACIONES Y NO NOTAS REESCRITAS
-    Una nota de triage puede tener 400 palabras. Reescribirla entera a mano
-    para corregir seis errores introduce errores nuevos de transcripcion, y
-    ademas hace imposible saber DONDE estaba cada error, que es justo lo que
-    hace falta para medir el corrector.
+Es la única vara objetiva del proyecto. El corrector se juzga comparando su
+salida contra correcciones anotadas por una persona sobre notas reales.
 
-    Por eso la unidad de trabajo es la correccion: (lo que dice, lo que deberia
-    decir). El texto corregido se genera aplicandolas sobre el original, asi
-    que es exacto por construccion. El juicio es manual; la aplicacion no.
+POR QUÉ SE ANOTAN CORRECCIONES Y NO NOTAS REESCRITAS
+    Una nota de triage puede tener cientos de palabras. Reescribirla entera a
+    mano para arreglar unos pocos errores introduce errores nuevos de
+    transcripción y, sobre todo, hace imposible saber DÓNDE estaba cada error,
+    que es justo lo que hace falta para medir.
 
-QUE SE MIDE CON ESTO
-    aciertos     el pipeline hizo la correccion que correspondia
-    omisiones    habia un error y el pipeline no lo toco
-    danos        el pipeline cambio algo que estaba bien, o lo cambio mal
+    Por eso la unidad de trabajo es la corrección: el par (lo que dice, lo que
+    debería decir). El texto corregido se genera aplicando esos pares sobre el
+    original, así que es exacto por construcción. El juicio es manual; la
+    aplicación, no.
 
-    Precision = aciertos / (aciertos + danos)
-    Cobertura = aciertos / (aciertos + omisiones)
+QUÉ SE MIDE
+    aciertos    el corrector hizo la corrección que correspondía
+    omisiones   había un error y no lo tocó
+    daños       cambió el token por una tercera cosa, distinta del error y de
+                la corrección
 
-    La precision importa mas que la cobertura: dejar 'dias' sin tilde le cuesta
-    poco al modelo siguiente, convertir 'fazecas' en 'canecas' le inyecta un
-    dato falso. Por eso el objetivo es precision alta aunque la cobertura se
-    quede corta.
+    precisión = aciertos / (aciertos + daños)
+    cobertura = aciertos / (aciertos + omisiones)
+
+    La precisión importa más que la cobertura: dejar una palabra sin tilde
+    apenas afecta a las fases siguientes, mientras que sustituir un término por
+    otro les inyecta un dato falso. El objetivo es precisión alta, aunque la
+    cobertura se quede corta.
 
 FORMATO DEL ARCHIVO DE ANOTACIONES
-    referencia_correcciones.json
+    Un objeto por nota, indexado por su identificador:
 
     {
       "761683": {
-        "correcciones": [["SUBCLNICA", "SUBCLINICA"], ["CORIOAMNINITIS", "CORIOAMNIONITIS"]],
+        "correcciones": [["SUBCLNICA", "SUBCLINICA"]],
         "problemas": ["typo", "mayusculas"],
         "duda_clinica": false,
         "comentario": ""
       }
     }
 
-    correcciones  pares (como esta escrito, como deberia estar). Se aplican
-                  respetando limites de palabra y sin distinguir mayusculas.
-    problemas     etiquetas del catalogo de abajo, para el informe de estado.
-    duda_clinica  true si la correccion necesita que la valide alguien clinico.
-                  No soy medico: en ortografia y abreviaturas soy fiable, en
-                  'esto es disnea o taquipnea' no lo soy.
+    correcciones   pares (como está escrito, como debería estar). Se aplican
+                   respetando límites de palabra y sin distinguir mayúsculas.
+    problemas      etiquetas del catálogo PROBLEMAS, para el informe de estado.
+    duda_clinica   true cuando la corrección necesita validación de alguien con
+                   criterio clínico. La distinción importa: en ortografía y
+                   abreviaturas la anotación es fiable; en si un hallazgo es una
+                   entidad clínica u otra, no.
+
+USO
+    python -m NLP.evaluacion.referencia --construir   escribe referencia.csv
+    python -m NLP.evaluacion.referencia --estado      informe del corpus
+    python -m NLP.evaluacion.referencia --evaluar <csv>   mide una corrida
 """
 
 import argparse
@@ -53,15 +64,17 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-RUTA_ANOTACIONES = BASE_DIR / "referencia_correcciones.json"
-RUTA_MUESTRA = BASE_DIR / "muestra_revision.csv"
-RUTA_REFERENCIA = BASE_DIR / "referencia.csv"
+from NLP import rutas
+
+RUTA_ANOTACIONES = rutas.REFERENCIA_CORRECCIONES
+RUTA_MUESTRA = rutas.MUESTRA_REVISION
+RUTA_REFERENCIA = rutas.REFERENCIA
 
 csv.field_size_limit(10 ** 7)
 
-# Catalogo de problemas. Es el vocabulario con el que se documenta el estado
-# del corpus: cada nota revisada se etiqueta con los que presenta.
+# Catalogo de problemas: el vocabulario con el que se documenta el estado del
+# corpus. Cada nota revisada se etiqueta con los que presenta, y de ahi sale el
+# informe de estado.
 PROBLEMAS = {
     "typo": "error de digitacion: letras cambiadas, sobrantes o faltantes",
     "tilde": "falta una tilde que la palabra lleva",
@@ -80,21 +93,23 @@ PROBLEMAS = {
 }
 
 
-from morfologia import sin_tildes  # la eñe se conserva; ver morfologia.py
+from NLP.nucleo.morfologia import sin_tildes  # la eñe se conserva; ver morfologia.py
 
 
 # ==========================================================
-# APLICACION
+# APLICACIÓN DE LAS ANOTACIONES
 # ==========================================================
 
 def aplicar(texto, correcciones):
     """
-    Aplica los pares (mal, bien) sobre el texto original.
+    Aplica los pares (mal, bien) sobre el texto original y devuelve el
+    resultado.
 
-    Se respetan los limites de palabra para que corregir 'ne' no toque
-    'nefropatia', y se ignoran mayusculas al buscar para que una anotacion
-    sirva igual en una nota gritada y en una normal. El reemplazo conserva la
-    caja que se anoto.
+    Las palabras sueltas se buscan respetando los límites de palabra, para que
+    corregir un fragmento no toque una palabra que lo contiene; los tramos con
+    espacios o símbolos se buscan tal cual. La búsqueda ignora mayúsculas, de
+    modo que una anotación sirve igual en una nota gritada que en una normal, y
+    el reemplazo conserva la forma exacta que se anotó.
     """
     for mal, bien in correcciones:
         if not mal:
@@ -111,6 +126,7 @@ def aplicar(texto, correcciones):
 
 
 def cargar_anotaciones(ruta=RUTA_ANOTACIONES):
+    """Lee el archivo de anotaciones. Devuelve {} si todavía no existe."""
     ruta = Path(ruta)
     if not ruta.exists():
         return {}
@@ -118,6 +134,7 @@ def cargar_anotaciones(ruta=RUTA_ANOTACIONES):
 
 
 def guardar_anotaciones(datos, ruta=RUTA_ANOTACIONES):
+    """Escribe las anotaciones y devuelve cuántas notas se guardaron."""
     Path(ruta).write_text(json.dumps(datos, ensure_ascii=False, indent=1),
                           encoding="utf-8")
     return len(datos)
@@ -125,7 +142,13 @@ def guardar_anotaciones(datos, ruta=RUTA_ANOTACIONES):
 
 def construir_referencia(muestra=RUTA_MUESTRA, anotaciones=RUTA_ANOTACIONES,
                          salida=RUTA_REFERENCIA):
-    """Escribe referencia.csv con el original y el corregido a mano."""
+    """
+    Cruza la muestra revisada con sus anotaciones y escribe el CSV de
+    referencia, con el texto original y el corregido a mano lado a lado.
+    Devuelve el número de notas escritas.
+
+    Las notas de la muestra que todavía no tienen anotación se omiten.
+    """
     datos = cargar_anotaciones(anotaciones)
     with open(muestra, encoding="utf-8-sig", newline="") as f:
         filas = list(csv.DictReader(f))
@@ -155,19 +178,17 @@ def construir_referencia(muestra=RUTA_MUESTRA, anotaciones=RUTA_ANOTACIONES,
 
 
 # ==========================================================
-# MEDICION DEL PIPELINE
+# MEDICIÓN DEL PIPELINE
 # ==========================================================
 
 def _tokens(texto, plegar_tildes=True):
     """
-    Tokens de un texto. plegar_tildes=False conserva los acentos.
+    Conjunto de tokens de un texto, plegando los acentos o conservándolos.
 
-    OJO CON EL PLEGADO
-        La primera version plegaba siempre, y con eso 'clavicula' y 'clavícula'
-        eran el mismo token: toda restauracion de tilde se contaba como
-        omision, y la cobertura salia 16,5% cuando el corrector si las estaba
-        aplicando. Una correccion que solo anade tildes hay que evaluarla con
-        los acentos puestos.
+    La distinción es necesaria para medir bien: si se plegaran siempre, una
+    palabra y su forma acentuada serían el mismo token y toda restauración de
+    tilde se contaría como omisión, hundiendo la cobertura aunque el corrector
+    las estuviera aplicando correctamente.
     """
     texto = str(texto).lower()
     if plegar_tildes:
@@ -179,11 +200,20 @@ def evaluar(csv_pipeline, anotaciones=RUTA_ANOTACIONES, muestra=RUTA_MUESTRA):
     """
     Compara la salida del pipeline contra las correcciones anotadas a mano.
 
-    Para cada correccion (mal -> bien) mira que hizo el pipeline con ese token:
-      acierto  el token corregido esta en su salida y el erroneo ya no
-      omision  el token erroneo sigue ahi
-      otro     ni uno ni otro: el pipeline lo cambio por una tercera cosa,
-               que es el caso mas grave porque inventa una palabra
+    Devuelve el par (recuento, detalle): un contador con las categorías del
+    resultado y la lista de casos no resueltos, con su motivo.
+
+    Para cada corrección anotada se mira qué hizo el pipeline con ese token:
+
+        acierto   el token corregido está en su salida y el erróneo ya no
+        omision   el token erróneo sigue ahí
+        otro      ni uno ni otro: lo cambió por una tercera cosa. Es el caso
+                  más grave, porque introduce una palabra que nadie escribió
+
+    Solo se evalúan las correcciones de una palabra, porque las de varias no
+    pueden juzgarse token a token. Las que solo añaden tildes se juzgan con los
+    acentos puestos, y el resto plegando los acentos, para que una corrección
+    cuente igual escriba el pipeline la forma acentuada o la llana.
     """
     datos = cargar_anotaciones(anotaciones)
     with open(muestra, encoding="utf-8-sig", newline="") as f:
@@ -203,15 +233,12 @@ def evaluar(csv_pipeline, anotaciones=RUTA_ANOTACIONES, muestra=RUTA_MUESTRA):
         salida_plegada = _tokens(fila["texto_corregido"], plegar_tildes=True)
         salida_exacta = _tokens(fila["texto_corregido"], plegar_tildes=False)
         for mal, bien in anotacion.get("correcciones", []):
-            # solo se evaluan correcciones de una palabra: las de varias
-            # palabras no se pueden juzgar token a token
+            # solo correcciones de una palabra: ver la nota de la cabecera
             if not re.fullmatch(r"[^\W\d_]+", mal, re.UNICODE):
                 continue
             if not re.fullmatch(r"[^\W\d_]+", bien, re.UNICODE):
                 continue
-            # una correccion que solo pone tildes se juzga con los acentos
-            # puestos; el resto se juzga plegado, para que 'dolro' -> 'dolor'
-            # cuente igual escriba el pipeline 'dolor' o 'dólor'
+            # las correcciones de solo tilde se juzgan con los acentos puestos
             solo_tilde = sin_tildes(mal.lower()) == sin_tildes(bien.lower())
             if solo_tilde:
                 m, b = mal.lower(), bien.lower()
@@ -233,7 +260,11 @@ def evaluar(csv_pipeline, anotaciones=RUTA_ANOTACIONES, muestra=RUTA_MUESTRA):
 
 
 def informe_estado(anotaciones=RUTA_ANOTACIONES):
-    """Documento de estado: que problemas trae el corpus y con que frecuencia."""
+    """
+    Informe legible del trabajo de anotación: cuántas notas se revisaron,
+    cuántas correcciones se anotaron, cuántas requieren validación clínica y con
+    qué frecuencia aparece cada tipo de problema en el corpus.
+    """
     datos = cargar_anotaciones(anotaciones)
     if not datos:
         return "Todavia no hay notas revisadas."
@@ -264,6 +295,10 @@ def informe_estado(anotaciones=RUTA_ANOTACIONES):
 
 
 def main():
+    """
+    Punto de entrada. Las tres acciones son independientes y pueden combinarse
+    en la misma invocación.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--construir", action="store_true",
                     help="escribe referencia.csv desde las anotaciones")

@@ -1,9 +1,9 @@
 """
-Fase 4. Extraccion estructurada de la nota clinica.
+Fase 4. Extracción estructurada de la nota clínica.
 
-Convierte una nota ya limpia en un registro con sintomas, hallazgos negados,
-valores numericos y categoria. No corrige ortografia ni normaliza siglas: eso
-ya paso en la fase anterior.
+Convierte una nota ya limpia en un registro con síntomas, hallazgos negados,
+valores numéricos y categoría. No corrige ortografía ni normaliza siglas: eso
+ocurrió en las fases anteriores.
 
     "Paciente gestante de 22 semanas que consulta por dolor pelvico intenso,
      niega perdidas vaginales, movimientos fetales activos."
@@ -14,53 +14,54 @@ ya paso en la fase anterior.
        embarazo: true
        edad_gestacional: 22
 
-COMO SE DETECTAN LOS SINTOMAS
-    Con FlashText sobre catalogo_sintomas.json, que mapea cada variante de
-    escritura a un concepto canonico. 'dolor de cabeza', 'cefalea' y 'jaqueca'
-    producen el mismo sintoma, que es lo que reduce la dispersion al agrupar.
-    FlashText prefiere la coincidencia mas larga, asi que 'dolor abdominal'
-    gana sobre 'dolor'.
+CÓMO SE DETECTAN LOS SÍNTOMAS
+    Contra el catálogo de síntomas, que asocia cada variante de escritura a un
+    concepto canónico, de modo que las distintas formas de decir lo mismo
+    producen el mismo síntoma. Gana siempre la coincidencia más larga, para que
+    un síntoma localizado no quede reducido a su forma genérica.
 
-    Antes de buscar, texto y catalogo se llevan a una misma forma de
-    comparacion: minusculas y sin tildes. Y de cada variante se derivan
-    automaticamente su plural y su singular. Esto es lo que evita tener que
-    escribir a mano en el JSON 'colico', 'cólico', 'colicos' y 'cólicos' para
-    un solo concepto: se declara uno y las cuatro formas quedan cubiertas.
-    Es la diferencia entre ampliar cobertura por regla y ampliarla agregando
-    cadenas sueltas cada vez que aparece un caso nuevo.
+    La detección tiene tres niveles, y cada uno cubre lo que el anterior no
+    puede:
 
-COMO SE DECIDE SI ESTA PRESENTE O NEGADO
-    Cada sintoma detectado se consulta contra negacion.marcar(), que devuelve
-    el estado de cada palabra. Un sintoma negado no va a 'sintomas': va a
-    'signos_negados'. Sin esta separacion, 'niega fiebre' y 'fiebre' caen en
-    el mismo grupo al agrupar, que es el error mas caro de esta fase.
+      1. variante exacta del catálogo, más su plural o singular derivados
+         automáticamente. Eso evita tener que escribir a mano cada forma en el
+         catálogo: se declara una y quedan cubiertas las cuatro.
+      2. raíz morfológica, para las formas verbales, que no se derivan por
+         regla de número. Solo se aceptan las raíces que apuntan a un único
+         concepto: si dos conceptos comparten raíz, se descarta entera.
+      3. localización, para convertir un dolor genérico en el dolor de la zona
+         que se menciona a continuación. Así el catálogo guarda las zonas del
+         cuerpo y no todas las combinaciones posibles.
 
-COMO SE ELIGE LA CATEGORIA
-    Por prioridad clinica declarada en el catalogo, no por conteo. Una
-    gestante con tos es un caso obstetrico, y un politraumatizado con cefalea
-    es un trauma: manda la condicion que decide la conducta, no la que mas
-    palabras ocupa. 'general' va ultima en esa prioridad: agrupa los sintomas
-    transversales (dolor sin localizar, malestar, fatiga) y solo decide cuando
-    no hay nada de un aparato especifico, para que un registro con contenido
-    clinico real nunca termine en 'inespecifico' con los campos vacios.
+    Antes de buscar, texto y catálogo se llevan a una misma forma de
+    comparación: minúsculas y sin tildes.
+
+CÓMO SE DECIDE SI ESTÁ PRESENTE O NEGADO
+    Cada síntoma detectado se consulta contra el marcado de negación, que
+    devuelve el estado de cada palabra. Un síntoma negado no va a la lista de
+    síntomas sino a la de signos negados. Sin esa separación, una nota que niega
+    un hallazgo y otra que lo afirma acabarían en el mismo grupo, que es el
+    error más caro de esta fase.
+
+CÓMO SE ELIGE LA CATEGORÍA
+    Por prioridad clínica declarada en el catálogo, no por recuento. Manda la
+    condición que decide la conducta y no la que ocupa más palabras: una
+    gestante con tos es un caso obstétrico. La categoría general va la última de
+    la prioridad, porque agrupa los síntomas transversales y solo debe decidir
+    cuando no hay nada de un aparato específico.
 """
 
 import json
-import sys
 import re
 import unicodedata
 from collections import Counter, OrderedDict
 from pathlib import Path
 
-# la carpeta de este archivo va primero en sys.path para que los modulos
-# vecinos (negacion, texto_embedding) se encuentren sin importar desde
-# que directorio se ejecute el script
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from embedding import negacion
+from embedding import rutas
+from embedding import texto_embedding
 
-import negacion
-import texto_embedding
-
-RUTA_CATALOGO = Path(__file__).resolve().parent / "catalogo_sintomas.json"
+RUTA_CATALOGO = rutas.CATALOGO_SINTOMAS
 
 CATEGORIA_POR_DEFECTO = "inespecifico"
 
@@ -76,21 +77,20 @@ _STEMMER = None
 
 VENTANA_LOCALIZACION = 4   # tokens que se miran tras un 'dolor' generico
 
-# palabras de negacion que forman parte de la propia expresion del sintoma:
-# en 'no ve bien', 'no puede orinar' o 'sin fuerzas' la negacion esta
-# lexicalizada dentro del concepto y no lo niega. Solo aplica cuando el
-# disparador cae DENTRO del tramo detectado: en 'no hay fiebre' el 'no' queda
-# afuera del span 'fiebre' y sigue negando normalmente
+# Palabras de negacion que forman parte de la propia expresion del sintoma: en
+# 'no ve bien' o 'sin fuerzas' la negacion esta lexicalizada dentro del concepto
+# y no lo niega. Solo aplica cuando la palabra cae DENTRO del tramo detectado;
+# si queda fuera, sigue negando con normalidad.
 NEGACION_LEXICALIZADA = {"no", "sin"}
 LONGITUD_MINIMA_RAIZ = 5   # palabras mas cortas no se buscan por raiz
 
 RE_ESPACIOS = re.compile(r"\s+")
 RE_PALABRA = re.compile(r"[\wáéíóúüñ]+")
 
-# genericos -> fragmentos que identifican una variante mas especifica de la
-# misma familia. 'dolor' y 'sangrado' solo aportan cuando no se pudo saber
-# cual era: si el texto tambien produjo 'cefalea' o 'sangrado vaginal', el
-# generico sobra y quitarlo evita perder especificidad al agrupar.
+# Sintomas genericos y los fragmentos que identifican una variante mas
+# especifica de su misma familia. Un generico solo aporta cuando no se pudo
+# saber de cual se trataba: si el texto produjo tambien la forma especifica, el
+# generico sobra y conservarlo hace perder precision al agrupar.
 DOLOR_GENERICO = {"dolor inespecifico"}
 
 GENERICOS = {
@@ -101,15 +101,18 @@ GENERICOS = {
 
 
 # ==========================================================
-# NORMALIZACION PARA COMPARAR
+# NORMALIZACIÓN PARA COMPARAR
 # ==========================================================
 
 def normalizar(texto):
     """
-    Minusculas y sin tildes, conservando la longitud del texto caracter por
-    caracter. Eso ultimo importa: los spans que devuelve FlashText sobre el
-    texto normalizado tienen que seguir apuntando a la misma posicion en el
-    texto original.
+    Pasa el texto a minúsculas y le quita las tildes conservando su longitud
+    carácter a carácter.
+
+    Esa equivalencia de longitud es imprescindible: las posiciones que devuelve
+    la búsqueda sobre el texto normalizado tienen que seguir apuntando al mismo
+    lugar del texto original. Si algún carácter no se recompone uno a uno, se
+    devuelve el texto sin plegar, que es la opción segura.
     """
     texto = str(texto or "").lower()
     descompuesto = unicodedata.normalize("NFD", texto)
@@ -123,9 +126,10 @@ def normalizar(texto):
 
 def _formas(variante):
     """
-    La variante mas su plural o su singular, derivados de la ultima palabra.
-    Cubre la variacion morfologica regular del espanol sin enumerarla en el
-    JSON: 'colico' cubre 'colicos', 'nauseas' cubre 'nausea'.
+    La variante más su plural o su singular, derivados de la última palabra.
+
+    Cubre la variación morfológica regular del español sin tener que enumerarla
+    en el catálogo: declarando una forma quedan cubiertas también las demás.
     """
     formas = {variante}
     palabras = variante.split()
@@ -151,10 +155,18 @@ def _formas(variante):
 
 
 # ==========================================================
-# CARGA
+# CARGA DEL CATÁLOGO
 # ==========================================================
 
 def cargar(ruta=RUTA_CATALOGO):
+    """
+    Lee el catálogo y construye todos los índices de búsqueda. Devuelve el
+    número de síntomas canónicos cargados.
+
+    Se recorre dos veces a propósito: primero las variantes escritas a mano y
+    después las derivadas por regla, porque lo declarado explícitamente debe
+    prevalecer sobre lo generado automáticamente.
+    """
     global _PROCESADOR
 
     datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
@@ -196,15 +208,17 @@ def cargar(ruta=RUTA_CATALOGO):
 
 def _construir_raices():
     """
-    Indice por raiz morfologica, para las formas que el catalogo no puede
-    listar: los verbos. 'convulsiono' no es plural de 'convulsion' ni se
-    deriva de ella por regla de numero, pero comparten raiz; lo mismo
-    'sangre'/'sangro' con 'sangrado'. Un stemmer resuelve toda esa familia de
-    una vez, en lugar de agregar cada conjugacion al JSON.
+    Construye el índice por raíz morfológica, que cubre las formas que el
+    catálogo no puede enumerar: las verbales. Una conjugación no se deriva de un
+    sustantivo por regla de número, pero comparte raíz con él, así que un
+    lematizador resuelve toda la familia de una vez.
 
-    Solo se indexan raices que apunten a un unico canonico: si dos conceptos
-    distintos comparten raiz, la raiz es ambigua y se descarta entera, porque
-    un acierto dudoso aca contamina la categoria del registro completo.
+    Solo se indexan las raíces que apuntan a un único concepto. Si dos conceptos
+    distintos comparten raíz, se descarta entera: un acierto dudoso aquí
+    contamina la categoría del registro completo.
+
+    Requiere nltk. Sin él, este nivel de detección queda desactivado y los otros
+    dos siguen funcionando.
     """
     global _STEMMER
     _RAICES.clear()
@@ -228,6 +242,11 @@ def _construir_raices():
 
 
 def _construir(variantes):
+    """
+    Construye el autómata de búsqueda de variantes. Devuelve None si flashtext
+    no está instalado, en cuyo caso se usa la búsqueda con expresiones
+    regulares, más lenta pero equivalente.
+    """
     try:
         from flashtext import KeywordProcessor
     except ModuleNotFoundError:
@@ -242,7 +261,13 @@ def _construir(variantes):
 
 
 def _detectar(texto_norm):
-    """[(canonico, inicio, fin)] de todas las variantes encontradas."""
+    """
+    Variantes del catálogo encontradas en el texto, como tuplas
+    (canónico, inicio, fin) con las posiciones en caracteres.
+
+    La rama de respaldo replica el comportamiento del autómata: ordena por
+    posición prefiriendo la coincidencia más larga y descarta los solapamientos.
+    """
     if _PROCESADOR is not None:
         return _PROCESADOR.extract_keywords(texto_norm, span_info=True)
 
@@ -264,8 +289,8 @@ def _detectar(texto_norm):
 
 def _detectar_por_raiz(texto_norm, spans):
     """
-    Palabras sueltas que no quedaron cubiertas por una variante exacta pero
-    cuya raiz apunta sin ambiguedad a un sintoma del catalogo.
+    Síntomas detectados por raíz morfológica entre las palabras que no quedaron
+    cubiertas por una variante exacta. Mismo formato que _detectar().
     """
     if _STEMMER is None or not _RAICES:
         return []
@@ -290,10 +315,12 @@ def _detectar_por_raiz(texto_norm, spans):
 
 def _resolver_localizacion(tokens, indice_fin):
     """
-    Zona del cuerpo mencionada justo despues de un dolor generico. Es lo que
-    convierte 'dolor en pecho', 'me duele el pecho' y 'dolor abajo del seno'
-    en el mismo canonico sin escribir las tres frases en el JSON: el catalogo
-    guarda las zonas, no las combinaciones.
+    Síntoma canónico correspondiente a la zona del cuerpo mencionada justo
+    después de un dolor genérico, o None si no hay ninguna en la ventana.
+
+    Es lo que permite que varias formas de decir dónde duele produzcan el mismo
+    concepto sin escribirlas todas en el catálogo, que guarda las zonas y no las
+    combinaciones.
     """
     for token in tokens[indice_fin:indice_fin + VENTANA_LOCALIZACION]:
         canonico = _LOCALIZACIONES.get(token)
@@ -309,10 +336,9 @@ def _resolver_localizacion(tokens, indice_fin):
 EG_MIN, EG_MAX = 4, 42
 
 PATRONES_VALOR = OrderedDict([
-    # exige una palabra obstetrica pegada a la cifra. El patron anterior
-    # aceptaba cualquier 'N semanas' suelto, y por eso '1 semana con dolor en
-    # la rodilla' producia edad_gestacional=1: el problema no era el numero,
-    # era que nunca se miraba el contexto
+    # exige una palabra obstetrica junto a la cifra: aceptar cualquier
+    # 'N semanas' suelto convertia en edad gestacional el tiempo de evolucion
+    # de cualquier dolencia
     ("edad_gestacional", re.compile(
         r"(?:gestante|embarazada|embarazo|gestacion|edad gestacional|"
         r"primigestante|multigestante|eg)\s*(?:de\s*)?(\d{1,2})(?:[.,+]\d)?\s*"
@@ -341,6 +367,7 @@ RE_PEDIATRICO = re.compile(
 
 
 def _numero(texto):
+    """Convierte a número admitiendo la coma decimal. None si no se puede."""
     try:
         return float(str(texto).replace(",", "."))
     except (TypeError, ValueError):
@@ -348,7 +375,15 @@ def _numero(texto):
 
 
 def extraer_valores(texto_norm):
-    """Cifras clinicas presentes en la nota. Solo lo que aparece explicito."""
+    """
+    Cifras clínicas presentes en la nota, como diccionario. Solo se extrae lo
+    que aparece de forma explícita; nada se deduce ni se completa.
+
+    Los valores pasan por un control de rango, que es lo que distingue un dato
+    clínico de una coincidencia numérica: una edad gestacional imposible
+    significa que el contexto se malinterpretó, y una pareja de cifras separadas
+    por barra puede ser una tensión arterial o una fecha.
+    """
     valores = {}
 
     for nombre, patron in PATRONES_VALOR.items():
@@ -361,8 +396,7 @@ def extraer_valores(texto_norm):
             continue
         valores[nombre] = int(numero) if numero == int(numero) else numero
 
-    # fuera de 4-42 semanas no hay gestacion posible: si el patron llego aca
-    # con otra cifra, el contexto se malinterpreto y el valor se descarta
+    # fuera del rango posible de gestacion, el patron capturo otra cosa
     eg = valores.get("edad_gestacional")
     if eg is not None and not (EG_MIN <= eg <= EG_MAX):
         valores.pop("edad_gestacional")
@@ -370,7 +404,7 @@ def extraer_valores(texto_norm):
     m = RE_TENSION.search(texto_norm)
     if m:
         sistolica, diastolica = int(m.group(1)), int(m.group(2))
-        # descarta rangos imposibles: '120/80' es tension, '12/10' es una fecha
+        # descarta rangos imposibles, que casi siempre son fechas
         if 60 <= sistolica <= 260 and 30 <= diastolica <= 160:
             valores["tension_arterial"] = f"{sistolica}/{diastolica}"
 
@@ -383,8 +417,13 @@ def extraer_valores(texto_norm):
 
 def extraer_sintomas(texto_norm, spans=None):
     """
-    (presentes, negados, inciertos, antecedentes), cada uno como lista de
-    sintomas canonicos sin repetir y en orden de aparicion.
+    Reparte los síntomas detectados según su estado y devuelve la tupla
+    (presentes, negados, inciertos, antecedentes), cada una como lista de
+    conceptos canónicos sin repetidos y en orden de aparición.
+
+    Después del reparto se descartan los genéricos que ya están representados
+    por una forma más específica, y se garantiza que un síntoma negado no figure
+    además como presente.
     """
     marcado = negacion.marcar(texto_norm, _TERMINOS)
     tokens = [t for t, _ in marcado]
@@ -398,7 +437,7 @@ def extraer_sintomas(texto_norm, spans=None):
             continue
 
         estado = "afirmado"
-        # la variante trae su propia negacion adentro: se afirma tal cual
+        # la variante trae su propia negacion dentro: se afirma tal cual
         negacion_propia = palabras[0] in NEGACION_LEXICALIZADA
 
         for i in range(len(tokens) - len(palabras) + 1):
@@ -410,7 +449,7 @@ def extraer_sintomas(texto_norm, spans=None):
                             estado = prioridad
                             break
                 # un dolor generico con una zona del cuerpo al lado deja de
-                # ser generico: 'dolor en pecho' es dolor toracico
+                # ser generico y pasa a ser el dolor de esa zona
                 if canonico in DOLOR_GENERICO:
                     localizado = _resolver_localizacion(tokens, i + len(palabras))
                     if localizado:
@@ -433,6 +472,11 @@ def extraer_sintomas(texto_norm, spans=None):
 
 
 def _quitar_genericos_redundantes(grupos):
+    """
+    Elimina de todos los grupos los síntomas genéricos cuando el texto produjo
+    además una forma específica de su misma familia. Modifica las listas en el
+    sitio.
+    """
     todos = [s for lista in grupos.values() for s in lista]
     for generico, familia in GENERICOS.items():
         if not any(s != generico and any(f in s for f in familia) for s in todos):
@@ -447,6 +491,12 @@ def _quitar_genericos_redundantes(grupos):
 # ==========================================================
 
 def elegir_categoria(sintomas, texto_norm=""):
+    """
+    Categoría principal del registro, según la prioridad clínica declarada en el
+    catálogo. Si el texto menciona un embarazo, la categoría obstétrica entra en
+    juego aunque ningún síntoma la haya aportado. Sin categorías reconocidas
+    devuelve la categoría por defecto.
+    """
     categorias = {_SINTOMAS[s] for s in sintomas if s in _SINTOMAS}
 
     if RE_EMBARAZO.search(texto_norm):
@@ -463,8 +513,10 @@ def elegir_categoria(sintomas, texto_norm=""):
 
 def categorias_presentes(sintomas, principal=None):
     """
-    Siempre incluye la categoria principal: un registro con
-    categoria_principal y categorias=[] es inconsistente consigo mismo.
+    Todas las categorías presentes en el registro, ordenadas.
+
+    Siempre incluye la principal: un registro que declara una categoría
+    principal y una lista de categorías vacía sería inconsistente consigo mismo.
     """
     categorias = {_SINTOMAS[s] for s in sintomas if s in _SINTOMAS}
     if principal:
@@ -474,11 +526,14 @@ def categorias_presentes(sintomas, principal=None):
 
 def calcular_confianza(sintomas, categoria, valores):
     """
-    Que tanto se puede confiar en la estructuracion de esta nota:
-        1.0  sintoma reconocido en una categoria clinica especifica
-        0.6  solo sintomas transversales (categoria general)
-        0.3  nada reconocido, pero hay cifras clinicas
-        0.1  nada
+    Cuánto se puede confiar en la estructuración de esta nota:
+
+        1.0  hay un síntoma reconocido en una categoría clínica específica
+        0.6  solo hay síntomas transversales
+        0.3  no se reconoció ningún síntoma, pero sí cifras clínicas
+        0.1  no se reconoció nada
+
+    Es el campo por el que se filtran los registros poco fiables aguas abajo.
     """
     if sintomas and categoria not in ("general", CATEGORIA_POR_DEFECTO):
         return 1.0
@@ -494,7 +549,14 @@ def calcular_confianza(sintomas, categoria, valores):
 # ==========================================================
 
 def extraer(oid, texto):
-    """Registro estructurado de una nota. Es la funcion que usa estructurar.py."""
+    """
+    Registro estructurado de una nota, como diccionario ordenado. Es la función
+    que consume el orquestador de la fase.
+
+    Los campos opcionales (hallazgos inciertos, antecedentes, edad gestacional,
+    valores) solo aparecen cuando hay algo que poner, para que el archivo de
+    salida no se llene de campos vacíos.
+    """
     texto = RE_ESPACIOS.sub(" ", str(texto or "")).strip()
     texto_norm = normalizar(texto)
 
@@ -504,9 +566,9 @@ def extraer(oid, texto):
     valores = extraer_valores(texto_norm)
     categoria = elegir_categoria(sintomas, texto_norm)
 
-    # embarazo solo si el texto lo dice. Derivarlo de la categoria era un
-    # error: 'dolor pelvico' pertenece a la categoria obstetrica del catalogo,
-    # y eso marcaba como gestante a cualquiera con dolor en bajo vientre
+    # el embarazo se marca solo si el texto lo dice. Derivarlo de la categoria
+    # es un error: hay sintomas de la categoria obstetrica que no implican
+    # gestacion, y asi se marcaba como gestante a quien no lo estaba
     embarazo = bool(RE_EMBARAZO.search(texto_norm))
     pediatrico = bool(RE_PEDIATRICO.search(texto_norm))
 
@@ -529,8 +591,8 @@ def extraer(oid, texto):
     registro["confianza"] = calcular_confianza(sintomas, categoria, valores)
     registro["texto"] = texto
     registro["embedding_texto"] = texto_embedding.construir(
-        # el texto CON tildes: el modo extractivo conserva la frase real y
-        # texto_norm viene plegado para poder cruzar spans con el catalogo
+        # el texto CON tildes: el modo extractivo conserva la frase real, y la
+        # version plegada solo sirve para cruzar posiciones con el catalogo
         texto=texto,
         categoria=categoria,
         sintomas=sintomas,
@@ -547,7 +609,11 @@ def extraer(oid, texto):
 
 
 def resumen(registros):
-    """Distribucion por categoria y sintomas mas frecuentes. Para auditar."""
+    """
+    Estadísticas de una corrida: distribución por categoría, síntomas y negados
+    más frecuentes, y cuántos registros quedaron sin síntoma reconocido o con
+    confianza baja. Es la base del informe de la fase.
+    """
     categorias = Counter(r["categoria_principal"] for r in registros)
     sintomas = Counter(s for r in registros for s in r["sintomas"])
     negados = Counter(s for r in registros for s in r["signos_negados"])

@@ -1,41 +1,32 @@
 """
-Capa linguistica sobre spaCy. Complementa a ortografia.py.
+Capa lingüística sobre spaCy: vocabulario del español y entidades nombradas.
 
-Aporta dos senales que ni LanguageTool ni el diccionario pueden dar:
+Aporta dos señales que ni LanguageTool ni el diccionario del proyecto pueden
+dar, y ambas se usan siempre para PROTEGER una palabra, nunca para corregirla:
 
-  1. VOCABULARIO. spaCy conoce ~500.000 palabras del espanol, muchas mas que
-     LanguageTool. Medido sobre terminos de las notas de triage:
+  1. Vocabulario. El modelo conoce del orden de medio millón de formas del
+     español, muchas más que LanguageTool, e incluye buena parte de la
+     terminología clínica y de los principios activos habituales. Una palabra
+     que spaCy reconoce se considera real y queda fuera del corrector, sin
+     necesidad de enumerarla en el diccionario.
 
-       en vocabulario   midazolam, topiramato, olanzapina, odinofagia, emesis,
-                        epigastrio, disnea, cefalea, crepitantes, dietarias,
-                        afebril, helicobacter, crohn, pereira, taquicardia
-       fuera            pacinete, dolro, trngo, cbeza, conuslta, malestra,
-                        vaginlaes, daignosticaron, trombolfebitis, desasturada
+  2. Entidades nombradas. El reconocedor identifica personas, lugares e
+     instituciones incluso en texto ya pasado a minúscula, que es justo donde la
+     detección por mayúsculas se queda ciega. Sin esta señal, en una nota
+     escrita toda en minúscula 'pereira' se corrige a 'perdida' y 'hakim'
+     (de válvula de Hakim) a 'hacia'.
 
-     Una palabra que spaCy reconoce es una palabra real y no se corrige. Esto
-     protege farmacos y terminologia sin tener que enumerarlos en el JSON.
+Limitación conocida: el vocabulario procede de texto web y contiene ruido, de
+modo que alguna forma incorrecta figura como válida y queda protegida. Esos
+casos se resuelven uno a uno en las correcciones directas del diccionario.
 
-  2. ENTIDADES NOMBRADAS. El NER reconoce personas, lugares e instituciones
-     incluso en texto ya pasado a minusculas, que es donde la deteccion por
-     mayusculas de ortografia.py se queda ciega:
+Requiere el modelo `es_core_news_md`:
 
-       'paciente remitido de pereira'   -> pereira        (PER/LOC)
-       'esposa argelia alzate acompana' -> argelia alzate (LOC/PER)
-       'valvula de hakim disfuncional'  -> hakim          (PER)
+    pip install spacy
+    python -m spacy download es_core_news_md
 
-     Sin esto, 'pereira' se convertia en 'perdida' y 'hakim' en 'hacia' en
-     cualquier nota escrita toda en minuscula.
-
-EXCEPCION CONOCIDA
-     'fibre' figura en el vocabulario de spaCy (ruido de corpus web) y por eso
-     quedaria protegida. Esta cubierta en correcciones_directas del JSON.
-
-INSTALACION
-     pip install spacy
-     python -m spacy download es_core_news_md
-
-Si spaCy no esta instalado, el modulo se desactiva solo y ortografia.py sigue
-funcionando con el resto de sus defensas.
+Si spaCy o el modelo no están instalados, el módulo se desactiva por sí solo y
+el resto del pipeline sigue funcionando con sus demás defensas.
 """
 
 import re
@@ -53,18 +44,21 @@ _NLP = None
 _DISPONIBLE = None
 _CACHE_VOCAB = {}
 
-# los pipelines de spaCy no son thread-safe y procesar.py usa varios hilos
+# los pipelines de spaCy no son thread-safe y el orquestador usa varios hilos
 _LOCK = threading.Lock()
 
 RE_PALABRA = re.compile(r"[a-záéíóúüñ]+")
 
 
 # ==========================================================
-# CARGA
+# CARGA DEL MODELO
 # ==========================================================
 
 def disponible():
-    """True si spaCy y el modelo estan instalados. Se comprueba una sola vez."""
+    """
+    True si spaCy y el modelo están instalados. La comprobación se hace una
+    sola vez y se recuerda durante toda la ejecución.
+    """
     global _DISPONIBLE
     if _DISPONIBLE is None:
         _DISPONIBLE = _cargar() is not None
@@ -72,6 +66,10 @@ def disponible():
 
 
 def _cargar():
+    """
+    Carga el modelo la primera vez que se necesita y lo reutiliza después.
+    Devuelve None, con un aviso por consola, si falta spaCy o el modelo.
+    """
     global _NLP
     if _NLP is not None:
         return _NLP
@@ -91,6 +89,10 @@ def _cargar():
 
 
 def iniciar():
+    """
+    Fuerza la carga del modelo antes de empezar a procesar, para que el coste
+    no recaiga sobre la primera nota. Devuelve el pipeline o None.
+    """
     return _cargar()
 
 
@@ -100,8 +102,12 @@ def iniciar():
 
 def en_vocabulario(palabra):
     """
-    True si spaCy reconoce la palabra. Se usa para PROTEGER, nunca para
-    corregir: que una palabra falte del vocabulario no prueba que este mal.
+    True si spaCy reconoce la palabra.
+
+    Solo sirve para proteger: que una palabra falte del vocabulario no
+    demuestra que esté mal escrita. Las palabras de menos de cuatro letras se
+    descartan porque el vocabulario las acepta casi todas. El resultado se
+    guarda en caché, ya que la misma forma se consulta muchas veces por nota.
     """
     if not disponible():
         return False
@@ -120,13 +126,16 @@ def en_vocabulario(palabra):
 
 
 # ==========================================================
-# ENTIDADES
+# ENTIDADES NOMBRADAS
 # ==========================================================
 
 def entidades(texto):
     """
-    Tokens que forman parte de una persona, lugar u organizacion.
-    Devuelve un set en minuscula, listo para cruzar con los tokens del texto.
+    Palabras de la nota que forman parte de una persona, lugar u organización.
+
+    Devuelve un conjunto en minúscula, listo para cruzar con los tokens del
+    texto. Ante cualquier fallo del modelo devuelve un conjunto vacío: perder la
+    señal degrada la protección, pero no debe interrumpir el procesamiento.
     """
     if not disponible() or not texto:
         return set()
@@ -149,8 +158,9 @@ def entidades(texto):
 
 def entidades_lote(textos, n_process=1, batch_size=200):
     """
-    Version por lotes para procesar miles de notas. Mucho mas rapida que
-    llamar a entidades() una por una.
+    Igual que entidades(), pero sobre una lista de notas y aprovechando el
+    procesamiento por lotes de spaCy. Devuelve un conjunto por nota, en el mismo
+    orden de entrada. Es la vía a usar cuando se procesan miles de registros.
     """
     if not disponible():
         return [set() for _ in textos]
@@ -172,7 +182,10 @@ def entidades_lote(textos, n_process=1, batch_size=200):
 
 
 def diagnosticar(texto):
-    """Que ve spaCy en una nota. Para revisar casos puntuales."""
+    """
+    Qué ve spaCy en una nota concreta: entidades detectadas y palabras fuera de
+    vocabulario. Herramienta de inspección manual, no la usa el pipeline.
+    """
     if not disponible():
         return {"disponible": False}
 

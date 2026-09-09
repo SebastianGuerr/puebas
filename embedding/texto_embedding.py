@@ -1,41 +1,48 @@
 """
-Construccion del texto que se le manda a bge-m3.
+Construcción del texto que se le entrega al modelo de embeddings.
 
-EL PRINCIPIO QUE MANDA ACA
-    El valor de este campo es que dos notas que dicen lo mismo de distinta
-    forma produzcan el MISMO texto. 'me duele mucho la cabeza' y 'refiere
-    cefalea intensa desde ayer' tienen que colapsar a la misma frase
-    canonica; si cada una conserva su redaccion original, el modelo tambien
-    conserva esa diferencia y los clusters se dispersan por forma de escribir
-    en vez de agrupar por cuadro clinico. Por eso la base es SIEMPRE la
-    estructura extraida, no el texto crudo.
+DOS MODOS, Y POR QUÉ MANDA EL EXTRACTIVO
+    extractivo  la nota tal como la escribió quien atendió al paciente, sin los
+                bloques que sobran. Es el modo activo: conserva el lenguaje, que
+                es lo que el modelo sabe leer, y con él la intensidad, la
+                evolución y los matices que la estructura no captura.
 
-EL RESPALDO, Y POR QUE NO REEMPLAZA A LA BASE
-    Cuando el catalogo no reconoce nada, la frase canonica queda vacia y el
-    registro pierde todo su contenido clinico. Para eso -- y solo para eso --
-    se agrega el texto real de la nota, limpio de ruido y sin los tramos que
-    ya viajan como canonicos. Es un respaldo para el caso sin cobertura, no
-    la base del campo: se usa cuando no hay sintomas afirmados, o cuando lo
-    unico afirmado es un generico que por si solo no describe el cuadro.
+    canonico    una frase construida a partir de la estructura extraída. Se
+                conserva solo para poder comparar los dos enfoques sobre el
+                mismo corpus.
 
-QUE SE LE QUITA AL RESPALDO
-    Frases de tramite ('ingresa paciente', 'remitido desde', 'aceptado en
-    urgencias'): describen el recorrido por el sistema, no el motivo de
-    consulta, y son identicas en miles de notas de categorias distintas.
-    Dejarlas es lo que forma clusters de puro tramite.
-    Preambulos temporales ('desde el lunes', 'hace 3 dias que'): el tiempo de
-    evolucion ya viaja como dato estructurado, y en el texto solo aporta
-    variacion de redaccion.
+    El modo canónico partía de una idea razonable: que dos notas que dicen lo
+    mismo de distinta forma produjeran el mismo texto. El problema es que
+    canonizar contra un catálogo cerrado hace que miles de notas distintas
+    generen una cadena idéntica, y un texto idéntico da un vector idéntico, lo
+    que colapsa cualquier agrupamiento posterior.
+
+    La estructura no se pierde por eso: sigue en el registro como categoría,
+    síntomas, negados y valores. Son dos cosas distintas —una para filtrar y
+    contar, otra para medir parecido— y estaban mezcladas en un solo campo.
+
+EL RESPALDO DEL MODO CANÓNICO
+    Cuando el catálogo no reconoce nada, la frase canónica queda vacía y el
+    registro pierde todo su contenido clínico. Para ese caso, y solo para ese,
+    se añade el texto real de la nota, sin ruido y sin los tramos que ya viajan
+    como canónicos.
+
+QUÉ SE LE QUITA AL TEXTO
+    El bloque institucional, las frases de trámite que describen el recorrido
+    por el sistema, los encabezados del formulario y los preámbulos temporales,
+    porque el tiempo de evolución ya viaja como dato estructurado. Todo eso es
+    idéntico en miles de notas de cuadros distintos, y dejarlo hace que el
+    modelo agrupe por trámite en lugar de por clínica.
+
+    En el modo extractivo el recorte lo hace `recorte.py`; los patrones de este
+    módulo se aplican al respaldo del modo canónico.
 """
 
 import re
 
-import recorte
+from NLP.reduccion import reduccion as recorte
 
-# "extractivo"  la nota real, sin bloque institucional ni tramite. Es el modo
-#               que manda: conserva el lenguaje, que es lo que bge-m3 lee.
-# "canonico"    la frase construida desde la estructura. Se deja para poder
-#               comparar las dos formas sobre el mismo corpus.
+# Modo de construccion del texto: "extractivo" o "canonico". Ver la cabecera.
 MODO_TEXTO = "extractivo"
 
 # Marca de nota sin contenido clinico. No es una frase: es una etiqueta, para
@@ -60,19 +67,17 @@ RE_ADMIN = re.compile(
     r"servicio\s+de\s+urgencias|triage\s+de\s+enfermeria)\b",
     re.IGNORECASE)
 
-# encabezados de historia clinica: 'mc (motivo de consulta):', 'ap
-# (antecedentes personales):'. Son etiquetas del formulario, identicas en
-# miles de notas, y lo unico que aportan al embedding es hacer parecidas dos
-# notas que no tienen nada que ver
+# Encabezados del formulario: son etiquetas identicas en miles de notas y lo
+# unico que aportan es hacer parecidas dos notas que no tienen nada que ver.
 RE_ENCABEZADO = re.compile(
     r"\b[a-z]{2,4}\s*(?:\([^)]{3,60}\))?\s*:", re.IGNORECASE)
 
 # la expansion entre parentesis de una sigla ya expandida en el texto
 RE_PARENTESIS = re.compile(r"\([^)]{5,80}\)")
 
-# frases del bloque institucional que algunas notas traen pegado (politica de
-# la EPS, niveles de atencion, disculpas). No describen al paciente y son
-# identicas en cientos de notas: si se dejan, el modelo agrupa por ese bloque
+# Frases del bloque institucional que algunas notas traen pegado. No describen
+# al paciente y son identicas en cientos de notas: si se dejan, el modelo acaba
+# agrupando por ese bloque.
 MARCADORES_INSTITUCIONALES = (
     "eps", "entidad promotora", "red de atencion", "nivel de atencion",
     "afiliados", "priorizados", "disculpas", "molestias ocasionadas",
@@ -89,13 +94,13 @@ RE_TEMPORAL = re.compile(
     r"desde\s+hace\s+(?:un|una|unos|unas)\s+\w+)\b",
     re.IGNORECASE)
 
-# generico que por si solo no describe el cuadro: si es lo unico que se
-# detecto, el respaldo con el texto real aporta mas que la frase canonica
+# Sintomas demasiado genericos: si son lo unico que se detecto, el respaldo con
+# el texto real aporta mas que la frase canonica.
 GENERICOS_POBRES = {"dolor inespecifico", "sangrado inespecifico",
                     "malestar general"}
 
-# palabras que por si solas no son contenido clinico: si el residuo se queda
-# solo con estas, no hay nada que respaldar
+# Palabras que por si solas no son contenido clinico. Si el residuo se queda
+# solo con estas, no hay nada que respaldar.
 VACIAS = {
     "de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y",
     "o", "a", "al", "en", "con", "sin", "por", "para", "que", "se", "su",
@@ -111,13 +116,17 @@ VACIAS = {
     "tarde", "noche", "anoche", "ayer", "hoy", "principios", "finales",
 }
 
-# tope mas estrecho cuando la parte estructurada ya representa el cuadro: si
-# ahi el residuo es largo, casi siempre es relleno documental y no sintoma
+# Tope mas estrecho cuando la parte estructurada ya representa el cuadro: si en
+# ese caso el residuo es largo, casi siempre es relleno documental y no sintoma.
 TOPE_RESIDUO_CON_SINTOMA = 12
 
 
 def _quitar_tramos(texto, spans):
-    """Borra del texto los tramos que ya viajan como sintoma canonico."""
+    """
+    Sustituye por espacios los tramos que ya viajan como síntoma canónico, para
+    que el respaldo no repita en texto libre lo que ya va estructurado. Se
+    reemplaza en lugar de borrar para no descolocar las posiciones restantes.
+    """
     if not spans:
         return texto
     caracteres = list(texto)
@@ -128,17 +137,18 @@ def _quitar_tramos(texto, spans):
 
 
 def _tiene_contenido(texto):
+    """True si queda alguna palabra con significado y de longitud suficiente."""
     palabras = [p for p in re.findall(r"[\w]+", texto) if p not in VACIAS]
     return any(len(p) >= 4 for p in palabras)
 
 
 def quitar_institucional(texto):
     """
-    Descarta las oraciones que solo hablan de la politica del servicio. Se
-    evalua oracion por oracion en vez de por frase suelta: el bloque es
-    largo, cambia de redaccion entre notas, y lo que lo identifica no es una
-    frase exacta sino que la oracion completa habla del sistema y no del
-    paciente.
+    Descarta las oraciones que solo hablan de la política del servicio.
+
+    Se evalúa oración por oración y no frase suelta: el bloque es largo, cambia
+    de redacción entre notas, y lo que lo identifica no es una frase exacta sino
+    que la oración completa hable del sistema y no del paciente.
     """
     oraciones = re.split(r"(?<=[.;])\s+", texto)
     utiles = [o for o in oraciones
@@ -147,7 +157,11 @@ def quitar_institucional(texto):
 
 
 def limpiar(texto):
-    """Texto sin ruido de tramite, encabezados ni preambulo temporal."""
+    """
+    Devuelve el texto sin bloque institucional, encabezados, anotaciones entre
+    paréntesis, frases de trámite ni preámbulos temporales, y con los espacios
+    y la puntuación sobrante ya normalizados.
+    """
     limpio = quitar_institucional(texto)
     limpio = RE_ENCABEZADO.sub(" ", limpio)
     limpio = RE_PARENTESIS.sub(" ", limpio)
@@ -165,7 +179,11 @@ TOPE_RESIDUO = 25        # palabras: evita que una nota larga sin cobertura
 
 
 def _cobertura(texto_norm, spans):
-    """Fraccion de las palabras con contenido que quedaron capturadas."""
+    """
+    Fracción de las palabras con contenido de la nota que quedaron capturadas
+    por el catálogo. Devuelve 1.0 cuando la nota no tiene palabras con
+    contenido, para que una nota vacía no se considere mal cubierta.
+    """
     con_contenido = [m for m in re.finditer(r"[\w]+", texto_norm)
                      if m.group() not in VACIAS and len(m.group()) >= 4]
     if not con_contenido:
@@ -182,18 +200,19 @@ def _cobertura(texto_norm, spans):
 
 def _necesita_respaldo(sintomas, negados, inciertos, texto_norm, spans):
     """
-    El respaldo entra en tres situaciones, y las tres son la misma idea: que
-    la parte estructurada no alcance a representar la nota.
+    True si la parte estructurada no alcanza a representar la nota y hace falta
+    añadir texto real.
 
-      1. no hay ningun sintoma afirmado -- un registro cuyo unico contenido es
-         'niega fiebre' no dice por que consulto el paciente;
-      2. lo unico afirmado es un generico que no describe el cuadro;
-      3. el catalogo capturo menos de la mitad de las palabras con contenido,
-         asi que lo que quedo afuera pesa mas que lo que entro.
+    Ocurre en tres situaciones, que son la misma idea vista de tres formas:
 
-    La tercera es la que evita el error de la version anterior, que descartaba
-    el texto completo apenas hubiera UN sintoma: 'esta con flema y no lo deja
-    respirar' se quedaba solo en 'expectoracion' y perdia el resto.
+      1. no hay ningún síntoma afirmado, de modo que el registro no dice por qué
+         consultó el paciente;
+      2. lo único afirmado es un genérico que no describe el cuadro;
+      3. el catálogo capturó menos de la mitad de las palabras con contenido, así
+         que lo que quedó fuera pesa más que lo que entró.
+
+    La tercera condición es la que evita descartar el texto completo por haber
+    reconocido un solo síntoma, perdiendo todo lo demás que decía la nota.
     """
     if not sintomas:
         return True
@@ -205,50 +224,26 @@ def _necesita_respaldo(sintomas, negados, inciertos, texto_norm, spans):
 def construir(categoria, sintomas, negados, inciertos, valores,
               embarazo, pediatrico, texto_norm, spans=(), texto=None):
     """
-    El texto que se le manda a bge-m3.
+    Devuelve el texto que se le entregará al modelo de embeddings, según el
+    modo configurado (ver la cabecera del módulo).
 
-    MODO 'extractivo' (el que manda ahora)
-        Se conserva la nota tal como la escribio quien atendio al paciente,
-        quitandole los bloques que sobran. Medido sobre la nota 803472:
+    En modo extractivo recorta la nota y la devuelve; si el recorte se lleva
+    todo, devuelve la marca SIN_CONTENIDO en lugar de caer a la frase canónica.
+    Esa decisión es deliberada: una nota sin contenido tiene que quedar marcada
+    como tal y poder filtrarse, no disfrazada de un cuadro clínico que en
+    realidad comparte con cientos de notas ajenas.
 
-            138 palabras -> 23, y lo que queda es
-            'en silla de ruedas con acompanante ... le han dado varias
-             epistaxis de dificil control ahora presento sangrado ahora
-             paciente sin epistaxis, normocardico'
-
-        Eso es lenguaje, que es lo que bge-m3 sabe leer, y conserva lo que la
-        version canonica tiraba: que fueron VARIAS, que son de DIFICIL CONTROL,
-        que AHORA ya no sangra y que esta NORMOCARDICO.
-
-    MODO 'canonico' (el anterior, se deja para poder comparar)
-        Construia la frase desde la estructura extraida. Medido sobre las
-        30.000 notas: 15.829 textos distintos, 51,9% de las notas compartiendo
-        texto con otra, mediana de 5 palabras, y 999 notas produciendo la
-        cadena identica 'categoria gastrointestinal. sintoma dolor abdominal.'
-        Texto identico es vector identico, y eso es lo que colapsaba el
-        clustering.
-
-    La estructura no se pierde: sigue en el registro como categoria_principal,
-    sintomas, signos_negados y valores. Son dos cosas distintas -- una para
-    filtrar y contar, otra para medir parecido -- y estaban mezcladas en un
-    solo campo.
+    En modo canónico construye la frase a partir de la estructura y le añade el
+    texto de respaldo cuando hace falta.
     """
     if MODO_TEXTO == "extractivo":
-        # se recorta sobre el texto CON tildes. texto_norm esta plegado para
-        # cruzar spans con el catalogo, y eso sirve para detectar, no para
-        # entregarle la frase al modelo: 'dificil' no es lo que escribieron.
+        # se recorta sobre el texto CON tildes: la version plegada existe para
+        # cruzar posiciones con el catalogo, no para entregarsela al modelo
         recortado = recorte.recortar(texto if texto is not None else texto_norm)
         if recortado:
             return recortado
-        # El recorte se llevo todo. Antes aqui se caia a la frase canonica, y
-        # eso se quito a proposito: una nota que decia 'ap: niega; aa: niega' o
-        # 'me derivaron de la EPS' terminaba con un texto como
-        # 'categoria neurologico. sintoma cefalea.' que no describe a NADIE en
-        # particular y que otras 926 notas compartian palabra por palabra.
-        #
-        # Una nota sin contenido tiene que quedar marcada como tal, no
-        # disfrazada de cuadro clinico. Quien consuma el JSON puede filtrarla
-        # por este valor o por confianza <= 0.3.
+        # el recorte se llevo todo: la nota queda marcada como sin contenido,
+        # para que se pueda filtrar (ver el docstring)
         return SIN_CONTENIDO
 
     return _canonico(categoria, sintomas, negados, inciertos, valores,
@@ -257,6 +252,12 @@ def construir(categoria, sintomas, negados, inciertos, valores,
 
 def _canonico(categoria, sintomas, negados, inciertos, valores,
               embarazo, pediatrico, texto_norm, spans=()):
+    """
+    Construye la frase canónica a partir de la estructura extraída, en un orden
+    fijo: categoría, condición del paciente, síntomas afirmados, negados e
+    inciertos, y valores medidos. Añade el texto de respaldo cuando la
+    estructura no basta, y devuelve una marca genérica si no hay nada que decir.
+    """
     partes = []
 
     if categoria != "inespecifico":
@@ -287,25 +288,21 @@ def _canonico(categoria, sintomas, negados, inciertos, valores,
         partes.append(f"evolucion {valores['horas_evolucion']} horas")
 
     # El respaldo lleva solo lo que NO se pudo convertir en canonico: los
-    # tramos ya detectados se borran antes de limpiar. Asi 'niega fiebre, tos
-    # y disnea' no repite en texto libre lo que ya viaja estructurado, y
-    # 'posible neumonia, no hay fiebre' si conserva la neumonia, que es lo
-    # unico que el catalogo no supo representar.
+    # tramos ya detectados se borran antes de limpiar, de modo que no se repite
+    # en texto libre lo que ya viaja estructurado.
     if _necesita_respaldo(sintomas, negados, inciertos, texto_norm, spans):
         if spans:
-            # al borrar los tramos ya capturados la gramatica queda rota
-            # ('sin signos de dificultad respiratoria' -> 'sin signos de'), asi
-            # que se conservan solo las palabras con contenido en vez de una
-            # frase mutilada
+            # al borrar los tramos capturados la gramatica queda rota, asi que
+            # se conservan las palabras con contenido y no una frase mutilada
             residuo = limpiar(_quitar_tramos(texto_norm, spans))
             residuo = " ".join(p for p in re.findall(r"[\w]+", residuo)
                                if p not in VACIAS and len(p) >= 4)
         else:
-            # nada se capturo: la nota entera sigue siendo una frase valida y
-            # se aprovecha completa, que es justo lo que bge-m3 sabe leer
+            # nada se capturo: la nota entera sigue siendo una frase valida y se
+            # aprovecha completa, que es lo que el modelo sabe leer
             residuo = limpiar(texto_norm)
-        # las cifras ya viajan en 'valores'; en el residuo solo dejan tokens
-        # rotos como '6sms' cuando el patron consumio parte del numero
+        # las cifras ya viajan como valores; en el residuo solo dejan tokens
+        # rotos cuando un patron consumio parte del numero
         palabras_residuo = [p for p in residuo.split()
                             if not any(c.isdigit() for c in p)]
         tope = TOPE_RESIDUO_CON_SINTOMA if sintomas else TOPE_RESIDUO

@@ -1,55 +1,51 @@
 """
-Control de ambiguedad de las entradas de diccionario.
+Control de ambigüedad de las entradas de diccionario.
 
-EL PROBLEMA QUE RESUELVE
+QUÉ PROBLEMA RESUELVE
+    El criterio anterior era transformar por defecto y proteger por excepción:
+    cada vez que aparecía un caso indebido se añadía una entrada a una lista
+    negra. Eso no escala, porque el conjunto de siglas ambiguas del castellano
+    médico no está acotado y siempre aparece la siguiente.
 
-    El pipeline transformaba por defecto y protegia por excepcion: cada vez que
-    aparecia un caso malo se agregaba una entrada a una lista negra. IVA y DAD
-    eran la version de esta semana de SMS y EDA, y siempre iban a aparecer mas.
-    Perseguir casos no escala porque el numero de siglas ambiguas del castellano
-    medico no esta acotado.
+    Aquí se invierte la carga de la prueba: una entrada de diccionario no se
+    aplica salvo que se demuestre que es inequívoca. La demostración tiene dos
+    vías, porque hay dos clases de ambigüedad y solo una es detectable por
+    máquina.
 
-    Aqui se invierte: una entrada de diccionario NO se aplica salvo que se
-    demuestre que es inequivoca. La demostracion tiene dos vias, porque hay dos
-    clases de ambiguedad y solo una es detectable a maquina.
+    (a) La forma coincide con una palabra corriente del español ('nacido',
+        'fuego', 'brote', 'masa'). Se detecta consultando el diccionario de
+        LanguageTool y el vocabulario de spaCy: si alguno la reconoce como
+        palabra, la entrada queda inactiva.
 
-    (a) La forma coincide con una palabra corriente del espanol.
-        nacido, fuego, brote, morado, les, dad, cita, masa.
-        Se detecta consultando el diccionario de LanguageTool y el vocabulario
-        de spaCy: si alguno la reconoce como palabra, la entrada queda inactiva.
+    (b) La sigla no es una palabra, pero significa cosas distintas según el
+        servicio: 'IVA' puede ser un impuesto, un segmento hepático o una
+        infección de vías aéreas. Esto no es detectable automáticamente, porque
+        exige criterio clínico. Por eso el diccionario declara de forma
+        explícita qué entradas son seguras, y lo que no está declarado no se
+        expande.
 
-    (b) La sigla no es una palabra, pero significa cosas distintas segun el
-        servicio: IVA (impuesto / segmento hepatico / infeccion de vias aereas),
-        EDA (enfermedad diarreica aguda / escala de dolor / endoscopia),
-        DAD (dextrosa en agua destilada / nombre propio).
-        Esto NO es detectable: requiere saber medicina. Por eso el diccionario
-        declara explicitamente que entradas son seguras, y lo que no esta
-        declarado no se expande.
-
-COMO SE DECLARA UNA EXCEPCION
-
-    En el JSON, una entrada puede escribirse de dos formas:
+CÓMO SE DECLARA UNA EXCEPCIÓN
+    En el diccionario, una entrada puede escribirse de dos formas:
 
         "hta": "hipertension arterial"
 
         "nacido": {"significado": "furunculo",
                    "contexto": ["salio", "grano", "piel", "pierna", "espalda"]}
 
-    La segunda solo se aplica si alguna palabra de "contexto" aparece cerca. Asi
-    'le salio un nacido en la pierna' se normaliza y 'recien nacido de 6 dias'
-    no, sin necesidad de anclas ni listas negras.
+    La segunda solo se aplica si alguna de las palabras de "contexto" aparece
+    cerca. Así 'le salio un nacido en la pierna' se normaliza y 'recien nacido
+    de 6 dias' no, sin necesidad de listas negras.
 
-QUE HACER CON EL INFORME
-
-    cargar() deja en desactivadas() todo lo que quedo fuera y por que. Ese
-    listado es la lista de decisiones pendientes: cada entrada ahi es una que
-    hay que revisar y, si corresponde, declarar con su contexto. El sistema no
-    adivina.
+QUÉ HACER CON EL INFORME
+    Al cargar el diccionario queda registrado todo lo que se desactivó y por
+    qué. Ese listado es la lista de decisiones pendientes: cada entrada que
+    aparece ahí hay que revisarla y, si corresponde, declararla con su contexto.
+    El módulo no adivina.
 """
 
 import re
 
-import linguistica
+from NLP.nucleo import linguistica
 
 VENTANA_CONTEXTO = 6      # palabras a cada lado donde se busca la confirmacion
 LONGITUD_MINIMA = 3       # por debajo de esto ninguna sigla se expande sola
@@ -61,21 +57,28 @@ RE_PALABRA = re.compile(r"[a-záéíóúüñ]+")
 
 
 def usar_languagetool(lt):
-    """Recibe la instancia ya creada por ortografia.py; no crea otra."""
+    """
+    Registra la instancia de LanguageTool que ya creó la fase ortográfica, para
+    reutilizarla en la detección de palabras corrientes. Sin ella el módulo
+    funciona igual, apoyado solo en el vocabulario de spaCy.
+    """
     global _LT
     _LT = lt
 
 
 # ==========================================================
-# (a) AMBIGUEDAD DETECTABLE
+# (a) AMBIGÜEDAD DETECTABLE AUTOMÁTICAMENTE
 # ==========================================================
 
 def es_palabra_corriente(forma):
     """
-    True si la forma existe como palabra del espanol. Dos fuentes, porque
-    ninguna basta sola: LanguageTool cubre la flexion completa pero deja pasar
-    siglas cortas, y el vocabulario de spaCy cubre lo frecuente pero ignora
-    palabras de menos de cuatro letras.
+    True si la forma existe como palabra del español.
+
+    Se consultan dos fuentes porque ninguna basta por sí sola: LanguageTool
+    cubre la flexión completa pero deja pasar siglas cortas, y el vocabulario de
+    spaCy cubre lo frecuente pero ignora las palabras de menos de cuatro letras.
+    El resultado se guarda en caché, ya que la misma forma se consulta una vez
+    por nota.
     """
     forma = forma.lower().strip()
     if not forma or not forma.isalpha():
@@ -86,7 +89,9 @@ def es_palabra_corriente(forma):
     resultado = linguistica.en_vocabulario(forma)
 
     if not resultado and _LT is not None:
-        import lt_compat
+        from NLP.nucleo import lt_compat
+        # se inserta la forma en una frase mínima: LanguageTool necesita
+        # contexto para decidir, y así se comprueba si la marca como error
         frase = f"tiene {forma} aqui"
         try:
             marcada = any(
@@ -103,17 +108,24 @@ def es_palabra_corriente(forma):
 
 
 # ==========================================================
-# EVALUACION DE UNA ENTRADA
+# EVALUACIÓN DE UNA ENTRADA
 # ==========================================================
 
 def evaluar(clave, definicion, declaradas_seguras=(), declaradas_ambiguas=()):
     """
-    Decide si una entrada puede aplicarse y como.
+    Decide si una entrada del diccionario puede aplicarse y en qué condiciones.
 
-    Devuelve (estado, contexto, motivo) donde estado es:
+    Devuelve la terna (estado, contexto, motivo), donde el estado es uno de:
+
         "libre"     se aplica siempre
-        "contexto"  se aplica solo si aparece una palabra de contexto cerca
-        "inactiva"  no se aplica
+        "contexto"  se aplica solo si una palabra de contexto aparece cerca
+        "inactiva"  no se aplica, y el motivo explica por qué
+
+    Las expresiones de varias palabras se consideran inequívocas por sí mismas.
+    Para las de una sola palabra, la declaración explícita del diccionario tiene
+    prioridad sobre la detección automática: hay palabras del español cuya
+    traducción clínica es inequívoca, y eso no puede deducirse del hecho de que
+    la palabra exista. Esa decisión corresponde a quien mantiene el diccionario.
     """
     clave = clave.lower().strip()
     contexto = ()
@@ -123,7 +135,6 @@ def evaluar(clave, definicion, declaradas_seguras=(), declaradas_ambiguas=()):
 
     palabras = clave.split()
 
-    # una expresion de varias palabras es casi siempre inequivoca por si misma
     if len(palabras) > 1:
         return ("contexto" if contexto else "libre"), contexto, ""
 
@@ -133,10 +144,6 @@ def evaluar(clave, definicion, declaradas_seguras=(), declaradas_ambiguas=()):
     if len(clave) < LONGITUD_MINIMA:
         return "inactiva", contexto, f"sigla de {len(clave)} letras"
 
-    # la declaracion explicita va primero: hay palabras del espanol cuya
-    # traduccion clinica es inequivoca ('acidez' siempre es pirosis), y eso no
-    # se puede deducir de que la palabra exista. Lo decide quien mantiene el
-    # diccionario, no el test automatico.
     if clave in declaradas_seguras:
         return ("contexto" if contexto else "libre"), contexto, ""
 
@@ -152,11 +159,17 @@ def evaluar(clave, definicion, declaradas_seguras=(), declaradas_ambiguas=()):
 
 
 # ==========================================================
-# APLICACION CON CONTEXTO
+# APLICACIÓN CONDICIONADA AL CONTEXTO
 # ==========================================================
 
 def hay_contexto(texto, inicio, fin, palabras_contexto):
-    """True si alguna palabra de contexto aparece en la ventana alrededor."""
+    """
+    True si alguna de las palabras de contexto aparece en la ventana de
+    VENTANA_CONTEXTO palabras a cada lado del tramo (inicio, fin).
+
+    Si la entrada no declara contexto, devuelve True: no hay condición que
+    comprobar.
+    """
     if not palabras_contexto:
         return True
 

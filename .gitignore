@@ -34,35 +34,18 @@ __pycache__/
 # Regla general: si un archivo lo produce un script del proyecto, no entra al
 # repositorio. Lo que se versiona es el script que lo genera y el diccionario
 # que lo alimenta, porque eso es lo que se edita a mano.
+#
+# Desde la reorganizacion del paquete esa regla es una sola linea por carpeta:
+# todo lo generado vive en salidas/ y todo lo escrito a mano vive en datos/.
+# Si un archivo nuevo no encaja en ninguna de las dos, esta mal ubicado.
 
-# fase 1-3, las genera NLP/procesar.py
-NLP/triage_limpio*.csv
-NLP/reporte_cambios.csv
+# fases 1-3: triage_limpio.csv, reporte_cambios.csv, cache_correcciones.json,
+# lexico_clinico.json, lexico_casing.json, muestra_revision.csv, referencia.csv,
+# siglas_detectadas.csv
+NLP/salidas/
 
-# cache de correcciones ortograficas (10 MB). Se rehace sola en la siguiente
-# corrida; conviene borrarla al cambiar umbrales porque guarda decisiones viejas
-NLP/cache_correcciones.json
-
-# lexico de capitalizacion, lo genera NLP/casing.py leyendo la tabla de triage
-NLP/lexico_casing.json
-
-# lexico clinico, lo genera NLP/lexico.py desde el modelo biomedico y los
-# diccionarios del proyecto. Se regenera con 'python lexico.py'.
-NLP/lexico_clinico.json
-
-# muestra estratificada, la genera NLP/escaneo.py
-NLP/muestra_revision.csv
-
-# texto de referencia, lo genera NLP/referencia.py aplicando las anotaciones
-NLP/referencia.csv
-
-# fase 4, las genera embedding/estructurar.py
-NLP/triage_estructurado.json
-NLP/triage_estructurado.jsonl
-NLP/resumen_estructuracion.txt
-embedding/triage_estructurado.json
-embedding/triage_estructurado.jsonl
-embedding/resumen_estructuracion.txt
+# fase 4: triage_estructurado.jsonl/.json y resumen_estructuracion.txt
+embedding/salidas/
 
 # embeddings y clustering: 65 MB entre los dos, los genera exploracion.ipynb
 *.parquet
@@ -88,9 +71,9 @@ _[!_]*
 # Lo que SI se versiona, aunque parezca generado
 # =========================================================
 # Los diccionarios se editan a mano y son la fuente de verdad del proyecto.
-!NLP/diccionario_siglas.json
-!NLP/diccionario_coloquial.json
-!embedding/catalogo_sintomas.json
+!NLP/datos/diccionario_siglas.json
+!NLP/datos/diccionario_coloquial.json
+!embedding/datos/catalogo_sintomas.json
 
 # Los calendarios son investigacion propia, no salida de un script.
 !calendarios/desastres_manizales_2020_2026.csv
@@ -99,9 +82,10 @@ _[!_]*
 
 # La medicion de la version anterior del pipeline no se puede regenerar una vez
 # que triage_limpio.csv se sobreescribe: es el unico registro del punto de
-# partida contra el que se comparan las mejoras.
-!NLP/linea_base.json
+# partida contra el que se comparan las mejoras. Por eso vive en datos/ y no en
+# salidas/, aunque lo escriba un script.
+!NLP/datos/linea_base.json
 
 # Las correcciones hechas a mano SI se versionan: son trabajo humano que no se
 # puede regenerar, y son la unica vara para medir el corrector.
-!NLP/referencia_correcciones.json
+!NLP/datos/referencia_correcciones.json

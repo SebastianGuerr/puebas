@@ -1,24 +1,28 @@
 """
-Morfologia clinica: que forma tiene una palabra y que significa esa forma.
+Análisis morfológico de terminología clínica.
 
-POR QUE EXISTE ESTE ARCHIVO
-    El conocimiento morfologico estaba repartido entre reglas.py (prefijos y
-    sufijos medicos, truncamiento, conservacion de raiz) y terminologia.py
-    (antonimos, familias de sufijo, sufijos de farmaco). Las dos mitades se
-    llamaban entre si, asi que para seguir una decision habia que saltar de un
-    archivo a otro, y ninguno de los dos se podia leer entero de una sentada.
+Reúne todo lo que puede decidirse mirando únicamente la FORMA de una palabra:
+sus prefijos y sufijos, si parece un principio activo, y si una corrección
+propuesta conserva o altera su significado. No consulta diccionarios, corpus ni
+modelos de lenguaje, y por eso no importa nada del resto del paquete: es la capa
+más baja, sobre la que se apoyan `nucleo/reglas.py` (qué se protege) y
+`fase2_ortografia/terminologia.py` (qué se veta).
 
-    Aca vive todo lo que se puede decidir mirando UNICAMENTE la forma de la
-    palabra, sin diccionario, sin corpus y sin spaCy. Por eso este modulo no
-    importa nada del proyecto: es la base sobre la que se apoyan reglas.py
-    (que decide que se protege) y terminologia.py (que decide que se veta).
+El criterio de fondo es que en el vocabulario médico la forma codifica el
+significado. 'hipo-' e 'hiper-' se separan por dos letras y son opuestos;
+'-ectomía' e '-itis' distinguen un procedimiento de una inflamación. Un corrector
+que solo mide distancia de edición no puede ver esa diferencia, y estas funciones
+se la aportan.
 
-EL PRINCIPIO
-    La forma de un termino medico no es decorativa: codifica el significado.
-    'hipo' y 'hiper' se diferencian en dos letras y son opuestos. '-ectomia' y
-    '-itis' se diferencian en el sufijo y son un procedimiento y una
-    inflamacion. Un corrector ortografico que solo mide distancia de edicion no
-    puede ver eso; estas funciones se lo dicen.
+Contenido del módulo:
+
+    Utilidades de forma      normalizar, sin_tildes, tiene_numero,
+                             es_restauracion_tilde
+    Morfemas médicos         morfemas, es_termino_medico, prefijos
+    Cambios de significado   invierte_significado, cambia_familia,
+                             cambia_categoria, es_truncamiento,
+                             solo_cambia_terminacion, conserva_morfemas
+    Fármacos                 parece_farmaco
 """
 
 import re
@@ -26,15 +30,15 @@ import unicodedata
 
 from rapidfuzz.distance import DamerauLevenshtein
 
-# Se incluyen + * < > desde que limpieza.py dejo de borrarlos: son contenido
-# clinico dentro de la nota, pero pegados al borde de un token siguen siendo
-# puntuacion, y sin quitarlos 'hvda?' y 'mejoria+' no coincidian con el
-# diccionario ni con el lexico del corpus.
+# Caracteres que se recortan de los bordes de un token antes de compararlo con
+# un diccionario. Incluye + * < > porque la fase de limpieza los conserva como
+# contenido clínico, pero pegados al borde siguen siendo puntuación: sin
+# recortarlos, 'mejoria+' no coincide con ninguna entrada.
 PUNTUACION = ".,;:/%°-\"'()[]{}¿?¡!+*<> "
 
 RE_DIGITO = re.compile(r"\d")
 
-LETRAS_RAIZ = 5   # inicio de palabra que un termino medico debe conservar
+LETRAS_RAIZ = 5   # inicio de palabra que un término médico debe conservar
 
 
 # ==========================================================
@@ -42,33 +46,27 @@ LETRAS_RAIZ = 5   # inicio de palabra que un termino medico debe conservar
 # ==========================================================
 
 def normalizar(token):
-    """Quita la puntuacion de los bordes y pasa a minuscula."""
+    """Recorta la puntuación de los bordes y pasa a minúscula."""
     return str(token).strip(PUNTUACION).lower()
 
 
-# La 'n' con virgulilla se descompone igual que una vocal acentuada: 'ñ' es
-# 'n' + U+0303. Si se pliega como si fuera una tilde, la eñe desaparece y dos
-# palabras distintas se vuelven la misma. Medido en el corpus, eso produjo:
-#
-#     AÑOÑ -> anon == anon <- anón     y se aplico 'anón' (la anona, una fruta)
-#
-# El dano no es que se pierda un acento: es que es_restauracion_tilde() devuelve
-# True y esa rama es la PRIMERA de candidatos.elegir(), la que retorna sin pasar
-# por la longitud minima, el piso de frecuencia ni el guardian clinico. Un par
-# que solo difiere en la eñe entra por la puerta que no tiene guardias.
-#
-# En castellano la eñe es una letra, no una vocal acentuada, y en un corpus
-# clinico la diferencia es contenido: 'ano' y 'año', 'cana' y 'caña', 'pena' y
-# 'peña'. Se protege con un centinela antes de descomponer y se restaura despues.
+# La 'ñ' se descompone en NFD igual que una vocal acentuada ('n' + U+0303), de
+# modo que plegar acentos a ciegas la elimina y fusiona palabras distintas:
+# 'ano' y 'año', 'cana' y 'caña', 'pena' y 'peña'. La consecuencia no es solo
+# perder un carácter: dos palabras que solo difieren en la eñe pasan a ser una
+# restauración de tilde, que es la rama de mayor prioridad al elegir candidato y
+# la única que no atraviesa los filtros posteriores. Se protege sustituyéndola
+# por un centinela antes de descomponer y restaurándola al final.
 _CENTINELA_ENE = "\x01"
 
 
 def sin_tildes(palabra):
     """
-    Pliega los acentos y CONSERVA la eñe.
+    Pliega los acentos conservando la eñe, que en castellano es una letra
+    distinta y no una vocal acentuada.
 
-    'clavícula' -> 'clavicula'      la tilde es ortografia
-    'año'       -> 'año'            la eñe es una letra distinta
+        'clavícula' -> 'clavicula'
+        'año'       -> 'año'
     """
     texto = str(palabra).replace("ñ", _CENTINELA_ENE).replace("Ñ", _CENTINELA_ENE * 2)
     plano = "".join(c for c in unicodedata.normalize("NFD", texto)
@@ -78,35 +76,33 @@ def sin_tildes(palabra):
 
 def tiene_numero(token):
     """
-    Cualquier token con un digito queda intacto: dosis, tensiones, vertebras,
-    edades, fechas. Corregir '500 mcg' o 'l5' cambia un dato clinico, y ningun
-    beneficio ortografico compensa ese riesgo.
+    True si el token contiene algún dígito.
+
+    Todo lo que lleva un número queda fuera del corrector: dosis, tensiones,
+    vértebras, edades y fechas. Alterar '500 mcg' o 'l5' modifica un dato
+    clínico, y ninguna mejora ortográfica compensa ese riesgo.
     """
     return bool(RE_DIGITO.search(str(token)))
 
 
 def es_restauracion_tilde(original, candidato):
-    """True si la unica diferencia es la tilde. Nunca cambia el concepto."""
+    """True si ambas palabras solo se diferencian en la tilde."""
     o, c = str(original).lower(), str(candidato).lower()
     return sin_tildes(o) == sin_tildes(c) and o != c
 
 
 # ==========================================================
-# MORFEMAS MEDICOS
+# MORFEMAS MÉDICOS
 # ==========================================================
 
-# Morfemas de origen griego y latino que marcan terminologia medica. Una palabra
-# que los contiene es un termino, no un descuido de digitacion, y solo puede
-# corregirse hacia otra palabra que comparta los MISMOS morfemas.
+# Morfemas de origen griego y latino que identifican terminología médica. Una
+# palabra que los contiene es un término, no un error de digitación, y solo
+# admite corregirse hacia otra que comparta los mismos morfemas.
 #
-# Sin esta regla el corrector producia, sobre terminos raros del corpus:
-#     monoparesia    -> menopausia        hemoperitoneo -> neumoperitoneo
-#     onicectomia    -> cistectomia       presincope    -> sincope
-#     subsegmentaria -> segmentaria
-# Todos son cambios de significado clinico, no correcciones.
-#
-# La regla no bloquea el typo de un termino medico: 'hipotiroidimo' ->
-# 'hipotiroidismo' comparte el prefijo 'hipo' y el sufijo 'ismo', asi que pasa.
+# La restricción no impide corregir el typo de un término: 'hipotiroidimo' ->
+# 'hipotiroidismo' conserva el prefijo y el sufijo, así que se acepta. Lo que
+# bloquea son los pares que cambian el concepto, como 'monoparesia' ->
+# 'menopausia' o 'presincope' -> 'sincope'.
 PREFIJOS_MEDICOS = (
     "mono", "hemi", "hemo", "hema", "neumo", "pneumo", "onico", "oligo", "poli",
     "hiper", "hipo", "taqui", "bradi", "dis", "sub", "supra", "infra", "peri",
@@ -129,7 +125,10 @@ SUFIJOS_MEDICOS = (
 
 
 def morfemas(palabra):
-    """Morfemas medicos presentes en una palabra. Vacio si no es terminologia."""
+    """
+    Conjunto de morfemas médicos presentes en la palabra, ya sin tildes.
+    Devuelve un conjunto vacío si la palabra no es terminología.
+    """
     palabra = sin_tildes(str(palabra).lower())
     encontrados = set()
     for prefijo in PREFIJOS_MEDICOS:
@@ -142,11 +141,12 @@ def morfemas(palabra):
 
 
 def es_termino_medico(palabra):
+    """True si la palabra contiene al menos un morfema médico."""
     return bool(morfemas(palabra))
 
 
 def prefijos(palabra):
-    """Prefijos medicos con los que arranca la palabra."""
+    """Prefijos médicos con los que arranca la palabra."""
     palabra = sin_tildes(normalizar(palabra))
     return {p for p in PREFIJOS_MEDICOS
             if palabra.startswith(sin_tildes(p)) and len(palabra) > len(p) + 2}
@@ -156,9 +156,9 @@ def prefijos(palabra):
 # CAMBIOS QUE ALTERAN EL SIGNIFICADO
 # ==========================================================
 
-# Intercambiar uno de estos prefijos por su opuesto cuesta una sola edicion y
-# convierte un hallazgo en su contrario. Es el error mas barato de cometer y el
-# mas caro de detectar aguas abajo.
+# Pares de prefijos opuestos. Intercambiar uno por su contrario cuesta una sola
+# edición y convierte un hallazgo en el hallazgo inverso: es el error más barato
+# de cometer y el más difícil de detectar aguas abajo.
 ANTONIMOS = [
     {"hipo", "hiper"}, {"bradi", "taqui"}, {"hemo", "neumo"},
     {"hemo", "hidro"}, {"neumo", "hidro"}, {"sub", "supra"},
@@ -169,8 +169,9 @@ ANTONIMOS = [
     {"bradi", "normo"}, {"taqui", "normo"},
 ]
 
-# Sufijos que designan cosas de distinta naturaleza. Cambiar entre ellos altera
-# el tipo de hallazgo: un procedimiento no es una enfermedad.
+# Sufijos agrupados por el tipo de hallazgo que designan. Pasar de un grupo a
+# otro altera la naturaleza del término: un procedimiento no es una enfermedad,
+# y un déficit no es un dolor.
 FAMILIAS_SUFIJO = {
     "procedimiento": {"ectomia", "otomia", "ostomia", "plastia", "pexia",
                       "rafia", "scopia", "grafia", "grama", "metria"},
@@ -185,6 +186,7 @@ FAMILIAS_SUFIJO = {
 
 
 def familia_sufijo(palabra):
+    """Nombre de la familia de sufijo a la que pertenece la palabra, o None."""
     palabra = sin_tildes(normalizar(palabra))
     for familia, sufijos in FAMILIAS_SUFIJO.items():
         if any(palabra.endswith(s) for s in sufijos):
@@ -193,7 +195,7 @@ def familia_sufijo(palabra):
 
 
 def invierte_significado(original, candidato):
-    """True si el cambio intercambia un prefijo por su opuesto."""
+    """True si la corrección intercambia un prefijo por su opuesto."""
     po, pc = prefijos(original), prefijos(candidato)
     if po == pc:
         return False
@@ -211,19 +213,17 @@ def cambia_familia(original, candidato):
     return fo != fc
 
 
-# Terminaciones que en terminologia medica marcan un adjetivo (una cualidad
-# del paciente) frente a un sustantivo (un diagnostico o un hallazgo).
-# 'taquicardico' describe COMO esta el paciente; 'taquicardia' es la entidad
-# clinica. Cambiar de uno a otro no arregla la escritura, convierte una
-# descripcion en un diagnostico.
+# Terminaciones que en terminología médica marcan un adjetivo (una cualidad del
+# paciente) frente a un sustantivo (un diagnóstico o un hallazgo).
+# 'taquicárdico' describe cómo está el paciente; 'taquicardia' es la entidad
+# clínica. Pasar de uno a otro no arregla la escritura: convierte una
+# descripción en un diagnóstico.
 #
-# POR QUE NO SE USA EL ETIQUETADOR DE spaCy
-#     Se probo. Sobre estos mismos pares, es_core_news_md etiqueta
-#     'taquicardia' como ADJ (es sustantivo), 'cardioacular' como VERB, y
-#     marcaria 'hipotiroidimo' -> 'hipotiroidismo' como cambio de categoria
-#     cuando es una correccion buena. Sobre palabras raras o mal escritas el
-#     etiquetador adivina por la terminacion, que es justo lo que se hace aca
-#     de forma explicita y auditable.
+# Se decide por terminación y no con el etiquetador de spaCy porque sobre
+# palabras raras o mal escritas el etiquetador también adivina por la
+# terminación, pero de forma opaca: en las pruebas marcaba 'taquicardia' como
+# adjetivo y daba por cambio de categoría correcciones válidas. La lista
+# explícita es equivalente en precisión y auditable.
 SUFIJOS_ADJETIVO = (
     "ico", "ica", "icos", "icas", "oso", "osa", "osos", "osas",
     "al", "ales", "ar", "ares", "ivo", "iva", "ivos", "ivas",
@@ -232,6 +232,7 @@ SUFIJOS_ADJETIVO = (
 
 
 def es_adjetivo_por_forma(palabra):
+    """True si la palabra termina en un sufijo característico de adjetivo."""
     palabra = sin_tildes(normalizar(palabra))
     return any(palabra.endswith(s) for s in SUFIJOS_ADJETIVO)
 
@@ -240,10 +241,9 @@ def cambia_categoria(original, candidato):
     """
     True si uno de los dos es adjetivo por su forma y el otro no.
 
-    Solo se aplica cuando alguna de las dos palabras es terminologia medica.
-    Sin ese filtro la regla vetaria correcciones corrientes: un typo como
-    'hospitl' -> 'hospital' pasaria por cambio de categoria solo porque el
-    candidato termina en -al.
+    Solo se evalúa cuando alguna de las dos palabras es terminología médica. Sin
+    ese filtro la regla vetaría correcciones corrientes: 'hospitl' -> 'hospital'
+    se rechazaría solo porque el candidato termina en -al.
     """
     if not (es_termino_medico(original) or es_termino_medico(candidato)):
         return False
@@ -252,16 +252,12 @@ def cambia_categoria(original, candidato):
 
 def es_truncamiento(original, candidato):
     """
-    True si el candidato es el original al que se le quito (o agrego) un trozo
-    al principio o al final.
+    True si una palabra es la otra con un trozo añadido o quitado en un extremo.
 
-    Quitar un prefijo nunca es una correccion ortografica: cambia o invierte el
-    significado. Es la regla que faltaba para:
-        defocalizacion -> focalizacion   (invierte un hallazgo neurologico)
-        presincope     -> sincope
-        subsegmentaria -> segmentaria
-    Un typo de digitacion no produce este patron: 'deirva'->'deriva' o
-    'pacinete'->'paciente' no son truncamientos.
+    Quitar un prefijo no es una corrección ortográfica: altera o invierte el
+    significado ('presincope' -> 'sincope', 'defocalizacion' ->
+    'focalizacion'). Un error de digitación no produce este patrón, de modo que
+    la regla no bloquea correcciones legítimas.
     """
     o, c = sin_tildes(original.lower()), sin_tildes(candidato.lower())
     if o == c or not o or not c:
@@ -274,8 +270,8 @@ def es_truncamiento(original, candidato):
 
 def solo_cambia_terminacion(original, candidato):
     """
-    True si la diferencia esta unicamente en la ultima letra de una palabra
-    larga: es un cambio de genero o numero, no una correccion ortografica.
+    True si la diferencia está únicamente en la última letra de una palabra
+    larga. Es un cambio de género o número, no una corrección:
     'hipoactiva' -> 'hipoactivo' altera la concordancia sin arreglar nada.
     """
     o, c = sin_tildes(original.lower()), sin_tildes(candidato.lower())
@@ -284,19 +280,20 @@ def solo_cambia_terminacion(original, candidato):
 
 def conserva_morfemas(original, candidato):
     """
-    True si el candidato es una correccion admisible del original.
+    True si el candidato es una corrección admisible del original.
 
-    Si el original no es terminologia medica, no hay restriccion. Si lo es, se
-    exigen dos cosas:
+    Cuando el original no es terminología médica no hay restricción. Cuando lo
+    es, se exigen dos condiciones:
 
-      a) que el candidato conserve todos sus morfemas. Se compara por inclusion
-         y no por igualdad, para que un typo al que le falta un sufijo se pueda
-         corregir: hipotiroidimo{hipo} -> hipotiroidismo{hipo, ismo} pasa,
-         mientras presincope{pre, sincope} -> sincope{sincope} no.
+      a) que el candidato conserve todos sus morfemas. La comparación es por
+         inclusión y no por igualdad, para que un typo al que le falta un sufijo
+         pueda corregirse: 'hipotiroidimo' {hipo} -> 'hipotiroidismo'
+         {hipo, ismo} se acepta, mientras 'presincope' {pre, sincope} ->
+         'sincope' {sincope} se rechaza.
 
-      b) que conserve el inicio de la palabra. 'onicectomia' y 'cistectomia'
-         comparten el sufijo -ectomia y son procedimientos distintos; la raiz
-         es lo que los separa.
+      b) que conserve la raíz. 'onicectomia' y 'cistectomia' comparten el sufijo
+         -ectomia y son procedimientos distintos; lo que los separa es el inicio
+         de la palabra.
     """
     propios = morfemas(original)
     if not propios:
@@ -308,42 +305,33 @@ def conserva_morfemas(original, candidato):
 
 def _misma_raiz(original, candidato):
     """
-    Las raices coinciden, admitiendo UNA transposicion.
+    True si las raíces coinciden, admitiendo una transposición de letras.
 
-    La version anterior exigia que los primeros LETRAS_RAIZ caracteres fueran
-    identicos, y con eso rechazaba justo el typo mas comun de la terminologia
-    medica, que es el cambio de dos letras contiguas dentro de la raiz:
-
-        dilispidemia -> dislipidemia     'dilis' != 'disli'   se rechazaba
-
-    Es la misma raiz con dos letras intercambiadas, no otra palabra. Se compara
-    con distancia de edicion y se admite hasta 1, que cubre la transposicion y
-    la letra sobrante sin abrir la puerta a raices distintas: 'onice' y 'ciste'
-    (de onicectomia y cistectomia) siguen a distancia 4.
+    Exigir que los primeros LETRAS_RAIZ caracteres sean idénticos rechazaría el
+    typo más frecuente de la terminología médica, que es el intercambio de dos
+    letras contiguas dentro de la raíz ('dilispidemia' -> 'dislipidemia'). Se
+    admite distancia de edición 1, que cubre la transposición y la letra
+    sobrante sin dar paso a raíces distintas.
     """
     a, b = original[:LETRAS_RAIZ], candidato[:LETRAS_RAIZ]
     if a == b:
         return True
-    # las mismas letras en otro orden: al truncar la raiz, una transposicion se
-    # convierte en una rotacion y la distancia sube de 1 a 2.
-    #     dilispidemia / dislipidemia  ->  'dilis' / 'disli'   distancia 2
-    # Comparar el conjunto de letras la reconoce sin aflojar el criterio: dos
-    # raices realmente distintas no son anagramas ('onice' y 'ciste', de
-    # onicectomia y cistectomia, no comparten ni las letras).
+    # Al truncar la raíz una transposición se convierte en rotación y su
+    # distancia sube a 2, así que se compara además el conjunto de letras. No
+    # afloja el criterio: dos raíces realmente distintas no son anagramas.
     if sorted(a) == sorted(b):
         return True
     return DamerauLevenshtein.distance(a, b) <= 1
 
 
 # ==========================================================
-# FARMACOS
+# FÁRMACOS
 # ==========================================================
 
-# Terminaciones de la nomenclatura internacional de principios activos (DCI).
-# No son una lista de farmacos: son las raices que la OMS asigna por familia, y
-# por eso cubren los que existen y los que salgan manana sin tener que
-# enumerarlos. 'midazolam', 'topiramato', 'olanzapina', 'losartan', 'enalapril'
-# y cualquier otro de su familia quedan protegidos por su forma.
+# Terminaciones de la Denominación Común Internacional de principios activos.
+# No es un listado de fármacos, sino el conjunto de raíces que la OMS asigna por
+# familia, de modo que cubre tanto los medicamentos existentes como los que se
+# incorporen después sin tener que enumerarlos.
 SUFIJOS_FARMACO = (
     "pril", "sartan", "sartán", "olol", "azepam", "zepam", "azolam", "zolam",
     "barbital", "micina", "ciclina", "cilina", "penem", "oxacino",
@@ -366,8 +354,8 @@ LONGITUD_MINIMA_FARMACO = 6
 def parece_farmaco(palabra):
     """
     True si la palabra termina como un principio activo de la nomenclatura
-    internacional. Protege por forma, sin lista: cualquier -pril, -sartan,
-    -azepam, -micina, -oxacino o -prazol que aparezca queda cubierto.
+    internacional. Protege por forma y sin lista de nombres, de modo que
+    cualquier -pril, -sartan, -azepam, -micina o -prazol queda cubierto.
     """
     palabra = sin_tildes(normalizar(palabra))
     if len(palabra) < LONGITUD_MINIMA_FARMACO:

@@ -1,57 +1,44 @@
 """
-Correccion por vocabulario del corpus, con SymSpell.
+Corrección por vocabulario del corpus, con SymSpell.
 
-Cubre el hueco que dejan LanguageTool y spaCy: typos de terminologia medica que
-LanguageTool no sabe corregir y spaCy no reconoce. Medido sobre las notas:
+Cubre el hueco que dejan LanguageTool y spaCy: los errores de digitación sobre
+terminología médica, que LanguageTool no sabe corregir y spaCy no reconoce
+('consutla' por 'consulta', 'cardioacular' por 'cardiovascular').
 
-    cardioacular      -> cardiovascular       urgencuas   -> urgencias
-    consutla          -> consulta             ugencias    -> urgencias
-    deformimdad       -> deformidad           habala      -> habla
-    neuorlogicament   -> neurologicamente     smena       -> suena
-    hemodinamicamente -> hemodinámicamente    ginceologica-> ginecologica
+CÓMO SE CONSTRUYE EL DICCIONARIO
+    A partir del propio corpus, conservando solo las palabras que spaCy
+    reconoce. Así las formas correctas entran con su frecuencia real y los
+    errores quedan fuera. El índice se guarda sin tildes, para que una palabra
+    mal acentuada alcance a su forma correcta; la forma con tilde se recupera al
+    devolver el resultado.
 
-COMO SE CONSTRUYE EL DICCIONARIO
-    Del propio corpus, quedandose solo con las palabras que spaCy reconoce.
-    Asi las formas correctas entran con su frecuencia real y los typos quedan
-    fuera. El indice se guarda sin tildes, para que 'ginceologica' alcance a
-    'ginecológica'; la forma con tilde se recupera al devolver el resultado.
+CUÁNDO SE APLICA UNA SUGERENCIA
+    distancia 0     es la misma palabra sin tildes, de modo que se trata de una
+                    restauración de acento y se aplica siempre.
 
-CUANDO SE APLICA UNA SUGERENCIA
-    distancia 0    misma palabra sin tildes: se aplica siempre, es restauracion
-                   de acento (hemodinamicamente -> hemodinámicamente).
-    original raro  hasta FRECUENCIA_TYPO apariciones. Ya NO se aplica sin mas:
-                   en una nota clinica la rareza no distingue un typo de un
-                   termino especializado, y esa suposicion produjo
-                   'fazecas -> canecas' y 'stemi -> stent'. Se exige distancia
-                   1, o distancia 2 con PREFIJO_COMUN_MINIMO letras iniciales
-                   compartidas. Medido sobre 13 pares conocidos, esa condicion
-                   separa las 10 correcciones buenas de las 3 corrupciones sin
-                   una sola discrepancia.
-    original comun se exige que la sugerencia sea RATIO_MINIMO veces mas
-                   frecuente. Esto es lo que salva los terminos reales:
+    original raro   hasta FRECUENCIA_TYPO apariciones. No basta con que sea
+                    raro: en una nota clínica la rareza es también la firma de
+                    la terminología especializada, y los epónimos, las escalas y
+                    los fármacos poco usados aparecen tan pocas veces como un
+                    error. Se exige distancia 1, o distancia 2 compartiendo al
+                    menos PREFIJO_COMUN_MINIMO letras iniciales.
 
-                     glucometria(218) -> glucosuria(1)     ratio 0.005  rechazado
-                     desaturada(61)   -> saturada(169)     ratio 2.8    rechazado
-                     taquicardica(26) -> taquicardia(149)  ratio 5.7    rechazado
-                     consutla(28)     -> consulta(2489)    ratio 89     aceptado
+    original común  se exige que la sugerencia sea RATIO_MINIMO veces más
+                    frecuente que el original. Es lo que salva los términos
+                    reales de convertirse en su vecino ortográfico: 'desaturada'
+                    y 'saturada' están a distancia 2 y significan lo contrario.
 
-                   'desaturada -> saturada' es el caso que justifica el umbral:
-                   son terminos opuestos y la distancia de edicion es 2.
-
-INSTALACION
-    pip install symspellpy
-
-Si symspellpy no esta instalado, el modulo se desactiva y ortografia.py sigue
-funcionando con sus otras defensas.
+Requiere symspellpy. Si no está instalado, el módulo se desactiva y la fase
+ortográfica sigue funcionando con sus otras defensas.
 """
 
 import re
 from collections import Counter
 
-import linguistica
-import morfologia
-import reglas
-import terminologia
+from NLP.fase2_ortografia import terminologia
+from NLP.nucleo import linguistica
+from NLP.nucleo import morfologia
+from NLP.nucleo import reglas
 
 # ==========================================================
 # CONFIGURACION
@@ -81,24 +68,29 @@ _FORMA = {}                   # sin tildes -> forma real mas frecuente
 RE_PALABRA = re.compile(r"[a-záéíóúüñ]+(?:-[a-záéíóúüñ]+)*")
 
 
-# Una sola definicion para todo el paquete. La de morfologia.py conserva la eñe,
-# que es una letra y no un acento: plegarla hacia 'n' juntaba 'año' con 'ano' en
-# la misma entrada del indice y convertia 'AÑOÑ' en 'anón'.
+# Se reutiliza la definicion de morfologia.py, que conserva la eñe: plegarla
+# hacia 'n' juntaria 'año' y 'ano' en la misma entrada del indice.
 sin_tildes = morfologia.sin_tildes
 
 
 # ==========================================================
-# CONSTRUCCION
+# CONSTRUCCIÓN DEL DICCIONARIO
 # ==========================================================
 
 def disponible():
+    """True si el diccionario está construido y SymSpell disponible."""
     return _DISPONIBLE is True
 
 
 def construir(textos, validar_con_spacy=True):
     """
-    Arma el diccionario a partir del corpus. Llamar una vez, antes de corregir.
-    Devuelve el numero de entradas.
+    Construye el índice a partir del corpus y devuelve el número de entradas.
+    Debe llamarse una sola vez, antes de empezar a corregir.
+
+    Con `validar_con_spacy` activo solo entran las palabras que spaCy reconoce,
+    que es lo que mantiene los errores de digitación fuera del diccionario. De
+    cada forma plegada se recuerda además la variante acentuada más frecuente,
+    que es la que se devuelve al corregir.
     """
     global _SYM, _DISPONIBLE
 
@@ -137,15 +129,16 @@ def construir(textos, validar_con_spacy=True):
 
 
 def frecuencia(palabra):
+    """Apariciones de la palabra en el corpus con el que se construyó el índice."""
     return _CONTEO.get(palabra.lower(), 0)
 
 
 # ==========================================================
-# CORRECCION
+# CORRECCIÓN
 # ==========================================================
 
 def _prefijo_comun(a, b):
-    """Cuantas letras iniciales comparten dos palabras."""
+    """Número de letras iniciales que comparten dos palabras."""
     n = 0
     for x, y in zip(a, b):
         if x != y:
@@ -156,8 +149,11 @@ def _prefijo_comun(a, b):
 
 def sugerir(palabra):
     """
-    Devuelve la correccion para una palabra, o None si no hay evidencia.
-    No decide sobre siglas ni entidades: eso lo filtra ortografia.py antes.
+    Corrección para una palabra suelta, o None si no hay evidencia suficiente.
+
+    No decide sobre siglas, entidades ni tokens protegidos: ese filtro lo aplica
+    antes el orquestador de la fase. Toda salida None por falta de evidencia
+    queda registrada como abstención.
     """
     if not disponible():
         return None
@@ -191,12 +187,8 @@ def sugerir(palabra):
     if forma == palabra:
         return None
 
-    # misma regla morfologica que en candidatos.py: un termino medico solo se
-    # corrige hacia otro que conserve sus morfemas y su raiz. Sin esto SymSpell
-    # producia presincope -> sincope y hemoperitoneo -> neumoperitoneo
-    # mismos filtros de forma que en candidatos.py. Sin ellos SymSpell producia
-    # electrofisiologo -> electrofisiologia y midriaticas -> midriasis, que
-    # cambian la categoria de la palabra en lugar de arreglar la escritura
+    # mismos filtros de forma que en la eleccion de candidatos: sin ellos, este
+    # motor cambia la categoria de la palabra en lugar de arreglar su escritura
     if not reglas.forma_aceptable(palabra, forma):
         return None
     # misma puerta que usa LanguageTool: el guardian clinico decide
@@ -209,31 +201,18 @@ def sugerir(palabra):
 
     freq_original = frecuencia(palabra)
 
-    # Un original que casi no aparece en el corpus SUELE ser un error de
-    # digitacion, pero no siempre: en una nota clinica la rareza es tambien la
-    # firma de la terminologia especializada. Los epónimos, las escalas y los
-    # farmacos poco usados aparecen una o dos veces en 30.000 notas, igual que
-    # un typo. Aplicar la correccion sin mas condiciones es lo que produjo:
-    #
-    #     fazecas(1) -> canecas(1)     la escala de Fazekas
-    #     stemi(1)   -> stent(25)      el infarto con elevacion del ST
-    #     fomag(3)   -> toma(349)      el fondo del magisterio
-    #
-    # Lo que separa a esos tres de una correccion buena es la distancia,
-    # medido sobre 13 pares conocidos: las 9 correcciones buenas estan a
-    # distancia 1, salvo 'cardioacular' -> 'cardiovascular', que esta a 2 pero
-    # comparte 6 letras iniciales. Las 3 corrupciones estan a distancia 2 y
-    # comparten como mucho 3.
+    # Un original que casi no aparece en el corpus suele ser un error de
+    # digitacion, pero no siempre: la rareza es tambien la firma de la
+    # terminologia especializada, y un eponimo o una escala aparecen tan pocas
+    # veces como un typo. Lo que separa unos de otros es la distancia: las
+    # correcciones validas estan a distancia 1, o a 2 conservando el arranque de
+    # la palabra; las corrupciones estan a 2 y apenas comparten las primeras
+    # letras.
     if freq_original <= FRECUENCIA_TYPO:
-        # Empate a la distancia minima: hay dos o mas palabras igual de cerca y
-        # no hay forma de saber cual quiso escribir el personal. El desempate
-        # por frecuencia elige la mas comun, que no es la correcta:
-        #
-        #   consltante(1)  ->  constante(2.847)     distancia 1   ELEGIDA
-        #                  ->  consultante(31)      distancia 1
-        #
-        # 'consultante' es la buena y pierde por ser mas rara. Como el original
-        # tambien es raro, no hay evidencia de ningun lado: se abstiene.
+        # Empate a la distancia minima: dos o mas palabras estan igual de cerca
+        # y el desempate por frecuencia elegiria la mas comun, que no tiene por
+        # que ser la correcta. Como el original tambien es raro, no hay
+        # evidencia por ningun lado y se prefiere no tocar la palabra.
         if len(empatadas) > 1:
             terminologia.anotar_abstencion(
                 palabra,
@@ -248,7 +227,8 @@ def sugerir(palabra):
             palabra, f"termino raro a distancia {mejor.distance} de '{forma}'")
         return None
 
-    # un original repetido es terminologia: la sugerencia tiene que aplastarlo
+    # un original repetido se comporta como terminologia: para sustituirlo, la
+    # sugerencia tiene que superarlo por un margen amplio
     if mejor.count >= freq_original * RATIO_MINIMO:
         return forma
 
@@ -257,16 +237,14 @@ def sugerir(palabra):
 
 def vecinos(palabra, distancia=2, maximo=5):
     """
-    Palabras del corpus a distancia <= n, ordenadas de mas a menos frecuente.
+    Palabras del corpus dentro de la distancia dada, ordenadas de más a menos
+    cercana y, a igual distancia, de más a menos frecuente.
 
-    Se diferencia de sugerir() en que NO decide: devuelve la lista y deja que
-    decida quien llame. La usa sugerencias.py para alimentar a la capa de
-    contexto, donde el desempate lo hace la frase y no la frecuencia.
-
-    Y a diferencia de sugerir(), aqui NO se filtra por frecuencia: la palabra
-    correcta puede ser tan rara como el error. 'cortada' aparece una sola vez
-    en 30.000 notas y es la correccion buena de 'cordada'; exigirle frecuencia
-    la dejaba fuera del alcance del corrector para siempre.
+    A diferencia de sugerir(), no decide ni filtra por frecuencia: devuelve la
+    lista para que otro la use. La consume la generación de candidatos de la capa
+    de contexto, donde el desempate lo hace la frase. Filtrar por frecuencia aquí
+    dejaría fuera correcciones válidas, porque la palabra correcta puede ser tan
+    rara como el error.
     """
     if not disponible() or len(palabra) < LONGITUD_MINIMA:
         return []
@@ -282,10 +260,10 @@ def vecinos(palabra, distancia=2, maximo=5):
     salida = []
     for s in sorted(sugerencias, key=lambda s: (s.distance, -s.count)):
         forma = _FORMA.get(s.term, s.term)
-        # NO se descarta por s.term == plano. El indice esta plegado, asi que
-        # 'psicologa' y 'psicóloga' comparten clave; saltarla dejaba fuera
-        # justamente la restauracion de tilde, que es la correccion mas segura
-        # que existe. Medido: por eso 'Psicologa' termino en 'psicologia'.
+        # no se descarta la coincidencia exacta con la clave: el indice esta
+        # plegado, asi que una palabra y su forma acentuada la comparten, y
+        # saltarla dejaria fuera la restauracion de tilde, que es la correccion
+        # mas segura de todas
         if forma != palabra and forma not in salida:
             salida.append(forma)
         if len(salida) >= maximo:
@@ -295,15 +273,18 @@ def vecinos(palabra, distancia=2, maximo=5):
 
 def corregir_texto(texto, es_corregible, senalados=None):
     """
-    Aplica sugerencias palabra por palabra.
+    Aplica las sugerencias palabra por palabra sobre el texto.
 
-    es_corregible(palabra) -> bool lo aporta ortografia.py, que sabe de siglas,
-    entidades y patrones protegidos.
+        es_corregible  función(palabra) -> bool que aporta el orquestador, que
+                       es quien conoce las siglas, entidades y patrones
+                       protegidos de esa nota.
+        senalados      si se pasa, conjunto de tokens que LanguageTool marcó
+                       como error; solo se actúa sobre ellos. Evita reprocesar
+                       una palabra que LanguageTool ya corrigió bien, que era
+                       una fuente de correcciones encadenadas erróneas.
 
-    senalados: conjunto de tokens que LanguageTool marco como error. Si se pasa,
-    SymSpell solo actua sobre ellos. Es lo que impide que reprocese una palabra
-    que LanguageTool ya corrigio bien: 'ofidico' -> 'ofídico' (LanguageTool)
-    terminaba en 'físico' porque SymSpell la volvia a tocar despues.
+    Las palabras con guion se dejan intactas: entran al índice completas y
+    partirlas produce fragmentos que no son la palabra.
     """
     if not disponible() or not texto:
         return texto
@@ -322,7 +303,11 @@ def corregir_texto(texto, es_corregible, senalados=None):
 
 
 def diagnosticar(palabra):
-    """Que ve SymSpell para una palabra. Para revisar casos puntuales."""
+    """
+    Qué ve SymSpell para una palabra: su frecuencia, las sugerencias más
+    cercanas con su distancia y la decisión final. Herramienta de inspección
+    manual.
+    """
     if not disponible():
         return {"disponible": False}
 

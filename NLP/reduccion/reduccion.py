@@ -1,110 +1,162 @@
 """
-Recorte de la nota: dejar el motivo de consulta y tirar todo lo demas.
+Recorte de la nota: conservar el motivo de consulta y descartar lo demás.
 
-QUE PROBLEMA RESUELVE, CON EL NUMERO QUE LO DEMUESTRA
-    texto_embedding.py construia una frase canonica desde la estructura
-    extraida: 'categoria respiratorio. sintoma epistaxis.'. Medido sobre las
-    30.000 notas del corpus, eso produjo
+QUÉ PROBLEMA RESUELVE
+    El texto que se le entrega al modelo de embeddings se construía a partir de
+    la estructura extraída, con frases del tipo 'categoria respiratorio. sintoma
+    cefalea.'. Eso tenía dos consecuencias graves:
 
-        embedding_texto distintos : 15.829 de 30.000
-        notas con texto duplicado : 15.582  (51,9%)
-        palabras por texto        : mediana 5, media 7,0
+    Muchas notas distintas producían un texto idéntico, y un texto idéntico da
+    un vector idéntico. Miles de registros se convertían así en un único punto,
+    lo que degrada cualquier agrupamiento posterior.
 
-        999 notas dicen exactamente 'categoria gastrointestinal. sintoma dolor abdominal.'
-        927 notas dicen exactamente 'categoria neurologico. sintoma cefalea.'
-      1.096 notas dicen exactamente 'sin informacion clinica.'
+    Y, sobre todo, canonizar contra un catálogo cerrado hace que el
+    agrupamiento solo pueda redescubrir los conceptos ya declarados. La fase
+    siguiente existe para encontrar los patrones que nadie declaró, y se le
+    estaba entregando exactamente lo declarado.
 
-    Texto identico -> vector identico -> distancia coseno 0. Para HDBSCAN esas
-    999 notas son un unico punto de masa, y de ahi salen el cluster de 676
-    registros y el 20,4% de ruido.
+LA INVERSIÓN
+    Antes la estructura era el texto y la nota real quedaba como respaldo. Ahora
+    la nota real es el texto y la estructura son campos aparte.
 
-    Y hay un problema peor que la perdida de contexto: canonizar contra un
-    catalogo de 82 conceptos hace que el clustering solo pueda redescubrir esos
-    82 conceptos. La fase 5 existe para encontrar los patrones que NO se
-    declararon, y se le estaba entregando exactamente lo que si se declaro.
+    Son dos cosas distintas que estaban mezcladas en un solo campo. La
+    estructura sirve para filtrar, contar y cruzar con otras fuentes, y sigue en
+    el archivo de salida. El texto sirve para que el modelo mida parecido
+    semántico, y para eso necesita lenguaje, no etiquetas.
 
-LA INVERSION
-    Antes:   la estructura ES el texto, y la nota real es el respaldo.
-    Ahora:   la nota real es el texto, y la estructura son campos aparte.
+QUÉ SE QUITA
+    Lo que sobra en una nota de triage no es variado: son unos pocos bloques
+    estereotipados que se repiten casi iguales en miles de notas.
 
-    Son dos cosas distintas y estaban mezcladas en un solo campo. La estructura
-    (categoria, sintomas, negados, valores) sirve para filtrar, contar y cruzar
-    con el calendario; sigue en el JSON, intacta. El texto sirve para que
-    bge-m3 mida parecido semantico, y para eso necesita lenguaje, no etiquetas.
+        bloque institucional  la política de la aseguradora, los niveles de
+                              atención, las disculpas. No hablan del paciente y
+                              se quitan siempre, en las dos pasadas.
+        trámite               cómo llegó el paciente al servicio. Es idéntico en
+                              notas de cuadros opuestos, así que agrupa por
+                              recorrido administrativo y no por clínica.
+        verbo de reporte      introduce el síntoma sin aportar nada.
+        encabezados           etiquetas del formulario.
+        preámbulo temporal    el tiempo de evolución ya viaja como dato aparte.
+        ficha demográfica     la edad ya viaja como dato aparte.
 
-QUE SE QUITA, Y POR QUE ESO SI SE PUEDE ENUMERAR
-    Lo que sobra en una nota de triage no es variado: es un puñado de bloques
-    estereotipados que se repiten en miles de notas casi igual.
+    Todo lo demás se conserva TAL CUAL. Esa es la diferencia con el enfoque
+    anterior: no se reescribe la nota, se le quitan los bloques que sobran, y lo
+    que queda son las palabras que escribió quien atendió al paciente.
 
-      bloque institucional  la politica de la EPS, los niveles de atencion, las
-                            disculpas. En la nota 803472 son 75% del texto y no
-                            hablan del paciente.
-      tramite               'ingresa paciente', 'se recibe', 'es remitido de',
-                            'consulta por'. Describen el recorrido por el
-                            sistema, y son identicas en notas de categorias
-                            opuestas: es lo que forma clusters de puro tramite.
-      verbo de reporte      'refiriendo que', 'quien manifiesta que'. Introducen
-                            el sintoma sin aportar nada.
-      encabezados           'mc:', 'ap (antecedentes personales):'. Etiquetas
-                            del formulario.
-      preambulo temporal    'desde hace 3 dias que'. El tiempo de evolucion ya
-                            viaja como dato estructurado.
-
-    Todo lo demas se conserva TAL CUAL. Esa es la diferencia con la version
-    anterior: no se reescribe la nota, se le quitan los bloques que sobran y lo
-    que queda es la frase que escribio quien atendio al paciente.
+    Además de esa lista, una oración larga sin ninguna terminología clínica se
+    descarta aunque nadie la haya enumerado. Es la red de seguridad para el
+    texto administrativo que todavía no se conoce.
 
 LO QUE NO SE TOCA
-    La negacion se queda dentro del texto. 'ahora sin epistaxis' tiene que
-    llegarle al modelo: bge-m3 la entiende, y quitarla convertiria un cuadro
-    resuelto en uno activo. La negacion viaja dos veces a proposito, como campo
-    estructurado y dentro de la frase, porque sirven para cosas distintas.
+    La negación se queda dentro del texto. Un cuadro descrito como resuelto
+    tiene que llegarle así al modelo, y quitar la negación lo convertiría en uno
+    activo. La negación viaja dos veces a propósito, como campo estructurado y
+    dentro de la frase, porque cada copia sirve para algo distinto.
+
+    Tampoco se quita la anotación entre paréntesis que añade la fase 3: para el
+    modelo no es una redundancia, sino la única pista de qué significa una sigla.
 """
 
 import json
 import re
 from pathlib import Path
 
+from NLP import rutas
+
 RE_ESPACIOS = re.compile(r"\s+")
 
-# El lexico clinico que construye NLP/lexico.py: 32.310 formas del CIE-10-ES,
-# el diccionario del proyecto y el catalogo de sintomas. Se usa para medir de
-# que habla cada oracion, no para corregir nada.
-RUTA_LEXICO = Path(__file__).resolve().parent.parent / "NLP" / "lexico_clinico.json"
+# El lexico clinico que construye NLP/recursos/lexico.py. Aqui se usa solo para
+# medir de que habla cada oracion, nunca para corregir nada.
+RUTA_LEXICO = rutas.LEXICO_CLINICO
 
 _LEXICO = None
 
-# Solo cuentan las fuentes CURADAS del lexico. El vocabulario del modelo
-# biomedico queda fuera a proposito: se entreno sobre historias clinicas
-# escritas en espanol, asi que contiene el espanol corriente entero y con el
-# la densidad da 1.00 hasta para 'ofrecemos disculpas por los inconvenientes'.
+# Solo cuentan las fuentes curadas del lexico. El vocabulario del modelo
+# biomedico queda fuera a proposito: contiene el espanol corriente entero, y con
+# el la densidad clinica sale maxima incluso para un aviso administrativo.
 FUENTES_CURADAS = ("diccionario", "catalogo", "externo")
 
-# Umbral conservador, y lo es por una razon medida. Sobre frases de prueba:
+# Umbral deliberadamente conservador. Al medir la densidad clinica de frases
+# administrativas y de frases de paciente, las dos poblaciones se solapan: el
+# CIE-10 contiene mucho espanol corriente, asi que un bloque burocratico puede
+# puntuar alto y no hay un corte que las separe limpiamente.
 #
-#     0.33  'ofrecemos disculpas por los inconvenientes...'   institucional
-#     0.38  'los demas usuarios deberan ser orientados...'    institucional
-#     0.50  'me siento muy mal'                               paciente
-#     0.62  'unicamente seran priorizados los pacientes...'   institucional
-#     0.71  'le han dado varias epistaxis de dificil...'      clinico
-#     0.86  'dolor en ambos costados que se irradia...'       clinico
-#
-# Las dos poblaciones SE SOLAPAN: el CIE-10 contiene mucho espanol corriente
-# ('usuarios', 'hacia', 'riesgo', 'condicion'), asi que un bloque burocratico
-# puede puntuar 0.62. No hay un corte que separe las dos limpiamente.
-#
-# Por eso la densidad NO es el criterio principal: es una red de seguridad para
-# los bloques que nadie enumero, con el umbral puesto por debajo de la frase
-# clinica mas pobre que se midio (0.50). El caso de 0.62 lo atrapan igual los
-# marcadores. Preferimos dejar pasar texto administrativo antes que borrar una
-# frase del paciente: es la misma asimetria de coste de todo el proyecto.
+# Por eso la densidad no es el criterio principal, sino una red de seguridad
+# para los bloques que nadie enumero, con el umbral por debajo de la frase
+# clinica mas pobre observada. Se prefiere dejar pasar texto administrativo
+# antes que borrar una frase del paciente: es la asimetria de coste de todo el
+# proyecto.
 PALABRAS_ORACION_LARGA = 8
 DENSIDAD_MINIMA = 0.40
 
 
+# ==========================================================
+# LUGARES
+# ==========================================================
+#
+# El municipio del que viene el paciente no es su motivo de consulta, y para el
+# agrupamiento es peor que neutro: hace parecidas dos notas que solo comparten
+# el pueblo de origen, y separa dos que describen el mismo cuadro desde sitios
+# distintos. Es exactamente el mismo problema que la ficha demografica.
+#
+# La lista no se escribe aqui: es el grupo 'geografia' de
+# datos/diccionario_siglas.json, que ya existia para que el corrector NO
+# corrija un toponimo. Se reutiliza en vez de duplicarla, porque dos listas de
+# municipios acaban divergiendo, y porque asi ampliar una sola entrada arregla
+# las dos cosas a la vez.
+#
+# LO QUE COSTO NO TENERLA COMPLETA
+#     'la dorada' faltaba en ese grupo, y sin la declaracion el corrector la
+#     tomo por un error de escritura:
+#
+#         'hospitalizacion reciente en la dorada'  ->  '... en la morada'
+#
+#     Un municipio convertido en otra palabra es un dato inventado, y ademas
+#     silencioso: no aparece en ninguna alarma porque el corrector creyo estar
+#     arreglando un typo.
+
+_LUGARES = None
+RE_LUGAR = None
+
+
+def cargar_lugares(ruta=None):
+    """
+    Construye el patron de toponimos desde el grupo 'geografia' del diccionario
+    de siglas. Devuelve cuantos se cargaron; 0 si el archivo no esta.
+
+    Se quita tambien el articulo y la preposicion que los introducen ('de la
+    dorada', 'en chinchina'), porque dejarlos sueltos parte la frase.
+    """
+    global _LUGARES, RE_LUGAR
+    if _LUGARES is not None:
+        return len(_LUGARES)
+
+    ruta = Path(ruta or rutas.DICCIONARIO_SIGLAS)
+    if not ruta.exists():
+        _LUGARES, RE_LUGAR = set(), None
+        return 0
+
+    datos = json.loads(ruta.read_text(encoding="utf-8"))
+    _LUGARES = set(datos.get("geografia", {}))
+    if not _LUGARES:
+        RE_LUGAR = None
+        return 0
+
+    # de mas largo a mas corto para que gane 'la dorada' sobre 'dorada'
+    formas = "|".join(re.escape(x) for x in sorted(_LUGARES, key=len, reverse=True))
+    RE_LUGAR = re.compile(
+        r"(?:,\s*)?\b(?:de|desde|en|a|hacia|procedente\s+de|remitid[oa]\s+de)?"
+        r"\s*(?:el|la|los|las)?\s*\b(?:%s)\b" % formas,
+        re.IGNORECASE)
+    return len(_LUGARES)
+
+
 def cargar_lexico(ruta=RUTA_LEXICO):
-    """Lee el lexico clinico. Sin el, la densidad no se aplica y solo actuan
-    los marcadores enumerados, que es como estaba antes."""
+    """
+    Carga las formas curadas del léxico clínico y devuelve cuántas son. Si el
+    archivo no existe devuelve 0, y entonces la densidad clínica queda
+    desactivada y solo actúan los marcadores enumerados.
+    """
     global _LEXICO
     ruta = Path(ruta)
     if not ruta.exists():
@@ -119,8 +171,8 @@ def cargar_lexico(ruta=RUTA_LEXICO):
 # LO QUE SE QUITA
 # ==========================================================
 
-# Frases del bloque institucional. Basta una para descartar la oracion entera:
-# el bloque nunca trae contenido clinico mezclado.
+# Frases del bloque institucional. Basta con encontrar una para descartar la
+# oracion entera, porque ese bloque nunca trae contenido clinico mezclado.
 MARCADORES_INSTITUCIONALES = (
     "entidad promotora", "red de atencion", "nivel de atencion", "afiliados",
     "priorizados", "disculpas", "molestias ocasionadas", "obligacion de realizar",
@@ -151,8 +203,8 @@ RE_TRAMITE = re.compile(
     r")\b",
     re.IGNORECASE)
 
-# Verbos de reporte: introducen el sintoma y no aportan nada. Se quitan junto
-# con el 'que' que los sigue, porque solos dejan la frase colgando.
+# Verbos de reporte: introducen el sintoma sin aportar nada. Se quitan junto
+# con el 'que' que los sigue, porque por si solos dejan la frase colgando.
 RE_REPORTE = re.compile(
     r"\b(?:refiriendo|manifestando|indicando|comentando|informando)\s+que\s+"
     r"(?:esta|estaba|se\s+encuentra)?\s*|"
@@ -162,37 +214,200 @@ RE_REPORTE = re.compile(
 # Encabezados del formulario: 'mc:', 'ap (antecedentes personales):'
 RE_ENCABEZADO = re.compile(r"\b[a-z]{2,4}\s*(?:\([^)]{3,60}\))?\s*:", re.IGNORECASE)
 
-# Expansion entre parentesis que agrego la fase 3. En el texto para el modelo
-# solo duplica lo que la sigla ya dice.
+# Anotacion entre parentesis que agrego la fase 3. NO se quita del texto, y es
+# deliberado: para quien lee la nota la anotacion duplica lo que la sigla ya
+# dice, pero el modelo de embeddings no sabe que hay detras de una sigla, asi
+# que quitarla tira el trabajo de la fase anterior y deja notas sin un solo
+# termino clinico reconocible.
+#
+# El unico parentesis que de verdad sobra es el del encabezado
+# ('mc (motivo de consulta):'), y ese lo consume entero RE_ENCABEZADO, que
+# incluye el parentesis opcional antes de los dos puntos.
+#
+# El patron se conserva por si hace falta el texto sin anotaciones.
 RE_PARENTESIS = re.compile(r"\([^)]{5,80}\)")
 
+MESES = (r"enero|febrero|marzo|abril|mayo|junio|julio|agosto|"
+         r"septiembre|setiembre|octubre|noviembre|diciembre")
+
 RE_TEMPORAL = re.compile(
-    r"\b(?:desde\s+hace\s+\d{1,3}\s*(?:dias?|horas?|semanas?|meses?)|"
-    r"hace\s+\d{1,3}\s*(?:dias?|horas?|semanas?|meses?)(?:\s+que)?|"
-    r"desde\s+(?:el|la)\s+(?:lunes|martes|miercoles|jueves|viernes|sabado|"
-    r"domingo|manana|ayer|anoche|hoy)\w*|"
-    r"desde\s+hace\s+(?:un|una|unos|unas)\s+\w+)\b",
+    r"(?:,\s*)?\b(?:desde\s+hace\s+\d{1,3}\s*(?:dias?|d[ií]as?|horas?|semanas?|meses?)|"
+    r"hace\s+\d{1,3}\s*(?:dias?|d[ií]as?|horas?|semanas?|meses?)(?:\s+que)?|"
+    r"desde\s+(?:el|la)\s+(?:lunes|martes|miercoles|mi[eé]rcoles|jueves|viernes|"
+    r"sabado|s[aá]bado|domingo|manana|ma[nñ]ana|ayer|anoche|hoy)\w*|"
+    r"desde\s+hace\s+(?:un|una|unos|unas)\s+\w+|"
+    # Fecha de inicio por mes o por epoca del mes. Salio de la nota 815839, que
+    # empieza 'desde principios de marzo' y no la cogia ninguna de las de
+    # arriba, todas construidas sobre 'hace N dias'. Cuando ocurrio la cosa no
+    # es el motivo de consulta, y ademas separa dos notas identicas escritas en
+    # meses distintos, que es justo lo contrario de lo que hace falta.
+    r"(?:desde\s+)?(?:a\s+)?(?:principios|mediados|finales|comienzos|fines)\s+"
+    r"(?:de\s+|del\s+)?(?:%s|mes|semana|a[nñ]o)\w*|"
+    r"desde\s+(?:el\s+)?(?:mes\s+de\s+)?(?:%s)\b|"
+    r"en\s+(?:el\s+mes\s+de\s+)?(?:%s)\s+(?:pasado|de\s+\d{4})|"
+    r"desde\s+hace\s+(?:varios|varias|muchos|muchas)\s+\w+)\b"
+    % (MESES, MESES, MESES),
     re.IGNORECASE)
 
-# Ficha demografica: 'paciente masculino de 67 anos de edad'. La edad ya viaja
-# como valores['edad'], y en el texto solo hace parecidas dos notas que no
-# tienen nada que ver entre si. Se quita entera, con el 'de' que la introduce.
+# Ficha demografica. La edad ya viaja como dato estructurado, y dentro del
+# texto solo consigue que se parezcan dos notas que no tienen nada que ver.
 RE_DEMOGRAFICO = re.compile(
     r"\b(?:de\s+)?\d{1,3}\s*(?:anos|años)(?:\s+de\s+edad)?\b", re.IGNORECASE)
 
+# Quien acompana al paciente y como llego al servicio.
+#
+# Salieron de revisar tres notas a mano y luego contarlas en el corpus:
+#
+#     1.301 notas (4,6%)  'en compania de hija', 'con acompanante', 'traido por su esposa'
+#     1.107 notas (3,9%)  'en silla de ruedas', 'caminando', 'en camilla'
+#
+# En la nota 803472 eran lo unico que sobrevivia al recorte: el texto de
+# embedding empezaba con 'silla de ruedas con acompanante' antes de llegar a las
+# epistaxis, que es de lo que habla la nota. Ninguna de las dos cosas dice por
+# que consulto el paciente, y las dos son identicas en notas de cuadros
+# opuestos, que es la definicion de ruido para el agrupamiento.
+#
+# 'en silla de ruedas' se quita aunque describa al paciente: es una condicion
+# previa, no el motivo de hoy, y el triage ya la registra aparte.
+RE_ACOMPANANTE = re.compile(
+    r"(?:,\s*)?\b(?:"
+    r"en\s+compa[nñ][ií]a\s+(?:de|del|de\s+la|de\s+su)?\s*\w*|"
+    r"con\s+(?:su\s+)?acompa[nñ]ante|acompa[nñ]ad[oa]\s+(?:de|por)\s+\w+|"
+    r"tra[ií]d[oa]\s+por\s+(?:su|la|el)\s+\w+|"
+    r"por\s+(?:su\s+)?cuidador[a]?(?:\s+de\s+hogar)?|"
+    r"cuidador[a]?\s+de\s+hogar"
+    r")\b",
+    re.IGNORECASE)
+
+RE_LLEGADA = re.compile(
+    r"(?:,\s*)?\b(?:"
+    r"(?:llega|ingresa|viene|acude)?\s*en\s+silla\s+de\s+ruedas|"
+    r"en\s+camilla(?:\s+de\s+ambulancia)?|"
+    r"por\s+sus\s+propios\s+medios|"
+    r"(?:llega|ingresa|viene|acude)\s+caminando|^caminando"
+    r")\b",
+    re.IGNORECASE)
+
 RE_ORACION = re.compile(r"(?<=[.;])\s+")
 
-# Conectores y preposiciones que quedan sueltos al arranque cuando se quita el
-# tramo que los precedia: 'al, cuadro clinico' es lo que sobra de 'paciente que
-# ingresa al servicio de urgencias, cuadro clinico'.
+# el mismo corte que usa reduccion/frases.py, para que los tramos coincidan
+RE_TRAMO_CLASIF = re.compile(r"\s*[.;,]\s*")
+
+# ==========================================================
+# LOS TRES BLOQUES DE LA NOTA LARGA
+# ==========================================================
+#
+# El 15,9% del corpus pasa de 30 palabras, y ahi es donde vive el ruido que
+# sobrevivia a todo lo anterior. Medido sobre esas notas, lo que sobra son tres
+# bloques, y ninguno responde a por que vino el paciente:
+#
+#   examen fisico   'paciente en el momento clinicamente estable, consciente
+#                    orientado en sus tres esferas mentales, sin signos de
+#                    deshidratacion, normotenso, normocardia, normal saturado'
+#                   369 notas repiten la primera frase palabra por palabra.
+#   conducta        'se realiza rastreo ecografico', 'se dan recomendaciones y
+#                    signos de alarma', 'se decide derivar paciente'. Es lo que
+#                   hizo el hospital, no lo que traia el paciente.
+#   antecedentes    'paciente con antecedentes de artritis reumatoide, sindrome
+#                    de sjogren, trombocitopenia autoinmune, osteoporosis...'
+#                   En la nota 787265 son 60 de sus 153 palabras.
+#
+# POR QUE SE QUITAN POR FRASE Y NO POR ORACION
+#     _quitar_institucional() descarta oraciones enteras, y para eso separa por
+#     punto y por punto y coma. La nota larga de triage no usa ninguno de los
+#     dos: es una sola frase corrida separada por comas. Ahi el filtro por
+#     oracion es todo o nada -- o deja el bloque entero o se lleva la nota
+#     entera -- y por eso estos tres se quitan con patrones de frase, que
+#     recortan justo el tramo que sobra y dejan intacto lo que lo rodea.
+
+# Hallazgos del examen fisico. Describen como esta el paciente ahora, que es
+# justo lo que el triage ya registra como variable estructurada.
+RE_EXAMEN = re.compile(
+    r"(?:,\s*)?\b(?:"
+    r"(?:paciente\s+)?(?:en\s+el\s+momento\s+)?cl[ií]nicamente?\s+(?:y\s+)?"
+    r"(?:hemodinamicamente\s+)?estable|"
+    r"hemodinamicamente\s+estable|"
+    r"conscientes?\s+(?:y\s+)?orientad[oa]|"
+    r"orientad[oa]\s+en\s+(?:sus\s+)?tres\s+esferas(?:\s+mentales)?|"
+    r"en\s+sus\s+tres\s+esferas(?:\s+mentales)?|"
+    r"sin\s+signos\s+de\s+(?:deshidrataci[oó]n|dificultad\s+respiratoria|"
+    r"focalizaci[oó]n(?:\s+neurol[oó]gica)?|irritaci[oó]n\s+men[ií]ngea)|"
+    r"no\s+signos\s+de\s+focalizaci[oó]n(?:\s+neurol[oó]gica)?|"
+    r"no\s+d[eé]ficit\s+neurol[oó]gic[oa]|no\s+p[eé]rdida\s+de\s+fuerza|"
+    r"fuerza\s+conservada|movilidad\s+completa\s+de\s+4\s+extremidades|"
+    r"sin\s+desviaci[oó]n\s+de\s+la\s+comisura\s+labial|"
+    r"normotens[oa]|normocardi[oa|co|ca]*|normal\s+saturad[oa]|"
+    r"llenado\s+capilar\s+menor\s+de\s+\d+\s+segundos|"
+    r"responde\s+[oó]rdenes|responde\s+ordenes|las\s+sigue|"
+    r"pupilas?\s+normoreactivas?(?:\s+a\s+la\s+luz)?|"
+    r"afebril\s+al\s+ingreso|"
+    r"a\s+la\s+valoraci[oó]n(?:\s+paciente)?|al\s+momento\s+de\s+la\s+valoraci[oó]n|"
+    r"al\s+examen\s+f[ií]sico|se\s+observa\s+paciente|observo\s+paciente"
+    r")\b",
+    re.IGNORECASE)
+
+# Conducta: lo que hizo o decidio el servicio.
+RE_CONDUCTA = re.compile(
+    r"(?:,\s*)?\b(?:"
+    r"se\s+(?:realiza|realizan|ordena|ordenan|solicita|solicitan|indica|"
+    r"indican|administra|administran|canaliza|toma|tomaron|deja|dejan|"
+    r"decide|decidio|decidió|informa|explica|educa)\b[^,.;]{0,60}|"
+    r"se\s+dan\s+recomendaciones(?:\s+y\s+signos\s+de\s+alarma)?"
+    r"(?:\s+de\s+reconsulta)?|"
+    r"signos\s+de\s+alarma\s+de\s+reconsulta|"
+    r"manejo\s+(?:con|ambulatorio|intrahospitalario)\b[^,.;]{0,40}|"
+    r"pendiente\s+(?:valoraci[oó]n|resultados?)\b[^,.;]{0,40}|"
+    r"queda\s+en\s+observaci[oó]n|pasa\s+a\s+observaci[oó]n|"
+    r"traslado\s+por\s+sus\s+propios\s+medios[^,.;]{0,60}"
+    r")",
+    re.IGNORECASE)
+
+# Antecedentes en prosa, sin rotulo. El apartado con rotulo lo resuelve
+# NLP/depuracion, pero en la nota larga los antecedentes van introducidos por
+# una frase y se extienden hasta el conector que abre el cuadro actual.
 #
 # DOS DETALLES QUE COSTARON UNA MEDICION
-#   El patron se construye ordenando por longitud DESCENDENTE. La alternancia
-#   de una expresion regular toma la primera que encaje, asi que con 'a' antes
-#   que 'al' sobre 'al, cuadro' se comia solo la 'a' y dejaba 'l, cuadro'.
+#   No se exige el 'con' delante. La nota 755179 dice 'paciente con
+#   pluripatologia y polifarmacia, anciano fragil, antecedentes de SAHOS...',
+#   y al quitar antes 'pluripatologia' el 'con' deja de estar pegado a
+#   'antecedentes'. Por eso este patron corre ANTES que RE_PLURIPATOLOGIA y no
+#   depende de la preposicion.
 #
-#   Y lleva limite de palabra al final. Sin el, 'de' recortaba dentro de
-#   'derivada por la eps' y producia 'rivada por la eps'.
+#   Y el tramo esta acotado a 400 caracteres. Con '.*?' sin limite, si el
+#   conector que abre el cuadro actual no aparecia, el patron no encontraba
+#   donde terminar y se quedaba corto: recortaba 'con ' y dejaba los 60
+#   terminos de la historia pasada intactos.
+RE_ANTECEDENTES = re.compile(
+    r"\b(?:paciente\s+)?(?:con\s+)?antecedentes?\s+(?:de\s+|personales\s+)?"
+    r"[^.;]{0,400}?(?=\bcon\s+cuadro\b|\bcuadro\s+cl[ií]nico\b|"
+    r"\bquien\s+consulta\b|\bconsulta\s+por\b|\bingresa\b|"
+    r"\brefiere\b|\bpresenta\b|\bmanifiesta\b|\bindica\b|[.;])",
+    re.IGNORECASE)
+#
+# EL FINAL DE TEXTO NO CUENTA COMO FINAL DEL BLOQUE, Y ESO ES LO IMPORTANTE.
+#     Con '$' entre las alternativas, una nota sin ningun conector ni punto no
+#     tenia donde terminar el bloque y se lo llevaba entero:
+#
+#         'paciente con antecedente de infeccion urinaria, esta fiebre'  ->  ''
+#
+#     La fiebre de hoy desaparecia junto con el antecedente. Sin '$', cuando no
+#     se ve donde acaba el bloque no se quita nada: es preferible arrastrar unos
+#     antecedentes que borrar el motivo de consulta. Es la misma razon por la que
+#     se retiro el patron de estudios previos, que fallaba igual.
+
+RE_PLURIPATOLOGIA = re.compile(
+    r"\b(?:pluripatolog[ií]a|polifarmacia|anciano\s+fr[aá]gil)\b(?:\s*y\s*)?",
+    re.IGNORECASE)
+
+# Conectores y preposiciones que quedan colgando al principio de la frase
+# cuando se quita el tramo que los precedia.
+#
+# Dos detalles del patron que no son opcionales:
+#   se ordena por longitud descendente, porque la alternancia de una expresion
+#   regular toma la primera opcion que encaje y una preposicion corta se comeria
+#   solo la primera letra de una mas larga;
+#   lleva limite de palabra al final, porque sin el recorta dentro de la palabra
+#   siguiente cuando esta empieza por la misma secuencia.
 ARRANQUE_HUERFANO = (
     "de", "del", "con", "en", "por", "para", "a", "al", "y", "e", "o", "u",
     "que", "se", "su", "sus", "lo", "la", "el", "los", "las", "un", "una",
@@ -204,9 +419,9 @@ RE_ARRANQUE_HUERFANO = re.compile(
         chr(92), chr(92), chr(92), chr(92)),
     re.IGNORECASE)
 
-# Palabras que por si solas no son contenido. Solo se usan para DECIDIR si lo
-# que quedo vale la pena, nunca para borrarlas del texto: la frase tiene que
-# seguir siendo legible.
+# Palabras que por si solas no son contenido. Solo se usan para decidir si lo
+# que quedo vale la pena; nunca se borran del texto, que tiene que seguir siendo
+# una frase legible.
 VACIAS = {
     "de", "del", "la", "el", "los", "las", "un", "una", "unos", "unas", "y",
     "o", "a", "al", "en", "con", "sin", "por", "para", "que", "se", "su",
@@ -216,24 +431,20 @@ VACIAS = {
 }
 
 # Palabras con contenido que debe dejar el recorte para dar la nota por util.
-#
-# Estuvo en 3 y era demasiado: una nota entera que dice 'DOLOR ABDOMINAL' tiene
-# dos, asi que se descartaba y caia a la frase canonica. Medido, el 23,2% del
-# corpus caia por este umbral, y casi todas eran notas cortas pero perfectamente
-# validas: en triage la nota tipica son cuatro palabras.
-#
-# Con 1 basta: _con_contenido() ya descarta las palabras vacias, asi que una
-# sola palabra que sobreviva es una palabra que dice algo.
+# Con una basta, porque el filtro de palabras vacias ya se aplico antes: si
+# sobrevive una sola palabra, es una palabra que dice algo. Un umbral mas alto
+# descartaba notas cortas perfectamente validas, que en triage son la norma.
 LONGITUD_MINIMA = 1
 TOPE_PALABRAS = 60       # una nota de 400 palabras no aporta mas que sus 60
 
-# Lo que queda de una plantilla contestada en blanco. Si el recorte solo deja
-# esto, la nota no dice nada del paciente.
+# Lo que queda de una plantilla contestada en blanco: al quitarle los
+# encabezados, una nota que solo tiene respuestas queda reducida a estas
+# palabras, que tienen contenido pero no dicen nada del paciente.
 RESPUESTAS_VACIAS = {
     "niega", "niegan", "ninguno", "ninguna", "ninguna", "nada", "nono",
     "negativo", "negativa", "normal", "normales", "refiere", "presenta",
     "manifiesta", "asintomatico", "asintomatica", "aplica",
-}       # una nota de 400 palabras no aporta mas que sus 60
+}
 
 
 # ==========================================================
@@ -242,26 +453,15 @@ RESPUESTAS_VACIAS = {
 
 def densidad_clinica(oracion):
     """
-    Fraccion de las palabras con contenido de la oracion que son terminologia
-    clinica, segun el lexico de 32.310 formas.
+    Fracción de las palabras con contenido de la oración que son terminología
+    clínica, según el léxico curado. Devuelve 0.0 si la oración no tiene
+    palabras con contenido.
 
-    POR QUE NO BASTA LA LISTA DE MARCADORES
-        MARCADORES_INSTITUCIONALES enumera frases: 'red de atencion',
-        'lamentamos', 'molestias ocasionadas'. Funciona con el bloque de la EPS
-        porque ese bloque es literal y se repite igual, pero no generaliza: en
-        cuanto una sede cambie la redaccion de su aviso, o aparezca otro tipo
-        de texto administrativo, hay que agregar frases a mano. Es el mismo
-        problema que las listas negras de siglas, y no escala.
-
-        La densidad no enumera nada. Mide de que habla la oracion:
-
-          'ofrecemos disculpas por los inconvenientes que esta situacion...'
-              0 de 6 palabras con contenido son clinicas   ->  0.00
-          'dolor en ambos costados que se irradia a la cadera y presion en pelvis'
-              5 de 8                                       ->  0.62
-
-        Es tambien la respuesta a 'como se sabe que sobra sin listarlo': una
-        oracion que no menciona nada clinico no habla del paciente.
+    Es la alternativa que generaliza a la lista de marcadores. Enumerar frases
+    funciona con un aviso institucional concreto, porque se repite literal, pero
+    deja de funcionar en cuanto una sede cambia su redacción o aparece otro tipo
+    de texto administrativo. La densidad no enumera nada: mide de qué habla la
+    oración, y una oración que no menciona nada clínico no habla del paciente.
     """
     palabras = _con_contenido(oracion)
     if not palabras:
@@ -270,8 +470,15 @@ def densidad_clinica(oracion):
 
 
 def _es_clinica(palabra):
-    """El lexico se guarda con la clave plegada (minusculas, sin tildes, con
-    la eñe conservada), asi que se compara igual."""
+    """
+    True si la palabra está en el léxico clínico.
+
+    El léxico se guarda con la clave plegada (minúsculas, sin tildes y con la
+    eñe conservada), así que aquí se pliega igual antes de comparar. La eñe se
+    protege sustituyéndola por un carácter de control antes de descomponer los
+    acentos y restaurándola después; ese carácter va literal en el código y no
+    se ve al leerlo, así que conviene no tocar estas dos líneas a ciegas.
+    """
     if _LEXICO is None:
         cargar_lexico()
     if not _LEXICO:
@@ -282,19 +489,68 @@ def _es_clinica(palabra):
     return plano in _LEXICO
 
 
+def _quitar_clasificador(texto):
+    """
+    Quita los tramos que el clasificador de frases da por administrativos.
+
+    POR QUE ADEMAS DE LOS PATRONES, Y NO EN SU LUGAR
+        Los patrones enumeran y por eso tienen buena precision y mala
+        cobertura. Medido sobre 400 tramos que NINGUNA regla supo etiquetar, el
+        clasificador reconocio 110 administrativos y 144 clinicos, dejando 146
+        en zona gris. Los 110 no los cubria ningun patron y no se parecen entre
+        si mas que en el tema:
+
+            'derivan para manejo por hemodinamia'
+            'remision del hospital san isidro'
+            'paciente valorado con urgenciologo de turno'
+            'tuve cita con especialista y el me derivo'
+
+        Cada uno habria necesitado su propia expresion regular. Los patrones se
+        quedan porque siguen siendo la defensa mas barata y la mas predecible;
+        el clasificador cubre lo que ellos no ven.
+
+    NUNCA VACIA LA NOTA
+        Si lo marcado se lleva todos los tramos, se devuelve el texto original.
+        Es la misma regla que en _quitar_institucional() y por la misma razon:
+        perder el motivo de consulta cuesta mucho mas que arrastrar una frase
+        administrativa.
+    """
+    from NLP.reduccion import frases
+
+    if not frases.disponible():
+        return texto
+
+    tramos = frases.segmentos(texto)
+    if len(tramos) < 2:
+        return texto
+
+    marcados = frases.burocraticos(tramos)
+    if not any(marcados):
+        return texto
+
+    sobran = {t for t, malo in zip(tramos, marcados) if malo}
+    utiles = [t for t, malo in zip(tramos, marcados) if not malo]
+    if not utiles:
+        return texto
+
+    # se reconstruye quitando solo los tramos marcados, conservando el resto
+    # tal cual: el objetivo es recortar, no reescribir
+    partes = [t.strip() for t in RE_TRAMO_CLASIF.split(texto)
+              if t.strip() and t.strip() not in sobran]
+    return ", ".join(partes) if partes else texto
+
+
 def _quitar_institucional(texto):
     """
     Descarta las oraciones que hablan del sistema y no del paciente.
 
-    Dos criterios, y el segundo es el que generaliza:
+    Aplica dos criterios: que la oración contenga un marcador institucional
+    conocido, o que sea larga y su densidad clínica quede por debajo del umbral.
 
-      1. la oracion contiene un marcador institucional conocido;
-      2. la oracion es larga y su densidad clinica es nula.
-
-    El segundo captura los bloques administrativos que nadie enumero. Se exige
-    que sea LARGA porque una nota corta sin terminologia reconocida suele ser
-    lenguaje de paciente ('me siento mal', 'me duele mucho'), que si hay que
-    conservar: que el catalogo no lo reconozca no significa que sobre.
+    El segundo es el que generaliza a los bloques que nadie enumeró. Se exige
+    que la oración sea larga porque una frase corta sin terminología reconocida
+    suele ser lenguaje del paciente, que sí hay que conservar: que el léxico no
+    la reconozca no significa que sobre.
     """
     oraciones = RE_ORACION.split(texto)
     utiles = []
@@ -305,17 +561,39 @@ def _quitar_institucional(texto):
         if len(palabras) >= PALABRAS_ORACION_LARGA and densidad_clinica(o) < DENSIDAD_MINIMA:
             continue
         utiles.append(o)
+
+    # SI NO QUEDA NADA, SE DEVUELVE LA NOTA ENTERA. NO ES UNA CAUTELA GENERICA.
+    #
+    # Las oraciones se separan por punto y por punto y coma, y buena parte del
+    # corpus no lleva ni uno: la nota tipica de triage es una sola frase corrida.
+    # En esas notas este filtro es todo o nada, y basta que el marcador aparezca
+    # al final para que se lleve por delante el motivo de consulta:
+    #
+    #     'ingresa paciente refiriendo que lleva 8 dias con zumbido en oido
+    #      derecho ... paciente estable sin criterio de urgencia vital'
+    #
+    #     una sola oracion -> 'urgencia vital' la descarta entera -> ''
+    #
+    # Medido sobre 8.000 notas, 229 quedaban vacias asi, y todas tenian un
+    # cuadro clinico perfectamente legible. Devolver el original deja que
+    # decidan los pasos siguientes, que trabajan sobre tramos y no sobre la
+    # nota completa. Perder el bloque institucional de una nota es barato;
+    # perder el motivo de consulta no lo es.
+    if not utiles:
+        return texto
+
     return " ".join(utiles)
 
 
 def _pulir(texto):
     """
-    Deja la frase legible despues de haberle quitado tramos por el medio.
+    Deja la frase legible después de haberle quitado tramos por el medio:
+    normaliza la puntuación que queda suelta o duplicada y elimina los
+    conectores que quedan colgando al principio.
 
-    El barrido del arranque es iterativo y admite coma, no solo espacio. Al
-    quitar el tramite de 'paciente que ingresa al servicio de urgencias, cuadro
-    clinico de 3 dias...' queda 'al, cuadro clinico...', y una sola pasada que
-    exigiera espacio detras no lo limpiaba.
+    El barrido del arranque es iterativo y admite coma además de espacio, porque
+    al quitar un tramo puede quedar más de un conector encadenado y una sola
+    pasada no los limpia todos.
     """
     texto = re.sub(r"\s*,\s*(?=[,.;])", "", texto)
     texto = re.sub(r"(?:^|(?<=[.;]))\s*[,;]\s*", " ", texto)
@@ -334,27 +612,26 @@ def _pulir(texto):
 
 
 def _con_contenido(texto):
-    """Palabras que aportan algo. Sirve para decidir si la nota quedo vacia."""
+    """
+    Palabras del texto que aportan significado, descartando las vacías y las
+    muy cortas. Sirve para decidir si lo que quedó tras el recorte dice algo.
+    """
     return [p for p in re.findall(r"[^\W\d_]+", texto.lower())
             if p not in VACIAS and len(p) >= 3]
 
 
 def recortar(texto, agresivo=True):
     """
-    Devuelve la nota sin bloque institucional, sin tramite y sin encabezados.
-    Cadena vacia solo si la nota no dice NADA del paciente.
+    Devuelve la nota sin bloque institucional, sin trámite y sin encabezados.
+    Solo devuelve cadena vacía si la nota no dice nada del paciente.
 
-    DOS PASADAS, Y LA SEGUNDA ES LA QUE SALVA LA CALIDAD
-        La pasada agresiva quita tramite, verbos de reporte, ficha demografica
-        y preambulo temporal. En una nota que es casi toda tramite eso puede
-        llevarse el contenido de paso.
+    Se hace en dos pasadas. La agresiva quita además los verbos de reporte, la
+    ficha demográfica y el preámbulo temporal; en una nota que es casi toda
+    trámite, eso puede llevarse el contenido por delante. Cuando ocurre, se
+    reintenta con la pasada suave, que conserva el trámite: es preferible una
+    frase con algo de trámite que perder el motivo de consulta.
 
-        Cuando eso ocurre se reintenta quitando SOLO el bloque institucional y
-        los encabezados. Es preferible una frase con algo de tramite a perder
-        el motivo de consulta: el objetivo de este campo es que el modelo vea
-        el cuadro clinico, y una nota vacia no lo enseña.
-
-    Lo que sobrevive es texto del original, palabra por palabra: no se
+    Lo que sobrevive es texto del original palabra por palabra: aquí no se
     reescribe nada.
     """
     texto = str(texto or "").strip()
@@ -368,9 +645,27 @@ def recortar(texto, agresivo=True):
 
 
 def _recortar(texto, agresivo=True):
+    # El bloque institucional se quita SIEMPRE, tambien en la pasada suave, y
+    # por eso va fuera del bloque 'agresivo': la pasada suave existe para
+    # rescatar el motivo de consulta cuando la agresiva se lo llevo, y el
+    # bloque institucional nunca es el motivo de consulta.
+    texto = _quitar_clasificador(texto)
+    texto = _quitar_institucional(texto)
     texto = RE_ENCABEZADO.sub(" ", texto)
+
+    # Los tres bloques de la nota larga. Van en la pasada agresiva y tambien en
+    # la suave: a diferencia del tramite, ninguno de ellos puede ser nunca el
+    # motivo de consulta, asi que quitarlos no arriesga dejar la nota vacia.
+    texto = RE_ANTECEDENTES.sub(" ", texto)
+    texto = RE_PLURIPATOLOGIA.sub(" ", texto)
+    texto = RE_EXAMEN.sub(" ", texto)
+    texto = RE_CONDUCTA.sub(" ", texto)
+    texto = RE_ACOMPANANTE.sub(" ", texto)
+    texto = RE_LLEGADA.sub(" ", texto)
+    if cargar_lugares() and RE_LUGAR is not None:
+        texto = RE_LUGAR.sub(" ", texto)
+
     if agresivo:
-        texto = RE_PARENTESIS.sub(" ", texto)
         texto = RE_TRAMITE.sub(" ", texto)
         texto = RE_REPORTE.sub(" ", texto)
         texto = RE_TEMPORAL.sub(" ", texto)
@@ -381,11 +676,9 @@ def _recortar(texto, agresivo=True):
     if len(palabras) < LONGITUD_MINIMA:
         return ""
 
-    # Plantilla contestada en blanco. Al quitarle los encabezados, una nota como
-    #     'AP: niega; AA: niega; AF: niega'
-    # queda en 'niega; niega; niega', que tiene palabras con contenido pero no
-    # dice nada: son las respuestas de un formulario sin la pregunta. Medido,
-    # 298 notas producian exactamente 'niega; niega'.
+    # Plantilla contestada en blanco: al quitarle los encabezados, una nota
+    # como 'AP: niega; AA: niega' queda reducida a las respuestas de un
+    # formulario sin sus preguntas, que tienen contenido pero no dicen nada.
     if all(p in RESPUESTAS_VACIAS for p in palabras):
         return ""
 
@@ -398,7 +691,10 @@ def _recortar(texto, agresivo=True):
 
 
 def _cortar(texto, tope):
-    """Recorta a 'tope' palabras sin partir una oracion por la mitad."""
+    """
+    Recorta el texto al número de palabras indicado cortando en el límite de
+    oración más cercano, para no dejar la frase partida por la mitad.
+    """
     oraciones = RE_ORACION.split(texto)
     salida, total = [], 0
     for oracion in oraciones:
@@ -409,16 +705,45 @@ def _cortar(texto, tope):
         total += n
     if not salida:
         return " ".join(texto.split()[:tope])
-    return " ".join(salida)
+
+    # EL TOPE TIENE QUE APLICARSE IGUAL, Y AQUI ESTABA EL AGUJERO.
+    #
+    # Cortar en limite de oracion supone que hay limites de oracion. La nota
+    # larga de triage es una sola frase separada por comas, de modo que
+    # RE_ORACION devolvia un unico tramo, el bucle lo aceptaba entero por ser el
+    # primero, y TOPE_PALABRAS no se aplicaba nunca. Medido: con el tope en 60,
+    # el texto mas largo del corpus tenia 153 palabras.
+    #
+    # La primera oracion se acepta siempre porque cortarla dejaria la nota
+    # vacia; lo que no puede es quedar sin limite. Se corta por palabras, que es
+    # peor estilisticamente y respeta el contrato.
+    recortado = " ".join(salida)
+    if len(recortado.split()) > tope:
+        return " ".join(recortado.split()[:tope])
+    return recortado
 
 
 def diagnosticar(texto):
-    """Que se quito en cada paso. Para revisar casos puntuales."""
+    """
+    El texto tras cada paso del recorte, para ver qué quitó cada uno.
+    Herramienta de inspección manual.
+
+    Los pasos deben ser los mismos que aplica _recortar() y en el mismo orden.
+    Si divergen, esta función deja de servir para depurar y puede ocultar que un
+    paso no se está ejecutando en la corrida real.
+    """
     pasos = [("original", texto)]
     t = _quitar_institucional(texto);     pasos.append(("sin institucional", t))
     t = RE_ENCABEZADO.sub(" ", t);        pasos.append(("sin encabezados", t))
-    t = RE_PARENTESIS.sub(" ", t);        pasos.append(("sin parentesis", t))
+    t = RE_ANTECEDENTES.sub(" ", t);      pasos.append(("sin antecedentes", t))
+    t = RE_PLURIPATOLOGIA.sub(" ", t);    pasos.append(("sin pluripatologia", t))
+    t = RE_EXAMEN.sub(" ", t);            pasos.append(("sin examen fisico", t))
+    t = RE_CONDUCTA.sub(" ", t);          pasos.append(("sin conducta", t))
+    t = RE_ACOMPANANTE.sub(" ", t);       pasos.append(("sin acompanante", t))
+    t = RE_LLEGADA.sub(" ", t);           pasos.append(("sin modo de llegada", t))
     t = RE_TRAMITE.sub(" ", t);           pasos.append(("sin tramite", t))
+    if cargar_lugares() and RE_LUGAR is not None:
+        t = RE_LUGAR.sub(" ", t);         pasos.append(("sin lugares", t))
     t = RE_REPORTE.sub(" ", t);           pasos.append(("sin verbo de reporte", t))
     t = RE_TEMPORAL.sub(" ", t);          pasos.append(("sin preambulo temporal", t))
     t = RE_DEMOGRAFICO.sub(" ", t);       pasos.append(("sin ficha demografica", t))

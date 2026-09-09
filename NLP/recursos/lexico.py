@@ -1,80 +1,69 @@
 """
-Lexico clinico: el vocabulario medico contra el que se decide que NO se corrige.
+Léxico clínico: el vocabulario médico contra el que se decide qué NO se corrige.
 
-POR QUE HACE FALTA UN LEXICO EXTERNO
-    Hasta ahora el proyecto decidia que era terminologia mirando dos cosas: el
-    diccionario escrito a mano (483 entradas) y el vocabulario de spaCy. Las
-    dos fallan por el mismo lado, y esta medido sobre las omisiones del
-    conjunto de referencia:
+QUÉ PROBLEMA RESUELVE
+    Antes de existir este módulo el pipeline reconocía terminología con dos
+    fuentes, y ambas fallaban por el mismo lado. El diccionario escrito a mano
+    no escala, porque el conjunto de siglas y términos del castellano médico no
+    está acotado y siempre falta la siguiente. El vocabulario de spaCy procede
+    de texto web: desconoce buena parte de los principios activos y de los
+    términos quirúrgicos y, en cambio, acepta faltas de ortografía frecuentes.
+    Es decir, protege lo que habría que corregir y deja expuesto lo que habría
+    que proteger.
 
-        el diccionario a mano   no escala. SMS y EDA fueron las siglas de una
-                                semana, IVA y DAD las de la siguiente.
-        el vocabulario de spaCy es_core_news_md se entreno con texto web. No
-                                conoce 'empagliflozina' ni 'esplenectomia', y
-                                en cambio SI conoce 'conciente', 'transplante'
-                                y 'aprox', que son errores. Protege lo que hay
-                                que corregir y deja expuesto lo que hay que
-                                proteger.
+    Al revisar las correcciones que el pipeline no supo hacer, en la mayoría de
+    los casos la forma correcta no figuraba en ninguna de las dos fuentes, de
+    modo que ningún ajuste de umbrales las habría resuelto.
 
-    Medido sobre 16 correcciones que el pipeline no supo hacer: en 9 de ellas
-    la forma correcta no estaba en NINGUNA de las dos fuentes, asi que ningun
-    ajuste de umbrales las habria arreglado. Era un techo estructural.
+LAS FUENTES, DE MÁS A MENOS FIABLE
+    diccionario_siglas.json   escrito a mano; cada entrada es una decisión
+                              deliberada del proyecto.
+    catalogo_sintomas.json    variantes de los conceptos clínicos de la fase 4.
+    lexico_externo.txt        vocabulario del CIE-10-ES y de cualquier otra
+                              fuente externa; un término por línea.
+    vocabulario biomédico     palabras enteras del tokenizador de un modelo
+                              entrenado sobre historias clínicas en español;
+                              es la fuente que aporta el volumen.
 
-LAS FUENTES, Y QUE APORTA CADA UNA
+    El orden importa: cuando una palabra aparece en varias fuentes se conserva
+    la más fiable, y el peso clínico que se le asigna después depende de cuál
+    sea.
 
-    diccionario_siglas.json   483 entradas. Escrito a mano, cada una es una
-                              decision deliberada. Peso maximo.
-    catalogo_sintomas.json    391 variantes de 82 conceptos clinicos.
-    vocabulario biomedico     ~10.000 palabras enteras del tokenizador de
-                              PlanTL-GOB-ES/roberta-base-biomedical-clinical-es,
-                              que se entreno sobre historias clinicas en
-                              espanol. Es la fuente que aporta el volumen.
-    lexico_externo.txt        opcional, un termino por linea. Es la puerta para
-                              meter CIE-10-ES, SNOMED o el nomenclator del
-                              INVIMA sin tocar codigo.
+    El vocabulario biomédico, tomado como detector aislado de terminología,
+    acierta casi siempre que dispara pero se le escapa cerca de la mitad de los
+    términos reales. Por eso no decide por sí solo: entra como una evidencia más
+    en el cálculo de peso clínico.
 
-MEDIDO SOBRE EL VOCABULARIO BIOMEDICO
-    Como detector de 'esto es un termino medico', tomando la palabra entera:
+POR QUÉ SE CONGELA EN UN ARCHIVO
+    Cargar el tokenizador del modelo biomédico cuesta segundos y exige tener
+    instalados transformers y torch. Como el vocabulario no cambia entre
+    corridas, se extrae una sola vez y se guarda en JSON; durante el proceso
+    solo se lee ese archivo.
 
-        terminos reales reconocidos  : 19/35   (54%)
-        typos falsamente reconocidos : 2/36    ( 6%)
+USO
 
-    O sea: cuando dispara acierta el 94% de las veces, y se le escapa casi la
-    mitad. Por eso NO se usa solo, sino como uno de los pesos de pesos.py: es
-    evidencia fuerte a favor, no un veredicto.
+    python -m NLP.recursos.lexico   construye el léxico (la primera vez
+                                    necesita red, para descargar el tokenizador)
 
-    Los dos falsos positivos son 'transplante' y 'dolro'. El primero es una
-    falta de ortografia tan comun que entro al vocabulario del modelo; el
-    segundo es un artefacto de la segmentacion BPE. Ambos quedan cubiertos por
-    correcciones_directas.
-
-POR QUE SE CONGELA EN UN JSON
-    Cargar el tokenizador de HuggingFace cuesta segundos y obliga a tener
-    transformers y torch instalados en la maquina que procesa. El vocabulario
-    no cambia entre corridas, asi que se extrae UNA vez y se guarda. El runtime
-    lee el JSON y no necesita ni el modelo ni la libreria.
-
-COMO SE USA
-    python lexico.py            construye lexico_clinico.json (necesita internet
-                                la primera vez, para bajar el tokenizador)
-    lexico.cargar()             lo lee, sin modelo ni red
-    lexico.contiene(palabra)    esta en el lexico?
-    lexico.cercano(palabra)     la forma del lexico a distancia <= 2, o None.
-                                Es lo que corrige 'abodominal' -> 'abdominal'
-                                sin preguntarle a un corrector de espanol.
+    cargar()             lo lee, sin modelo ni red
+    contiene(palabra)    ¿es terminología?
+    forma(palabra)       escritura canónica, con sus tildes
+    cercano(palabra)     corrige un término mal escrito contra el léxico, sin
+                         pasar por un corrector de español
+    vecinos(palabra)     todos los candidatos a esa distancia
 """
 
 import json
 import re
 from pathlib import Path
 
-import morfologia
+from NLP import rutas
+from NLP.nucleo import morfologia
 
-BASE_DIR = Path(__file__).resolve().parent
-RUTA_LEXICO = BASE_DIR / "lexico_clinico.json"
-RUTA_SIGLAS = BASE_DIR / "diccionario_siglas.json"
-RUTA_CATALOGO = BASE_DIR.parent / "embedding" / "catalogo_sintomas.json"
-RUTA_EXTERNO = BASE_DIR / "lexico_externo.txt"
+RUTA_LEXICO = rutas.LEXICO_CLINICO
+RUTA_SIGLAS = rutas.DICCIONARIO_SIGLAS
+RUTA_CATALOGO = rutas.CATALOGO_SINTOMAS
+RUTA_EXTERNO = rutas.LEXICO_EXTERNO
 
 MODELO_BIOMEDICO = "PlanTL-GOB-ES/roberta-base-biomedical-clinical-es"
 
@@ -103,16 +92,20 @@ RE_ALFABETICA = re.compile(r"^[a-záéíóúüñ]+$")
 
 
 def _plegar(palabra):
-    """Clave de comparacion: minusculas y sin tildes, conservando la eñe."""
+    """Clave de comparación del léxico: minúsculas y sin tildes, con la eñe."""
     return morfologia.sin_tildes(str(palabra).lower().strip())
 
 
 # ==========================================================
-# CONSTRUCCION
+# CONSTRUCCIÓN DEL LÉXICO
 # ==========================================================
 
 def _del_diccionario():
-    """Siglas y terminos de diccionario_siglas.json."""
+    """
+    Siglas y términos del diccionario del proyecto. Incorpora también las
+    palabras del significado de cada sigla, que son terminología por derecho
+    propio ('hipertensión arterial' detrás de 'hta').
+    """
     if not RUTA_SIGLAS.exists():
         return set()
     datos = json.loads(RUTA_SIGLAS.read_text(encoding="utf-8"))
@@ -133,7 +126,7 @@ def _del_diccionario():
 
 
 def _del_catalogo():
-    """Variantes de sintoma de catalogo_sintomas.json."""
+    """Variantes de síntoma y localizaciones del catálogo de la fase 4."""
     if not RUTA_CATALOGO.exists():
         return set()
     datos = json.loads(RUTA_CATALOGO.read_text(encoding="utf-8"))
@@ -147,9 +140,11 @@ def _del_catalogo():
 
 def _del_externo():
     """
-    lexico_externo.txt, un termino por linea. Es la puerta de entrada para
-    CIE-10-ES, SNOMED o el nomenclator del INVIMA. Las lineas que traen varias
-    palabras se parten: lo que hace falta aqui es vocabulario, no descripciones.
+    Términos de lexico_externo.txt, uno por línea, ignorando comentarios.
+
+    Es la vía para incorporar vocabulario externo (CIE-10-ES, SNOMED o el
+    nomenclátor del INVIMA) sin tocar el código. Las líneas con varias palabras
+    se parten, porque aquí hace falta vocabulario y no descripciones.
     """
     if not RUTA_EXTERNO.exists():
         return set()
@@ -164,12 +159,15 @@ def _del_externo():
 
 def _del_modelo_biomedico(modelo=MODELO_BIOMEDICO):
     """
-    Palabras enteras del vocabulario del tokenizador biomedico.
+    Palabras enteras del vocabulario del tokenizador biomédico.
 
-    El vocabulario BPE mezcla palabras completas con fragmentos. Solo sirven
-    las primeras, y se reconocen porque el token arranca con el marcador de
-    inicio de palabra ('Ġ' en los tokenizadores tipo RoBERTa). Un fragmento
-    como 'car' o 'ectomia' se descarta: no es un termino, es un trozo.
+    El vocabulario BPE mezcla palabras completas con fragmentos, y solo sirven
+    las primeras: se reconocen porque el token arranca con el marcador de inicio
+    de palabra de los tokenizadores tipo RoBERTa. Un fragmento como 'car' o
+    'ectomia' se descarta, porque no es un término sino un trozo.
+
+    Si falta transformers o el modelo no se puede descargar, avisa y devuelve un
+    conjunto vacío: el léxico se construye con las demás fuentes.
     """
     try:
         from transformers import AutoTokenizer
@@ -194,7 +192,13 @@ def _del_modelo_biomedico(modelo=MODELO_BIOMEDICO):
 
 
 def construir():
-    """Arma el lexico desde todas las fuentes. Devuelve el numero de entradas."""
+    """
+    Reúne el léxico a partir de las cuatro fuentes y lo deja en memoria.
+    Devuelve el número de formas distintas.
+
+    Las fuentes se recorren de menos a más fiable, de modo que la más fiable
+    sobrescribe a la dudosa cuando ambas traen la misma palabra.
+    """
     _TERMINOS.clear()
 
     # de menos a mas fiable: la fuente buena pisa a la dudosa
@@ -215,13 +219,17 @@ def construir():
 
 
 def guardar(ruta=RUTA_LEXICO):
+    """
+    Escribe en disco el léxico construido, junto con el nombre del modelo del
+    que salió el vocabulario biomédico. Devuelve el número de formas guardadas.
+    """
     datos = {
         "_descripcion": (
             "Lexico clinico. Lo genera lexico.construir() desde el diccionario "
             "del proyecto, el catalogo de sintomas, lexico_externo.txt y el "
             "vocabulario del modelo biomedico. No se edita a mano: para agregar "
             "terminos, escribelos en lexico_externo.txt y regenera con "
-            "'python lexico.py'."),
+            "'python -m NLP.recursos.lexico'."),
         "_modelo_biomedico": MODELO_BIOMEDICO,
         "terminos": {clave: [forma, fuente]
                      for clave, (forma, fuente) in sorted(_TERMINOS.items())},
@@ -232,7 +240,10 @@ def guardar(ruta=RUTA_LEXICO):
 
 
 def cargar(ruta=RUTA_LEXICO):
-    """Lee el lexico ya construido. No necesita transformers ni red."""
+    """
+    Lee el léxico ya construido y devuelve cuántas formas trae, o 0 si el
+    archivo todavía no existe. No necesita transformers ni conexión a la red.
+    """
     global _CARGADO, _SYM
     ruta = Path(ruta)
     if not ruta.exists():
@@ -247,32 +258,45 @@ def cargar(ruta=RUTA_LEXICO):
 
 
 def disponible():
+    """True si hay un léxico cargado en memoria."""
     return bool(_TERMINOS)
 
 
+def terminos():
+    """
+    Todas las formas plegadas del léxico. Es la vista de solo lectura que
+    necesita quien tiene que recorrerlo entero en vez de consultarlo palabra a
+    palabra, como la depuración cuando construye su índice por raíz.
+    """
+    return _TERMINOS.keys()
+
+
 # ==========================================================
-# CONSULTA
+# CONSULTA DEL LÉXICO
 # ==========================================================
 
 def contiene(palabra):
-    """True si la palabra es un termino del lexico clinico."""
+    """True si la palabra figura en el léxico, con tildes o sin ellas."""
     return _plegar(palabra) in _TERMINOS
 
 
 def fuente(palabra):
-    """De que fuente viene la palabra, o None si no esta."""
+    """Fuente de la que procede la palabra, o None si no está en el léxico."""
     entrada = _TERMINOS.get(_plegar(palabra))
     return entrada[1] if entrada else None
 
 
 def forma(palabra):
-    """La escritura canonica del termino (con sus tildes), o None."""
+    """Escritura canónica del término, con sus tildes, o None si no está."""
     entrada = _TERMINOS.get(_plegar(palabra))
     return entrada[0] if entrada else None
 
 
 def _indice():
-    """Indice SymSpell sobre el lexico, para la busqueda difusa. Perezoso."""
+    """
+    Índice SymSpell sobre el léxico, para la búsqueda por distancia de edición.
+    Se construye la primera vez que se necesita y se reutiliza después.
+    """
     global _SYM
     if _SYM is not None:
         return _SYM
@@ -289,18 +313,20 @@ def _indice():
 
 def cercano(palabra, distancia=DISTANCIA_MAXIMA):
     """
-    La forma del lexico mas cercana a la palabra, o None si no hay una sola
-    clara. Es lo que corrige un termino medico mal escrito SIN pasar por un
-    corrector de espanol:
+    Forma del léxico más cercana a la palabra, o None si no hay una sola
+    candidata clara. Corrige un término médico mal escrito sin recurrir a un
+    corrector de español:
 
         abodominal   -> abdominal
         esplectomia  -> esplenectomia
         dilispidemia -> dislipidemia
 
-    Devuelve None ante el empate. Si dos terminos clinicos distintos estan a la
-    misma distancia no hay forma de saber cual se quiso escribir, y elegir uno
-    inventa un diagnostico. Es la misma politica de abstencion del resto del
-    proyecto.
+    Ante un empate devuelve None: si dos términos clínicos distintos están a la
+    misma distancia no hay manera de saber cuál se quiso escribir, y elegir uno
+    equivale a inventar un diagnóstico.
+
+    Los candidatos deben además compartir el arranque de la palabra, porque un
+    término mal digitado conserva sus primeras letras.
     """
     sym = _indice()
     if sym is None or len(palabra) < LONGITUD_MINIMA:
@@ -334,11 +360,11 @@ def cercano(palabra, distancia=DISTANCIA_MAXIMA):
 
 def vecinos(palabra, distancia=DISTANCIA_MAXIMA, maximo=5):
     """
-    TODAS las formas del lexico a distancia <= n, no solo la mejor.
+    Todas las formas del léxico dentro de la distancia dada, ordenadas de más
+    a menos cercana y limitadas a `maximo`.
 
-    cercano() se abstiene ante el empate porque tiene que decidir sola. Aqui no
-    hace falta: la lista va a contexto.py, que elige mirando la frase. Un
-    empate ortografico deja de ser un problema cuando hay un desempate mejor.
+    A diferencia de cercano(), aquí el empate no es un problema: la lista se
+    entrega a la capa de contexto, que desempata leyendo la frase.
     """
     sym = _indice()
     if sym is None or len(palabra) < LONGITUD_MINIMA:
@@ -365,7 +391,10 @@ def vecinos(palabra, distancia=DISTANCIA_MAXIMA, maximo=5):
 
 
 def diagnosticar(palabra):
-    """Que sabe el lexico de una palabra. Para revisar casos puntuales."""
+    """
+    Qué sabe el léxico de una palabra: si la contiene, de qué fuente, su forma
+    canónica y su vecino más cercano. Herramienta de inspección manual.
+    """
     return {
         "palabra": palabra,
         "en_lexico": contiene(palabra),
@@ -376,10 +405,11 @@ def diagnosticar(palabra):
 
 
 # ==========================================================
-# GENERACION
+# GENERACIÓN DEL ARCHIVO
 # ==========================================================
 
 def main():
+    """Construye el léxico desde las cuatro fuentes y lo guarda en disco."""
     print(f"Construyendo lexico clinico...")
     total = construir()
     guardar()

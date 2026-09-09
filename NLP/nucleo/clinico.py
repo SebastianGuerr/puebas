@@ -1,48 +1,32 @@
 """
-Pipeline clinico compartido: spaCy + medspacy, cargado una sola vez.
+Pipeline clínico compartido: spaCy con el tokenizador y el seccionador de
+medspaCy, cargado una sola vez para todo el proceso.
 
-POR QUE EXISTE ESTE ARCHIVO
-    linguistica.py levanta es_core_news_md para usar dos cosas: el vocabulario
-    y el NER. Cargar ese modelo cuesta ~5 segundos y trae ademas tokenizador,
-    etiquetador morfologico, lematizador y analizador de dependencias, que
-    estaban ahi sin usarse.
+Cargar el modelo cuesta varios segundos, así que este módulo lo levanta bajo
+demanda y lo reutiliza. Sobre esa base ofrece dos servicios:
 
-    Al mismo tiempo el proyecto resolvia a mano, con expresiones regulares,
-    tres cosas que medspacy ya hace y que estan instaladas desde el principio:
+    analizar(texto)     un Doc de spaCy sobre la nota
+    secciones(texto)    los tramos de la nota con su categoría
 
-        secciones de la nota   RE_ENCABEZADO en limpieza.py, y OTRA copia en
-                               embedding/texto_embedding.py
-        terminos del catalogo  un matcher propio en embedding/extraccion.py
-        negacion e incertidumbre  negacion.py, escrito entero a mano
+No sustituye a `linguistica.py`, que sigue siendo la interfaz estrecha de
+vocabulario y entidades que consume el resto del paquete.
 
-    Este modulo centraliza la carga y deja los tres componentes disponibles.
-    No reemplaza a linguistica.py: linguistica sigue siendo la interfaz
-    estrecha (vocabulario, entidades) que usan reglas.py y terminologia.py, y
-    ahora toma de aca el objeto nlp en vez de cargar el suyo.
+POR QUÉ IMPORTAN LAS SECCIONES
+    En una historia clínica, la negación de un tramo no alcanza al siguiente. Un
+    'aa: niega' (antecedentes alérgicos) no puede propagarse al motivo de
+    consulta y marcar como ausente un dolor que el paciente sí refiere. Los
+    encabezados son la frontera que lo impide, y además permiten descartar
+    tramos que no son motivo de consulta sin enumerar frases una por una.
 
-POR QUE SECCIONES, Y POR QUE ES LO PRIMERO
-    Medido sobre una nota real del corpus, ConText sin limites de seccion
-    propaga la negacion de 'aa: niega' (antecedentes alergicos) al motivo de
-    consulta entero, y marca como negado un 'dolor abdominal' que el paciente
-    si tiene. Las secciones no son adorno de formato: son la frontera que
-    impide que un 'niega' de una seccion contamine la siguiente.
-
-    Ademas, saber que un tramo es 'ap:' o 'aa:' permite decidir que NO es
-    motivo de consulta sin tener que enumerar frases, que es justo el parche
-    que se quiere quitar de texto_embedding.py.
-
-EL CASING
-    Medido sobre 250 notas del corpus escritas con capitalizacion normal, y
-    comparando contra el analisis de esas mismas notas sin alterar:
-
-        TODO MAYUSCULAS   POS  64.4%   dependencias  67.1%   entidades x3.6
-        todo minusculas   POS  94.9%   dependencias  93.8%   entidades  0.28x
-
-    O sea: para etiquetas y dependencias, minusculas es casi tan bueno como el
-    original, y limpieza.limpiar() ya las entrega asi. Para el NER no: en
-    minusculas se pierden dos de cada tres entidades. Por eso este modulo
-    analiza en minusculas y la recuperacion de nombres propios se resuelve
-    aparte, en casing.py.
+POR QUÉ SE ANALIZA EN MINÚSCULAS
+    Se comparó el análisis de notas con capitalización normal contra el de esas
+    mismas notas en mayúsculas y en minúsculas. Para etiquetas morfológicas y
+    dependencias, el texto en minúsculas rinde casi como el original y el texto
+    en mayúsculas se degrada mucho. Para el reconocimiento de entidades ocurre
+    lo contrario: en minúsculas se pierde la mayor parte. Por eso aquí se
+    analiza en minúsculas, que es como entrega el texto la fase de limpieza, y
+    la recuperación de nombres propios se resuelve aparte en
+    `recursos/casing.py`.
 """
 
 import threading
@@ -63,10 +47,15 @@ _SECCIONADOR = None
 
 
 # ==========================================================
-# CARGA
+# CARGA DEL MODELO
 # ==========================================================
 
 def _cargar():
+    """
+    Carga el modelo la primera vez y lo conserva. Devuelve None si falta spaCy
+    o el modelo. Si medspaCy no está disponible se mantiene el tokenizador de
+    spaCy: separa peor los tokens pegados, pero no produce resultados erróneos.
+    """
     global _NLP
     if _NLP is not None:
         return _NLP
@@ -93,7 +82,10 @@ def _cargar():
 
 
 def disponible():
-    """True si spaCy y el modelo estan instalados. Se comprueba una sola vez."""
+    """
+    True si spaCy y el modelo están instalados. Se comprueba una sola vez, con
+    candado porque varios hilos pueden preguntarlo a la vez.
+    """
     global _DISPONIBLE
     if _DISPONIBLE is None:
         with _LOCK:
@@ -103,16 +95,17 @@ def disponible():
 
 
 def nlp():
-    """El pipeline compartido, o None si spaCy no esta disponible."""
+    """El pipeline compartido, o None si spaCy no está disponible."""
     return _cargar() if disponible() else None
 
 
 def analizar(texto):
     """
-    Un Doc de spaCy sobre texto ya limpio (minusculas).
+    Devuelve el Doc de spaCy correspondiente al texto, ya limpio y en
+    minúsculas, o None si el modelo no está disponible.
 
-    El pipeline de spaCy no es thread-safe y procesar.py usa varios hilos, por
-    eso el candado. Es el mismo criterio que ya aplicaba linguistica.py.
+    Las notas se truncan a MAX_CARACTERES. El pipeline de spaCy no es seguro
+    entre hilos y el orquestador usa varios, de ahí el candado.
     """
     modelo = nlp()
     if modelo is None:
@@ -125,17 +118,14 @@ MAX_CARACTERES = 5000   # notas mas largas se truncan para el analisis
 
 
 # ==========================================================
-# SECCIONES
+# SECCIONES DE LA NOTA
 # ==========================================================
 
 # Encabezados de historia clinica tal como aparecen en el corpus. La sigla y su
 # forma larga apuntan a la misma categoria: lo que interesa aguas abajo es la
-# categoria, no como la escribio quien digito.
-#
-# Esta tabla sustituye a RE_ENCABEZADO de limpieza.py y al RE_ENCABEZADO
-# distinto de embedding/texto_embedding.py. Que hubiera dos listas separadas
-# para lo mismo era la garantia de que tarde o temprano dijeran cosas
-# distintas.
+# categoria, no como la escribio quien digito. Es la unica tabla de encabezados
+# del proyecto; mantener dos listas para lo mismo garantiza que acaben
+# divergiendo.
 SECCIONES = {
     "motivo_consulta": ["mc", "motivo de consulta", "mc (motivo de consulta)"],
     "enfermedad_actual": ["ea", "enfermedad actual"],
@@ -157,9 +147,8 @@ SECCIONES = {
     "fuente": ["fuente de la historia", "fuente"],
 }
 
-# Nombre del tramo anterior al primer encabezado. En triage es lo mas comun:
-# medido sobre 400 notas del corpus, solo 39 traen algun encabezado y el resto
-# es una nota corrida sin estructura.
+# Nombre del tramo anterior al primer encabezado. En triage es el caso
+# mayoritario: la nota tipica es un texto corrido, sin estructura.
 SIN_ENCABEZADO = "sin_encabezado"
 
 # Secciones que NO describen el motivo por el que el paciente consulto hoy.
@@ -176,6 +165,7 @@ SECCIONES_NO_CLINICAS = {
 
 
 def _reglas_seccion():
+    """Traduce la tabla SECCIONES a reglas de medspaCy, una por forma escrita."""
     from medspacy.section_detection import SectionRule
 
     reglas = []
@@ -189,8 +179,8 @@ def _reglas_seccion():
 
 def seccionador():
     """
-    Anade el Sectionizer al pipeline y lo devuelve. Idempotente.
-    None si medspacy no esta instalado.
+    Añade el Sectionizer al pipeline y lo devuelve. Es idempotente: si ya está
+    registrado, devuelve el existente. None si medspaCy no está instalado.
     """
     global _SECCIONADOR
     if _SECCIONADOR is not None:
@@ -217,17 +207,18 @@ def seccionador():
 
 def secciones(texto):
     """
-    Los tramos de la nota con su categoria.
+    Tramos de la nota con su categoría, como lista de tuplas
+    (categoria, inicio, fin, texto), con los desplazamientos en CARACTERES
+    referidos al texto recibido.
 
-    Devuelve [(categoria, inicio, fin, texto_del_cuerpo)], con los offsets en
-    CARACTERES referidos al texto que se paso. Lista vacia si medspacy no esta
-    o si la nota no trae encabezados, que es el caso mayoritario en triage.
+    Devuelve una lista vacía si medspaCy no está instalado. El tramo anterior al
+    primer encabezado se etiqueta como SIN_ENCABEZADO en lugar de dejarlo sin
+    categoría, porque en triage es el caso más frecuente.
 
-    OJO CON body_span
-        En medspacy 1.3.1 Section.body_span no es un Span de spaCy sino una
-        tupla (token_inicial, token_final). Pedirle .text o .start_char lanza
-        AttributeError. Se recortan los tokens del Doc a mano, que ademas es
-        lo que da los offsets en caracteres que necesita quien llama.
+    Los límites se calculan recortando los tokens del Doc a mano: en la versión
+    de medspaCy usada, `Section.body_span` no es un Span de spaCy sino un par de
+    índices de token, y además así se obtienen directamente los
+    desplazamientos en caracteres que espera quien llama.
     """
     if seccionador() is None:
         return []
@@ -241,17 +232,16 @@ def secciones(texto):
         if inicio is None or fin is None or fin <= inicio:
             continue
         tramo = doc[inicio:fin]
-        # medspacy abre una seccion implicita, con category None, para el texto
-        # anterior al primer encabezado. En triage ese tramo es la mayoria del
-        # corpus (la nota tipica no trae encabezados), asi que se nombra en vez
-        # de dejarlo en None y que reviente el primer f-string que lo formatee.
         categoria = seccion.category or SIN_ENCABEZADO
         salida.append((categoria, tramo.start_char, tramo.end_char, tramo.text))
     return salida
 
 
 def diagnosticar(texto):
-    """Que ve el pipeline en una nota concreta. Para revisar casos puntuales."""
+    """
+    Qué ve el pipeline en una nota concreta: componentes activos, tokens,
+    oraciones, entidades y secciones. Herramienta de inspección manual.
+    """
     doc = analizar(texto)
     if doc is None:
         return {"disponible": False}

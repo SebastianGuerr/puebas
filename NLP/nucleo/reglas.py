@@ -1,23 +1,29 @@
 """
-Criterios de proteccion: que tokens NO deben corregirse nunca.
+Criterios de protección: qué tokens no deben corregirse nunca.
 
-Se separa de ortografia.py porque estas reglas las consumen tambien
-vocabulario.py (SymSpell) y normalizacion.py, y porque son el punto que mas se
-ajusta cuando aparece un fallo nuevo en la auditoria.
+Es el guardián ortográfico del pipeline y lo consultan tanto el corrector de
+LanguageTool como el de SymSpell y la fase de normalización. Está separado de
+esos motores a propósito: una regla que solo se aplicara en uno de ellos dejaría
+un hueco por el que pasaría el mismo error.
 
-ORDEN DE LAS DEFENSAS
-  1. Numeros y medidas ..... nada que contenga un digito se toca jamas.
-  2. Diccionario ........... siglas, farmacos, eponimos, marcas, terminos.
-  3. Patrones .............. vertebras (l5), dosis (5mg), tokens de una letra.
-  4. Entidades ............. personas, lugares e instituciones del texto.
-  5. Vocabulario spaCy ..... palabras reales que LanguageTool marca por error.
-  6. Forma ................. longitud minima, distancia y diferencia de largo.
+Capas de protección, en el orden en que actúan:
 
-DE DONDE SALE LO QUE NO ESTA AQUI
-    Todo lo que se decide mirando solo la forma de la palabra (morfemas
-    medicos, truncamientos, sufijos de farmaco) vive en morfologia.py. Este
-    archivo lo reexporta para que quien importaba 'reglas.morfemas' o
-    'reglas.sin_tildes' siga funcionando sin cambios.
+  1. Números y medidas    nada que contenga un dígito se toca.
+  2. Diccionario          siglas, fármacos, epónimos, marcas y términos.
+  3. Patrones             vértebras (l5), dosis (5mg), tokens de una letra.
+  4. Entidades            personas, lugares e instituciones de la nota.
+  5. Vocabulario          palabras reales que LanguageTool marca por error.
+  6. Forma                longitud mínima, distancia de edición y diferencia
+                          de longitud entre original y candidato.
+
+Lo que se decide mirando únicamente la forma de la palabra (morfemas médicos,
+truncamientos, sufijos de fármaco) vive en `morfologia.py`. Este módulo lo
+reexporta para que el resto del paquete pueda seguir invocándolo como
+`reglas.morfemas` o `reglas.sin_tildes`.
+
+Las verificaciones que dependen del SIGNIFICADO clínico tampoco están aquí:
+las concentra `fase2_ortografia/terminologia.py`, que es el único punto donde se
+veta un cambio por motivo clínico y donde queda registrado.
 """
 
 import json
@@ -26,10 +32,11 @@ from pathlib import Path
 
 from rapidfuzz.distance import DamerauLevenshtein
 
-import casing
-import linguistica
-import morfologia
-from morfologia import (  # reexportado: el resto del paquete los usa como reglas.X
+from NLP import rutas
+from NLP.nucleo import linguistica
+from NLP.nucleo import morfologia
+from NLP.recursos import casing
+from NLP.nucleo.morfologia import (  # reexportado: el resto del paquete los usa como reglas.X
     LETRAS_RAIZ,
     PREFIJOS_MEDICOS,
     SUFIJOS_MEDICOS,
@@ -44,7 +51,7 @@ from morfologia import (  # reexportado: el resto del paquete los usa como regla
     tiene_numero,
 )
 
-RUTA_SIGLAS = Path(__file__).resolve().parent / "diccionario_siglas.json"
+RUTA_SIGLAS = rutas.DICCIONARIO_SIGLAS
 
 LONGITUD_MINIMA = 5          # tokens mas cortos solo via correcciones directas
 DISTANCIA_MAXIMA = 2         # ediciones permitidas entre original y candidato
@@ -57,6 +64,8 @@ USAR_SPACY = True
 PROTEGER_POR_VOCABULARIO = True
 PROTEGER_ENTIDADES = True
 
+# Contenido del diccionario, poblado por cargar(). Son estructuras de módulo
+# porque se consultan desde varios motores dentro del bucle de corrección.
 SIGLAS = set()
 SIGLAS_INEQUIVOCAS = set()   # lista blanca: las unicas que se expanden solas
 SIGLAS_AMBIGUAS = set()      # bloqueadas aunque pasaran los tests automaticos
@@ -71,15 +80,20 @@ RE_MAYUSCULA_INICIAL = re.compile(r"\b[A-ZÁÉÍÓÚÑ][a-záéíóúüñ]{2,}")
 RE_TODO_MAYUSCULAS = re.compile(r"\b[A-ZÁÉÍÓÚÑ]{2,%d}\b" % LARGO_MAXIMO_SIGLA)
 
 
+# ==========================================================
+# NOMBRES PROPIOS POR CONTEXTO
+# ==========================================================
+
 # Palabras que anuncian un nombre propio inmediatamente despues. Es la unica
 # senal disponible en notas escritas todas en mayusculas, donde ni el NER ni la
-# deteccion por capitalizacion tienen con que trabajar. Sin esto:
-#     dr ceron -> dr cero        dr munar -> dr lunar
-#     confamiliar pereira -> conciliar pereira
-# Solo titulos y lugares. Se dejaron fuera a proposito los de parentesco
-# ('paciente', 'hijo', 'esposa') y los verbos de remision ('remitido',
-# 'traido'): van seguidos de sintomas mucho mas a menudo que de nombres, y
-# protegerlos bloqueaba correcciones validas como 'paciente con dolro'.
+# deteccion por capitalizacion tienen con que trabajar. Sin esta regla, el
+# corrector convierte 'dr ceron' en 'dr cero' o 'confamiliar pereira' en
+# 'conciliar pereira'.
+#
+# La lista incluye solo titulos y lugares. Se dejaron fuera a proposito los
+# terminos de parentesco ('paciente', 'hijo', 'esposa') y los verbos de remision
+# ('remitido', 'traido'): van seguidos de sintomas mucho mas a menudo que de
+# nombres, y protegerlos bloqueaba correcciones validas.
 DISPARADORES_NOMBRE = {
     "dr", "dra", "doctor", "doctora", "sr", "sra", "srta", "don", "dona", "doña",
     "senor", "señor", "senora", "señora", "clinica", "clínica", "hospital",
@@ -90,7 +104,11 @@ VENTANA_NOMBRE = 2   # cuantos tokens despues del disparador se protegen
 
 
 def tokens_protegidos_por_contexto(texto):
-    """Tokens que siguen a un disparador de nombre propio."""
+    """
+    Tokens que aparecen justo después de un disparador de nombre propio, dentro
+    de una ventana de VENTANA_NOMBRE palabras. Devuelve un conjunto en
+    minúscula.
+    """
     protegidos = set()
     tokens = RE_PALABRA.findall(str(texto).lower())
     for i, token in enumerate(tokens):
@@ -106,7 +124,22 @@ def tokens_protegidos_por_contexto(texto):
 # ==========================================================
 
 def cargar(ruta=RUTA_SIGLAS):
-    """Lee diccionario_siglas.json en formato {clave: significado} o lista."""
+    """
+    Lee el diccionario de siglas y llena las estructuras del módulo. Devuelve el
+    conjunto de siglas cargadas.
+
+    El archivo agrupa las entradas por tema (siglas, fármacos, epónimos...) y
+    admite además cuatro claves de control:
+
+        _siglas_inequivocas    las únicas que pueden expandirse sin contexto
+        _siglas_ambiguas       bloqueadas aunque superen las comprobaciones
+        _grupos_expandibles    qué grupos temáticos pueden expandirse
+        patrones_protegidos    expresiones regulares que nunca se corrigen
+
+    y dos claves de datos: `no_restaurar_mayuscula` y `correcciones_directas`.
+    Puede llamarse varias veces: cada llamada vacía las estructuras antes de
+    volver a llenarlas.
+    """
     datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
 
     for coleccion in (SIGLAS, NO_RESTAURAR, SIGLAS_INEQUIVOCAS, SIGLAS_AMBIGUAS):
@@ -131,6 +164,7 @@ def cargar(ruta=RUTA_SIGLAS):
             DIRECTAS.update({k.lower(): v for k, v in valor.items()
                              if not k.startswith("_")})
         elif isinstance(valor, dict):
+            # grupo temático {sigla: significado}
             for sigla, significado in valor.items():
                 sigla = sigla.lower()
                 SIGLAS.add(sigla)
@@ -138,6 +172,7 @@ def cargar(ruta=RUTA_SIGLAS):
                 if clave in expandibles:
                     EXPANDIBLES[sigla] = significado
         else:
+            # grupo temático como lista simple de términos protegidos
             SIGLAS.update(x.lower() for x in valor)
 
     return SIGLAS
@@ -148,7 +183,11 @@ def cargar(ruta=RUTA_SIGLAS):
 # ==========================================================
 
 def texto_gritado(texto):
-    """True si la nota esta toda en mayusculas: no hay contraste que leer."""
+    """
+    True si la nota está escrita casi toda en mayúsculas. En ese caso no hay
+    contraste de capitalización que leer, y las defensas que dependen de él
+    quedan inutilizadas.
+    """
     letras = [c for c in str(texto) if c.isalpha()]
     if not letras:
         return True
@@ -156,14 +195,18 @@ def texto_gritado(texto):
 
 
 # ==========================================================
-# PROTECCION
+# PROTECCIÓN
 # ==========================================================
 
 def detectar_protegidos(texto_original):
     """
-    Nombres propios y siglas leidos del texto TAL COMO LO ESCRIBIERON.
-    Solo funciona en notas mixtas; en una nota gritada devuelve vacio y el
-    trabajo lo hacen el diccionario y el NER.
+    Nombres propios y siglas leídos del texto tal como se escribió, antes de
+    limpiarlo.
+
+    Reconoce dos señales: mayúscula inicial que no se explica por el comienzo de
+    una frase, y palabras cortas escritas enteras en mayúscula. Solo sirve en
+    notas con capitalización mixta; en una nota gritada devuelve un conjunto
+    vacío y la protección recae en el diccionario y el reconocedor de entidades.
     """
     protegidos = set()
     texto_original = str(texto_original or "")
@@ -184,14 +227,17 @@ def detectar_protegidos(texto_original):
 
 def entidades(texto_limpio, texto_original=None):
     """
-    Personas, lugares e instituciones. Las dos lecturas se complementan: en
-    minusculas el NER reconoce 'pereira' pero no 'hakim'; con las mayusculas del
-    original reconoce 'Hakim' pero se pierde en notas gritadas.
+    Personas, lugares e instituciones presentes en la nota.
 
-    El NER se equivoca en frases cortas y en minusculas: llego a marcar
-    'consutla' y 'malestra' como nombres, y eso bloqueaba dos correcciones
-    validas. Por eso una entidad solo protege si ademas es una palabra que
-    spaCy conoce, o venia con mayuscula en la nota original.
+    Se consultan las dos versiones del texto porque se complementan: sobre el
+    texto en minúsculas el reconocedor identifica topónimos frecuentes, y sobre
+    el original conserva los epónimos que solo se distinguen por la mayúscula.
+
+    El reconocedor se equivoca en frases cortas y en minúsculas, llegando a
+    marcar como nombre propio palabras mal escritas, lo que bloquearía su
+    corrección. Por eso una entidad solo protege si además se confirma por otra
+    vía: venía con mayúscula informativa en el original, el corpus la conoce como
+    nombre propio o sigla, o spaCy la tiene en su vocabulario.
     """
     if not (USAR_SPACY and PROTEGER_ENTIDADES):
         return set()
@@ -203,14 +249,13 @@ def entidades(texto_limpio, texto_original=None):
     if not encontradas:
         return encontradas
 
-    # Solo cuenta la mayuscula que no se explica por la posicion. Tomar
-    # cualquier mayuscula del texto vacia el filtro cuando el texto viene
-    # recapitalizado por casing.py, porque ahi toda oracion abre en mayuscula
-    # y hasta un typo como 'Pacinete' pasaria por nombre propio.
+    # Solo cuenta la mayuscula que no se explica por la posicion: si se
+    # aceptara cualquier mayuscula, un texto ya recapitalizado (donde toda
+    # oracion abre en mayuscula) dejaria pasar como nombre propio hasta un typo.
     con_mayuscula = casing.mayusculas_informativas(texto_original)
 
-    # Lo que el corpus sabe del token pesa mas que lo que diga el NER sobre una
-    # nota suelta: casing.py lo aprendio de miles de notas bien escritas.
+    # Lo que el corpus sabe del token pesa mas que lo que diga el reconocedor
+    # sobre una nota suelta, porque se aprendio de miles de notas.
     del_corpus = casing.nombres_propios() | casing.siglas() if casing.disponible() else set()
 
     return {e for e in encontradas
@@ -218,7 +263,11 @@ def entidades(texto_limpio, texto_original=None):
 
 
 def esta_protegido(token, protegidos=()):
-    """Diccionario, patrones, numeros y entidades. Sin vocabulario de spaCy."""
+    """
+    True si el token no puede corregirse por diccionario, patrón, número o por
+    figurar en el conjunto `protegidos` que aporta quien llama. No consulta el
+    vocabulario de spaCy: eso lo decide es_palabra_conocida().
+    """
     if tiene_numero(token):
         return True
 
@@ -232,11 +281,13 @@ def esta_protegido(token, protegidos=()):
 
 def es_palabra_conocida(token):
     """
-    spaCy reconoce farmacos y terminologia que LanguageTool marca como error.
+    True si spaCy reconoce el token, que entonces se considera una palabra real
+    y queda protegido. Cubre fármacos y terminología que LanguageTool marca como
+    error.
 
-    Se evalua SOLO sobre la palabra original, nunca sobre los candidatos: casi
-    toda correccion correcta ('paciente', 'dolor') esta en el vocabulario, y
-    filtrarla ahi bloquea el pipeline entero.
+    Debe evaluarse solo sobre la palabra original y nunca sobre los candidatos:
+    casi toda corrección correcta está en el vocabulario, de modo que aplicarlo
+    a los candidatos anularía el corrector entero.
     """
     if not (USAR_SPACY and PROTEGER_POR_VOCABULARIO):
         return False
@@ -245,12 +296,11 @@ def es_palabra_conocida(token):
 
 def forma_aceptable(original, candidato):
     """
-    Criterio puramente ortografico: longitud, distancia de edicion y numeros.
+    True si el par (original, candidato) supera el criterio puramente
+    ortográfico: longitud mínima, misma cantidad de palabras, ausencia de
+    dígitos y distancia de edición dentro del máximo permitido.
 
-    Las verificaciones clinicas (morfemas, truncamiento, antonimos, familia de
-    sufijo) NO estan aqui: viven en terminologia.py, que es el unico punto donde
-    se decide sobre el significado y donde queda registrada cada alarma. Tener
-    un solo guardian evita que una regla se aplique en un motor y no en el otro.
+    No evalúa el significado: de eso se ocupa `terminologia.py`.
     """
     if len(original) < LONGITUD_MINIMA:
         return False
@@ -261,4 +311,3 @@ def forma_aceptable(original, candidato):
     if tiene_numero(original) or tiene_numero(candidato):
         return False
     return DamerauLevenshtein.distance(original, candidato) <= DISTANCIA_MAXIMA
-

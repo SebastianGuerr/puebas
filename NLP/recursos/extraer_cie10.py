@@ -1,47 +1,40 @@
 """
 Extrae el vocabulario del CIE-10-ES y lo deja en lexico_externo.txt.
 
-QUE ES LA FUENTE
-    Clasificacion Internacional de Enfermedades, 10.a revision, Modificacion
-    Clinica, 3.a edicion (enero 2020). Tomo I: Diagnosticos. Ministerio de
-    Sanidad de Espana, publicado por el BOE. 1.502 paginas.
+LA FUENTE
+    Clasificación Internacional de Enfermedades, 10.ª revisión, Modificación
+    Clínica, 3.ª edición (2020). Tomo I: Diagnósticos. Ministerio de Sanidad de
+    España, publicado por el BOE. El PDF vive en NLP/datos/.
 
-POR QUE SOLO EL VOCABULARIO, Y NO LA ESTRUCTURA
-    El PDF trae una jerarquia de codigos ('Amnesia R41.3', '- anterograda
-    R41.1', '- disociativa F44.0') y la tentacion es parsearla entera para
-    tener el arbol de diagnosticos. No hace falta, y parsearlo bien es dificil:
-    la indentacion con guiones, los 'vease' y las referencias cruzadas hacen
-    que reconstruir la jerarquia desde el texto extraido sea un proyecto en si
-    mismo.
+POR QUÉ SOLO EL VOCABULARIO Y NO LA ESTRUCTURA
+    El PDF contiene una jerarquía de códigos, y reconstruirla desde el texto
+    extraído es un problema en sí mismo: la indentación por guiones, las
+    remisiones y las referencias cruzadas no sobreviven bien a la extracción.
 
-    Lo que este pipeline necesita del CIE-10 no es la jerarquia sino las
-    PALABRAS: que 'esplenectomia', 'odinofagia' o 'corioamnionitis' existen en
-    espanol clinico. Con eso lexico.cercano() ya puede corregir hacia ellas y
-    pesos.py puede protegerlas. Extraer vocabulario es robusto y no depende de
-    que la maquetacion del PDF se lea bien.
+    Lo que este pipeline necesita del CIE-10 no es la jerarquía sino las
+    palabras: saber que 'esplenectomia', 'odinofagia' o 'corioamnionitis'
+    existen en español clínico basta para que el léxico pueda corregir hacia
+    ellas y protegerlas. Extraer vocabulario es robusto y no depende de que la
+    maquetación se lea correctamente.
 
-    Si algun dia hace falta el arbol de codigos (para mapear un sintoma a un
-    capitulo CIE, por ejemplo), esa es otra tarea y probablemente otra fuente:
-    el Ministerio publica las tablas en formato tabular aparte del PDF.
+    Si en algún momento hace falta el árbol de códigos, esa es otra tarea y
+    probablemente otra fuente: el Ministerio publica las tablas en formato
+    tabular, aparte del PDF.
 
-QUE SE DESCARTA
-    El aparato editorial de la clasificacion: 'vease', 'excluye', 'incluye',
-    'ncoc', 'neom', 'especificado'. Son instrucciones de uso de la
-    clasificacion, no terminologia, y aparecen decenas de miles de veces.
+QUÉ SE DESCARTA
+    El aparato editorial de la clasificación ('véase', 'excluye', 'ncoc',
+    'especificado'), que son instrucciones de uso y no terminología, y las
+    palabras que aparecen una sola vez en todo el documento, casi siempre
+    artefactos de la extracción.
 
-MEDIDO
-    26.485 palabras distintas en el PDF
-    19.806 no estaban en el lexico clinico  <- el aporte neto
-
-    De los casos que el corrector no resolvia, el CIE-10 aporta 'esplenectomia'.
-    NO aporta los nombres de farmaco ('empagliflozina', 'venlafaxina',
-    'irbesartan'): el Tomo I es diagnosticos. Para esos hace falta el
-    nomenclator de medicamentos, que el INVIMA publica en formato tabular.
+    El Tomo I es de diagnósticos, así que no aporta nombres de principios
+    activos. Para esos hace falta el nomenclátor de medicamentos, que puede
+    añadirse al mismo archivo de salida con la opción --anexar.
 
 USO
     pip install pypdf
-    python extraer_cie10.py
-    python lexico.py            para incorporarlo al lexico clinico
+    python -m NLP.recursos.extraer_cie10
+    python -m NLP.recursos.lexico   para incorporarlo al léxico clínico
 """
 
 import argparse
@@ -50,9 +43,10 @@ import sys
 from collections import Counter
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-PDF_POR_DEFECTO = BASE_DIR / "Clasif_Inter_Enfer_CIE_10_rev_3_ed.diag.pdf"
-SALIDA = BASE_DIR / "lexico_externo.txt"
+from NLP import rutas
+
+PDF_POR_DEFECTO = rutas.PDF_CIE10
+SALIDA = rutas.LEXICO_EXTERNO
 
 LONGITUD_MINIMA = 4
 
@@ -81,6 +75,11 @@ FRECUENCIA_MINIMA = 2
 
 
 def extraer(ruta_pdf):
+    """
+    Recorre el PDF y devuelve un Counter con las palabras encontradas y su
+    frecuencia. Informa del avance y de cuántas páginas traían texto
+    extraíble, que es la señal de que la lectura funcionó.
+    """
     try:
         import pypdf
     except ModuleNotFoundError:
@@ -105,7 +104,14 @@ def extraer(ruta_pdf):
 
 
 def filtrar(conteo):
-    """Quita el aparato editorial, los artefactos y lo demasiado corto."""
+    """
+    Convierte el recuento en el conjunto de términos aprovechables.
+
+    Descarta lo que aparece menos de FRECUENCIA_MINIMA veces, lo más corto que
+    LONGITUD_MINIMA, el aparato editorial y las cadenas que no tienen forma de
+    palabra española (sin vocales, con guiones sueltos o con caracteres
+    extraños), que provienen de errores de extracción.
+    """
     salida = set()
     for palabra, veces in conteo.items():
         if veces < FRECUENCIA_MINIMA:
@@ -122,6 +128,11 @@ def filtrar(conteo):
 
 
 def main():
+    """
+    Extrae, filtra y escribe el vocabulario. Con --anexar conserva los términos
+    que ya hubiera en el archivo, que es la vía para sumar otras fuentes sin
+    perder las anteriores.
+    """
     ap = argparse.ArgumentParser()
     ap.add_argument("--pdf", type=Path, default=PDF_POR_DEFECTO)
     ap.add_argument("--salida", type=Path, default=SALIDA)
@@ -154,13 +165,13 @@ def main():
         "#",
         "# Para agregar otras fuentes (nomenclator de medicamentos del INVIMA,",
         "# SNOMED CT edicion espanola) escribe sus terminos aqui y corre:",
-        "#     python lexico.py",
+        "#     python -m NLP.recursos.lexico",
         "",
     ]
     args.salida.write_text("\n".join(cabecera + todos) + "\n", encoding="utf-8")
 
     print(f"\n{len(todos):,} terminos escritos en {args.salida.name}")
-    print("Ahora corre:  python lexico.py")
+    print("Ahora corre:  python -m NLP.recursos.lexico")
 
 
 if __name__ == "__main__":

@@ -1,72 +1,74 @@
 """
-Fase 3. Normalizacion clinica: coloquialismos y siglas.
+Fase 3. Normalización clínica: coloquialismos y siglas.
 
-Convierte la forma en que habla el paciente a la forma en que se escribe en una
-historia clinica, sin cambiar lo que dice:
+Traduce la forma en que habla el paciente a la forma en que se escribe en una
+historia clínica, sin cambiar lo que dice:
 
     daño de estomago  -> dispepsia          pita el oido  -> tinnitus
-    culebrilla        -> herpes zoster      nacido        -> furunculo
-    hta               -> hipertension arterial
+    culebrilla        -> herpes zoster      hta           -> hipertension arterial
 
-POR QUE FLASHTEXT Y NO REGEX
-    El diccionario tiene cientos de expresiones y crecera a miles. Con regex el
-    costo crece con el numero de patrones; FlashText construye un unico automata
-    (Aho-Corasick) y recorre el texto una sola vez, asi que el costo es el mismo
-    con 100 terminos que con 10.000. Ademas respeta los limites de palabra, que
-    es lo que permite reconocer expresiones de varias palabras sin que 'nacido'
-    coincida dentro de 'recien nacido'.
+POR QUÉ ES UNA FASE APARTE
+    Mezclar normalización y corrección ortográfica arruina la auditoría: en el
+    informe de cambios dejarían de distinguirse un error de digitación y una
+    expansión intencionada. Se aplica sobre la columna ya corregida y se
+    conservan ambas.
 
-POR QUE ES UNA FASE APARTE
-    Mezclar normalizacion con correccion ortografica arruina la auditoria: en
-    reporte_cambios.csv dejarian de distinguirse un error de digitacion y una
-    expansion intencional. Se aplica sobre la columna ya corregida, y se guardan
-    las dos.
+QUÉ SE ANOTA Y QUÉ SE REEMPLAZA
+    El modo por defecto es anotar: 'me pita el oido' pasa a 'me pita el oido
+    (tinnitus)'. El reemplazo literal rompe la sintaxis en las expresiones
+    verbales, y una nota agramatical le cuesta más a un modelo que la expresión
+    popular original. Anotando se conserva la frase del paciente y se añade el
+    término clínico, de modo que el texto sirve tanto para leerlo como para
+    buscar el término estandarizado.
+
+QUÉ ENTRADAS SE APLICAN
+    No todas. Cada entrada del diccionario pasa por el control de ambigüedad,
+    que decide si puede aplicarse siempre, solo cuando su contexto aparece
+    cerca, o si queda inactiva. No hay listas negras: lo que no se puede
+    demostrar inequívoco no se aplica y se reporta en desactivadas(), que es la
+    lista de decisiones pendientes de revisar.
 
 ORDEN INTERNO
-    1. Expresiones de varias palabras primero ('boca del estomago' antes que
-       'estomago'). FlashText ya prioriza la coincidencia mas larga.
-    2. Siglas despues, desde diccionario_siglas.json.
+    1. Encabezados de apartado, que son siglas sin ambigüedad posible.
+    2. Entradas condicionadas al contexto.
+    3. Expresiones de varias palabras y siglas, prefiriendo siempre la
+       coincidencia más larga.
 
-INSTALACION
-    pip install flashtext
-Si no esta, el modulo cae a una implementacion con expresiones regulares, mas
-lenta pero equivalente.
+MOTOR
+    Con flashtext se construye un único autómata que recorre el texto una sola
+    vez, de modo que el coste no crece con el tamaño del diccionario, y respeta
+    los límites de palabra. Si no está instalado se recurre a una
+    implementación con expresiones regulares, más lenta pero equivalente.
 """
 
 import json
 import re
 from pathlib import Path
 
-import ambiguedad
-import reglas
+from NLP import rutas
+from NLP.nucleo import reglas
+from NLP.recursos import ambiguedad
 
-RUTA_COLOQUIAL = Path(__file__).resolve().parent / "diccionario_coloquial.json"
+RUTA_COLOQUIAL = rutas.DICCIONARIO_COLOQUIAL
 
 # "anotar":     me pita el oido -> me pita el oido (tinnitus)
 # "reemplazar": me pita el oido -> me tinnitus
-#
-# El reemplazo literal rompe la sintaxis en las expresiones verbales, y una nota
-# agramatical le cuesta mas a un modelo que la expresion popular original. La
-# anotacion conserva la frase del paciente y agrega el termino clinico, con lo
-# que el texto sirve tanto para leerlo como para buscar el termino estandarizado.
+# Ver el criterio en la cabecera del modulo.
 MODO = "anotar"
 
 EXPANDIR_SIGLAS = True
 NORMALIZAR_COLOQUIALISMOS = True
 EXPANDIR_ENCABEZADOS = True   # 'aa:' -> 'aa (antecedentes alergicos):' 
 
-# Longitud minima de una sigla para expandirla.
-# Las de dos letras son ambiguas y coinciden con palabras corrientes:
-# 'pa' es 'para' en habla costumbrista, 'he' es el verbo haber, 'ar', 'pr',
-# 'af' y 'am' aparecen dentro de nombres propios. Expandirlas produjo
-# 'ar (artritis reumatoide)anzazu' y 'he (hoja de evolucion) tenido'.
+# Longitud minima de una sigla para expandirla. Las de dos letras coinciden
+# con palabras corrientes del espanol y con fragmentos de nombres propios, de
+# modo que expandirlas parte palabras y anota significados equivocados.
 LONGITUD_MINIMA_SIGLA = 3
 
-# Ya no existe una lista negra de siglas ambiguas. La decision la toma
-# ambiguedad.evaluar(): una entrada se aplica solo si es inequivoca, y lo que no
-# se puede demostrar inequivoco queda inactivo y se reporta. Perseguir casos con
-# listas negras no escalaba: IVA y DAD eran la version de esta semana de SMS y
-# EDA. Estas dos listas viven ahora en el JSON, como declaraciones explicitas.
+# Estado del diccionario tras evaluar la ambiguedad de cada entrada. Las
+# declaraciones de que siglas son seguras y cuales ambiguas viven en los
+# archivos de datos, no aqui: perseguir casos con listas negras en el codigo no
+# escalaba.
 _DECLARADAS_SEGURAS = set()
 _DECLARADAS_AMBIGUAS = set()
 _CON_CONTEXTO = {}        # clave -> (significado, palabras de contexto)
@@ -78,17 +80,27 @@ _RESPALDO = None
 
 
 def _sin_tildes(texto):
+    """Atajo al plegado de acentos del paquete, que conserva la eñe."""
     return reglas.sin_tildes(texto)
 
 
 # ==========================================================
-# CARGA
+# CARGA DEL DICCIONARIO
 # ==========================================================
 
 def cargar(ruta=RUTA_COLOQUIAL, lt=None):
     """
-    Lee los diccionarios y decide entrada por entrada si puede aplicarse.
-    lt: instancia de LanguageTool ya creada, para el test de ambiguedad.
+    Lee los dos diccionarios, decide entrada por entrada si puede aplicarse y
+    construye el motor de búsqueda. Devuelve cuántas entradas quedaron activas
+    sin condiciones.
+
+    `lt` es una instancia de LanguageTool ya creada, que el control de
+    ambigüedad usa para saber si una clave coincide con una palabra corriente
+    del español. Sin ella la comprobación se apoya solo en el vocabulario de
+    spaCy.
+
+    Las entradas condicionadas quedan en con_contexto() y las descartadas en
+    desactivadas(), con su motivo.
     """
     global _PROCESADOR, _RESPALDO
 
@@ -102,7 +114,8 @@ def cargar(ruta=RUTA_COLOQUIAL, lt=None):
     _DECLARADAS_SEGURAS.clear()
     _DECLARADAS_AMBIGUAS.clear()
 
-    # las declaraciones viven en diccionario_siglas.json, que lee reglas.py
+    # las declaraciones de seguridad y ambiguedad viven en los diccionarios; las
+    # de siglas las cargo antes el modulo de reglas
     _DECLARADAS_SEGURAS.update(reglas.SIGLAS_INEQUIVOCAS)
     _DECLARADAS_SEGURAS.update(x.lower() for x in datos.get("_siglas_inequivocas", []))
     _DECLARADAS_SEGURAS.update(x.lower() for x in datos.get("_expresiones_inequivocas", []))
@@ -147,16 +160,24 @@ def cargar(ruta=RUTA_COLOQUIAL, lt=None):
 
 
 def desactivadas():
-    """Entradas que no se aplican y por que. Es la lista de decisiones pendientes."""
+    """
+    Entradas que no se aplican, con su motivo, ordenadas. Es la lista de
+    decisiones pendientes: cada una hay que revisarla y, si procede, declararla
+    con su contexto en el diccionario.
+    """
     return sorted(_DESACTIVADAS)
 
 
 def con_contexto():
-    """Entradas que solo se aplican si su contexto aparece cerca."""
+    """Entradas activas solo cuando alguna de sus palabras de contexto aparece cerca."""
     return {k: v[1] for k, v in _CON_CONTEXTO.items()}
 
 
 def _construir_flashtext(tabla):
+    """
+    Construye el autómata de búsqueda a partir de la tabla de entradas activas.
+    Devuelve None si flashtext no está instalado, para que se use el respaldo.
+    """
     try:
         from flashtext import KeywordProcessor
     except ModuleNotFoundError:
@@ -164,9 +185,9 @@ def _construir_flashtext(tabla):
         return None
 
     kp = KeywordProcessor(case_sensitive=False)
-    # FlashText define los limites de palabra solo con ASCII, asi que una vocal
-    # acentuada cuenta como separador: 'ar' coincidia dentro de 'Aranzazu' y
-    # 'pa' dentro de 'panal'. Sin esta linea la expansion parte las palabras.
+    # flashtext define los limites de palabra solo con ASCII, de modo que una
+    # vocal acentuada o la eñe cuentan como separador y una sigla corta coincide
+    # dentro de una palabra acentuada. Sin esta linea la expansion parte palabras.
     kp.non_word_boundaries |= set("áéíóúüñÁÉÍÓÚÜÑ")
 
     for expresion, termino in tabla.items():
@@ -185,6 +206,11 @@ def _construir_flashtext(tabla):
 
 
 def _construir_regex(tabla):
+    """
+    Motor de respaldo: una expresión regular con todas las claves, ordenadas de
+    más larga a más corta para que gane la coincidencia más específica.
+    Devuelve el par (patrón, tabla), o None si no hay entradas.
+    """
     if not tabla:
         return None
     claves = sorted(tabla, key=len, reverse=True)
@@ -194,11 +220,12 @@ def _construir_regex(tabla):
 
 
 def disponible():
+    """True si hay un motor de búsqueda construido, sea el autómata o el respaldo."""
     return _PROCESADOR is not None or _RESPALDO is not None
 
 
 # ==========================================================
-# NORMALIZACION
+# NORMALIZACIÓN
 # ==========================================================
 
 # un encabezado se reconoce porque va seguido de dos puntos
@@ -207,12 +234,15 @@ RE_ENCABEZADO = re.compile(r"\b([a-záéíóúüñ]{2,6})\s*:")
 
 def expandir_encabezados(texto):
     """
-    'aa: niega' -> 'aa (antecedentes alergicos): niega'
+    Anota el significado de las siglas que encabezan un apartado:
+    'aa: niega' pasa a 'aa (antecedentes alergicos): niega'.
 
     Conserva la sigla original, que es la forma en que el personal escribe y
-    busca, y agrega el significado para que el texto se entienda solo. Se aplica
-    unicamente a las siglas seguidas de dos puntos: ahi la sigla es un rotulo de
-    apartado y no hay ambiguedad posible sobre lo que significa.
+    busca, y añade el significado para que el texto se entienda por sí solo.
+
+    Solo actúa sobre las siglas seguidas de dos puntos, porque ahí la sigla es
+    un rótulo de apartado y no hay ambigüedad posible. Se saltan los
+    significados genéricos, que no aportarían nada al lector.
     """
     def _sub(m):
         sigla = m.group(1).lower()
@@ -229,8 +259,9 @@ def expandir_encabezados(texto):
 
 def _aplicar_con_contexto(texto):
     """
-    Entradas que solo valen cuando su contexto aparece cerca:
-    'le salio un nacido en la pierna' se normaliza, 'recien nacido de 6 dias' no.
+    Aplica las entradas condicionadas, comprobando ocurrencia por ocurrencia que
+    alguna de sus palabras de contexto aparezca cerca. Así 'le salio un nacido
+    en la pierna' se normaliza y 'recien nacido de 6 dias' no.
     """
     for clave, (significado, palabras) in _CON_CONTEXTO.items():
         patron = re.compile(r"\b%s\b" % re.escape(clave), re.IGNORECASE)
@@ -251,7 +282,11 @@ def _aplicar_con_contexto(texto):
 
 
 def normalizar(texto):
-    """Aplica encabezados, coloquialismos y siglas sobre un texto ya corregido."""
+    """
+    Aplica sobre un texto ya corregido, y en este orden, la expansión de
+    encabezados, las entradas condicionadas al contexto y el resto del
+    diccionario. Devuelve el texto normalizado.
+    """
     if not texto:
         return texto
 
@@ -280,13 +315,21 @@ def normalizar(texto):
 
 
 def encontrados(texto):
-    """Que expresiones se reconocieron, sin reemplazarlas. Para auditar."""
+    """
+    Expresiones reconocidas en el texto, con su posición y sin sustituirlas.
+    Solo disponible con el motor de flashtext.
+    """
     if not texto or _PROCESADOR is None:
         return []
     return _PROCESADOR.extract_keywords(str(texto), span_info=True)
 
 
 def diagnosticar(texto):
+    """
+    Estado del módulo y resultado sobre un texto concreto: motor en uso,
+    entradas activas, condicionadas y descartadas, expresiones reconocidas y
+    texto normalizado. Herramienta de inspección manual.
+    """
     return {
         "disponible": disponible(),
         "modo": MODO,

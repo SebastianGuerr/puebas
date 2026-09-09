@@ -1,38 +1,37 @@
 """
-Escaneo del corpus: que tipos de problema traen las notas y en que proporcion.
+Escaneo del corpus: qué problemas traen las notas y en qué proporción.
 
-PARA QUE SIRVE
-    Antes de corregir hace falta saber que hay. Este modulo no corrige nada:
-    clasifica cada nota segun los problemas que presenta y cuenta cuantas hay
-    de cada clase. Sirve para dos cosas:
+Este módulo no corrige nada. Clasifica cada nota según las señales objetivas
+que presenta y cuenta cuántas hay de cada clase, con dos finalidades:
 
-      1. documentar el estado real de la columna HCTMOTCON;
-      2. muestrear de forma estratificada. Tomar las primeras 10.000 notas da
-         sobre todo notas corrientes; lo que hace falta para construir un
-         conjunto de referencia son las raras, y para pedir las raras primero
-         hay que saber medir la rareza.
+  1. documentar el estado real de la columna de texto antes de intervenirla;
+  2. muestrear de forma estratificada. Tomar las primeras N notas devuelve sobre
+     todo notas corrientes, y lo que hace falta para construir un conjunto de
+     referencia son las difíciles. Para pedir las raras primero hay que saber
+     medir la rareza, y eso es lo que hace la puntuación de este módulo.
 
-COMO SE USA
-    python escaneo.py                    escanea NLP/triage_limpio.csv
-    python escaneo.py --bd               escanea la tabla completa (92.597)
-    python escaneo.py --muestra 400      ademas escribe una muestra estratificada
+QUÉ NO HACE
+    No decide si una nota está bien o mal escrita: eso solo lo dice una persona
+    al leerla. Aquí solo se detectan señales objetivas y contables, como la
+    proporción de mayúsculas, la presencia de abreviaturas o los grupos de
+    consonantes imposibles en español.
 
-QUE NO HACE
-    No decide si una nota esta bien o mal escrita: eso solo lo dice una persona
-    leyendola. Aca solo se detectan senales objetivas y contables.
+USO
+    python -m NLP.evaluacion.escaneo                escanea el CSV ya limpio
+    python -m NLP.evaluacion.escaneo --bd           escanea la tabla completa
+    python -m NLP.evaluacion.escaneo --muestra 400  además escribe una muestra
+                                                    estratificada para revisar
 """
 
 import argparse
 import csv
 import json
 import re
-import sys
 import unicodedata
 from collections import Counter
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(BASE_DIR))
+from NLP import rutas
 
 csv.field_size_limit(10 ** 7)
 
@@ -40,31 +39,31 @@ RE_TOKEN = re.compile(r"[^\W\d_]+", re.UNICODE)
 RE_PALABRA = re.compile(r"[a-záéíóúüñ]+")
 
 
-from morfologia import sin_tildes  # la eñe se conserva; ver morfologia.py
+from NLP.nucleo.morfologia import sin_tildes  # la eñe se conserva; ver morfologia.py
 
 
 # ==========================================================
-# SENALES
+# SEÑALES DETECTADAS
 # ==========================================================
 
-# Vocales acentuadas que faltan casi siempre. No se corrige aca: solo se cuenta
-# cuantas notas escriben sin tilde una palabra que la lleva.
+# Palabras frecuentes que suelen escribirse sin su tilde. No se corrigen aqui:
+# solo se cuenta en cuantas notas aparecen sin acentuar.
 PALABRAS_CON_TILDE = (
     "dias", "dia", "clinico", "clinica", "valoracion", "evolucion", "presion",
     "sintomas", "region", "colico", "cesarea", "toracico", "abdomen",
     "gestacion", "infeccion", "cirugia", "ecografia", "medico", "cronico",
 )
 
-# Abreviaturas de habla del servicio. Se listan para MEDIR cuantas hay sin
-# expandir, no para expandirlas: la expansion vive en diccionario_coloquial.
+# Abreviaturas de habla del servicio. Se listan para MEDIR cuantas notas las
+# traen sin expandir; la expansion es tarea del diccionario coloquial.
 ABREVIATURAS = (
     "gral", "pte", "pcte", "tto", "ant", "post", "izq", "der", "sup", "inf",
     "sem", "hrs", "hs", "mgs", "amp", "gts", "aprox", "aprx", "px", "qx",
     "cel", "acomp", "fam", "sec", "temp", "sat", "obs", "ref", "trat",
 )
 
-# Bloque institucional: no describe al paciente. Si la nota es sobre todo esto,
-# no tiene contenido clinico util.
+# Texto institucional: habla del sistema y no del paciente. Una nota compuesta
+# sobre todo por estas frases no tiene contenido clinico aprovechable.
 MARCAS_INSTITUCIONALES = (
     "entidad promotora", "red de atencion", "nivel de atencion", "afiliados",
     "disculpas", "molestias ocasionadas", "cierres de servicios",
@@ -83,7 +82,15 @@ RE_SIGNOS_VITALES = re.compile(
 
 
 def _clasificar(texto, siglas, vocabulario):
-    """Senales objetivas de una nota. Devuelve un conjunto de etiquetas."""
+    """
+    Analiza una nota y devuelve el par (etiquetas, número de tokens).
+
+    Las etiquetas describen señales objetivas agrupadas en cuatro bloques:
+    forma (mayúsculas, longitud, encabezados), ortografía (tildes ausentes,
+    palabras partidas, grupos consonánticos imposibles), vocabulario (términos
+    desconocidos, siglas, abreviaturas) y contenido (obstétrico, medicamentos,
+    signos vitales, texto institucional).
+    """
     crudo = str(texto)
     plano = sin_tildes(crudo.lower())
     tokens = RE_TOKEN.findall(crudo)
@@ -113,17 +120,15 @@ def _clasificar(texto, siglas, vocabulario):
     if sin_tilde:
         etiquetas.add("tildes_faltantes")
 
-    # Token de una letra suelto antes de una palabra larga: casi siempre es una
-    # palabra partida al teclear ('s eindia redireccionar', 'g estante').
-    #
-    # La 'y' queda fuera aunque sea consonante: es la conjuncion, y es palabra
-    # legitima. Incluirla hacia que este detector marcara el 21% del corpus
-    # cuando el fenomeno real afecta al 0,6%. De 8.600 coincidencias, 8.426
-    # eran 'y'.
+    # Una consonante suelta delante de una palabra larga casi siempre es una
+    # palabra partida al teclear. La 'y' queda fuera de la clase de caracteres
+    # aunque sea consonante, porque como conjuncion es una palabra legitima e
+    # incluirla disparaba la senal en una de cada cinco notas.
     if re.search(r"(?<=\s)[bcdfghjklmnpqrstvwxz]\s+\w{3,}", plano):
         etiquetas.add("palabra_partida")
 
-    # tres consonantes seguidas poco frecuentes en espanol: marca de typo duro
+    # cuatro consonantes seguidas no existen en espanol: es un error de
+    # digitacion severo, no una palabra rara
     if re.search(r"[bcdfgjklmnpqrstvwxz]{4,}", plano):
         etiquetas.add("typo_duro")
 
@@ -158,8 +163,9 @@ def _clasificar(texto, siglas, vocabulario):
 
 def rareza(etiquetas):
     """
-    Cuanto cuesta corregir esta nota. Sirve para ordenar el muestreo: una nota
-    con typos duros, siglas y estructura pesa mas que una de cuatro palabras.
+    Puntuación de dificultad de una nota, como suma de los pesos de sus
+    señales. Ordena el muestreo: una nota con errores severos, siglas y
+    estructura pesa más que una de cuatro palabras, que puntúa en negativo.
     """
     PESOS = {
         "typo_duro": 3, "palabra_partida": 3, "muchas_desconocidas": 2,
@@ -176,8 +182,13 @@ def rareza(etiquetas):
 # ==========================================================
 
 def escanear(textos):
-    import linguistica
-    import reglas
+    """
+    Clasifica todas las notas y devuelve el par (recuento, filas): un contador
+    de señales sobre el corpus y una fila por nota con sus etiquetas, su número
+    de tokens y su puntuación de dificultad.
+    """
+    from NLP.nucleo import linguistica
+    from NLP.nucleo import reglas
     reglas.cargar()
 
     vocabulario = set()
@@ -187,7 +198,11 @@ def escanear(textos):
     siglas = set(reglas.SIGLAS)
 
     class _Vocab:
-        """Vocabulario de spaCy con cache: se consulta muchas veces por nota."""
+        """
+        Vista del vocabulario de spaCy que responde al operador `in` y guarda
+        en caché cada consulta, porque las mismas palabras se preguntan una y
+        otra vez a lo largo del corpus.
+        """
         def __init__(self):
             self._cache = {}
 
@@ -210,12 +225,14 @@ def escanear(textos):
 
 def muestrear(filas, cuantas, por_estrato=None):
     """
-    Muestra estratificada: cubre todas las clases de problema en vez de tomar
-    las primeras N, que serian sobre todo notas corrientes.
+    Selecciona `cuantas` notas cubriendo todas las clases de problema, en lugar
+    de tomar las primeras, que serían sobre todo notas corrientes. Devuelve un
+    diccionario {índice de nota: etiqueta por la que entró}.
 
-    Se recorren las etiquetas de la menos frecuente a la mas frecuente y se
-    toman las notas mas raras de cada una. Asi las clases minoritarias
-    (obstetricas complejas, notas con medicamentos) quedan representadas.
+    Las etiquetas se recorren de la menos a la más frecuente y de cada una se
+    toman las notas más difíciles, de modo que las clases minoritarias queden
+    representadas. Si con eso no se llena el cupo, se completa con las notas de
+    mayor dificultad que aún no estén elegidas.
     """
     por_etiqueta = {}
     for f in filas:
@@ -252,6 +269,10 @@ def muestrear(filas, cuantas, por_estrato=None):
 
 
 def informe(conteo, filas, total):
+    """
+    Informe legible del escaneo: frecuencia de cada señal, distribución de la
+    dificultad y cuántas notas no presentan ningún problema detectable.
+    """
     lineas = ["ESCANEO DEL CORPUS", "=" * 62,
               f"Notas analizadas: {total:,}", "",
               "SENALES ENCONTRADAS"]
@@ -270,19 +291,24 @@ def informe(conteo, filas, total):
 
 
 def main():
+    """
+    Escanea el corpus e imprime el informe. Con --muestra escribe además el CSV
+    de revisión manual, cuyas dos últimas columnas van vacías a propósito: son
+    las que rellena quien revisa.
+    """
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", type=Path, default=BASE_DIR / "triage_limpio.csv")
+    ap.add_argument("--csv", type=Path, default=rutas.TRIAGE_LIMPIO)
     ap.add_argument("--bd", action="store_true",
                     help="lee la tabla completa en vez del CSV")
     ap.add_argument("--muestra", type=int, default=0,
                     help="escribe una muestra estratificada de N notas")
     ap.add_argument("--salida", type=Path,
-                    default=BASE_DIR / "muestra_revision.csv")
+                    default=rutas.MUESTRA_REVISION)
     args = ap.parse_args()
 
     if args.bd:
         import pandas as pd
-        from conexion_bd import obtener_engine
+        from NLP.nucleo.conexion_bd import obtener_engine
         df = pd.read_sql(
             "SELECT OID, HCTMOTCON FROM DIM_TRIAGE WHERE HCTMOTCON IS NOT NULL "
             "AND LTRIM(RTRIM(HCTMOTCON)) <> ''", obtener_engine())

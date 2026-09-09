@@ -1,52 +1,46 @@
 """
-Recuperacion de la capitalizacion, aprendida del propio corpus.
+Recuperación de la capitalización, aprendida del propio corpus.
 
 EL PROBLEMA
-    El 87,7% de las notas de triage esta escrito integramente en mayusculas.
-    Para esas notas, reglas.detectar_protegidos() devuelve un conjunto vacio:
-    su unica senal es el contraste entre mayusculas y minusculas, y en un
-    bloque de mayusculas no hay contraste que leer. O sea que la defensa
-    principal contra corromper nombres propios, siglas y farmacos esta apagada
-    en nueve de cada diez notas.
+    La gran mayoría de las notas de triage está escrita íntegramente en
+    mayúsculas. En ellas, la detección de nombres propios por contraste de
+    capitalización no tiene nada que leer, de modo que la defensa principal
+    contra corromper nombres, siglas y fármacos queda desactivada justo en el
+    caso más frecuente.
 
-    La respuesta anterior a esto fue diccionario_siglas.json: 483 entradas
-    escritas a mano. No escala, y ademas obliga a dar UNA respuesta global a
-    un token cuyo sentido depende del contexto. El caso que lo demuestra es
-    'IR': como insulinorrequiriente debe ir en mayuscula, como verbo 'ir' no,
-    asi que la unica salida era listarlo en no_restaurar_mayuscula y perder la
-    sigla en todas las notas.
+    La respuesta anterior era un diccionario escrito a mano. No escala, y además
+    obliga a dar una única respuesta global a un token cuyo sentido depende del
+    contexto: 'ir' es sigla cuando significa insulinorrequiriente y verbo cuando
+    no, y la lista negra solo permitía perder uno de los dos usos.
 
 LA IDEA
-    El hospital ya escribio la respuesta. Hay 11.415 notas con capitalizacion
-    normal, y en ellas se ve como se escribe cada palabra realmente. Medido
-    sobre el corpus completo:
+    El hospital ya escribió la respuesta. Una parte del corpus está redactada
+    con capitalización normal, y en ella se ve cómo se escribe realmente cada
+    palabra. Contando esas apariciones se obtiene, por token, si se comporta
+    como sigla, como nombre propio o como palabra común:
 
-        ir         56 MAYUS   0 Inicial   11 minus  -> sigla
-        hta       274 MAYUS   0 Inicial   35 minus  -> sigla
-        manizales   0 MAYUS 208 Inicial    7 minus  -> nombre propio
-        dolor      24 MAYUS   6 Inicial 4276 minus  -> palabra comun
+        ir          casi siempre en mayúsculas        -> sigla
+        manizales   casi siempre con inicial          -> nombre propio
+        dolor       casi siempre en minúsculas        -> palabra común
 
-    Ese recuento es el diccionario, y se regenera solo cuando cambia el
-    corpus. Reemplaza al mantenimiento manual, no lo complementa.
+    Ese recuento es el léxico, se regenera cuando cambia el corpus y sustituye
+    al mantenimiento manual en lugar de complementarlo.
 
-QUE NO RESUELVE, Y HAY QUE DECIRLO
-    Un termino que nunca aparecio en una nota bien escrita no tiene evidencia
-    y este modulo se abstiene. Medido: 'stemi' (1 observacion), 'timi' (1) y
-    'fazekas' (0) quedan fuera de alcance, y 'dolex' aparece en minuscula
-    porque asi lo escriben. Esos casos los tiene que frenar el guardian
-    clinico y los umbrales del corrector, no el casing.
+QUÉ NO RESUELVE
+    Un término que nunca apareció en una nota bien escrita no tiene evidencia, y
+    entonces este módulo se abstiene. Esos casos quedan en manos del guardián
+    clínico y de los umbrales del corrector.
 
-COMO SE USA
-    casing.construir(textos)      cuenta las formas sobre notas bien escritas
-    casing.guardar()              deja el lexico en lexico_casing.json
-    casing.cargar()               lo lee sin recalcular
-    casing.restaurar(nota)        devuelve la nota gritada con su capitalizacion
+USO
+    construir(textos)   cuenta las formas sobre las notas con contraste
+    guardar() / cargar()  persisten el léxico
+    restaurar(nota)     devuelve una nota gritada con su capitalización
+    clase(token)        qué aprendió el corpus sobre un token
 
-El texto que se corrige sigue siendo el de limpieza.limpiar(), en minusculas:
-medido sobre 250 notas, en minusculas spaCy conserva el 94,9% de las etiquetas
-gramaticales y el 93,8% de las dependencias, mientras que en mayusculas cae a
-64,4% y 67,1%. Lo que se recupera aca es la senal para PROTEGER, que es lo que
-de verdad se pierde al minusculizar: el NER pasa de 575 entidades a 163.
+El texto que se corrige sigue siendo el de la fase de limpieza, en minúsculas,
+porque es la forma con la que mejor rinde el análisis gramatical. Lo que se
+recupera aquí es la señal para proteger, que es la que de verdad se pierde al
+pasar todo a minúsculas.
 """
 
 import json
@@ -55,7 +49,9 @@ import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
-RUTA_LEXICO = Path(__file__).resolve().parent / "lexico_casing.json"
+from NLP import rutas
+
+RUTA_LEXICO = rutas.LEXICO_CASING
 
 # Una nota con mas mayusculas que esto no aporta evidencia: esta gritada y
 # todos sus tokens irian a MAYUS. Es el mismo umbral de reglas.texto_gritado.
@@ -95,10 +91,14 @@ _OBSERVACIONES = {}   # token -> {"MAYUS": n, "Inicial": n, "minus": n}
 
 
 # delegada a morfologia.py: la eñe es una letra, no un acento
-from morfologia import sin_tildes  # noqa: E402
+from NLP.nucleo.morfologia import sin_tildes  # noqa: E402
 
 
 def texto_gritado(texto):
+    """
+    True si la nota está escrita casi toda en mayúsculas y, por tanto, no aporta
+    evidencia sobre cómo se capitaliza cada palabra.
+    """
     letras = [c for c in str(texto) if c.isalpha()]
     if not letras:
         return True
@@ -106,29 +106,27 @@ def texto_gritado(texto):
 
 
 # ==========================================================
-# CONSTRUCCION DEL LEXICO
+# CONSTRUCCIÓN DEL LÉXICO
 # ==========================================================
 
 def _contar(textos):
     """
-    Cuenta como se escribe cada palabra en las notas que si tienen contraste.
+    Cuenta cómo se escribe cada palabra en las notas que sí tienen contraste
+    de capitalización. Devuelve, por token en minúscula, un contador con las
+    apariciones en mayúsculas, con inicial y en minúsculas.
 
-    SOLO CUENTA LA MAYUSCULA QUE NO SE EXPLICA POR LA POSICION
-        Una mayuscula puede venir de tres sitios, y dos de ellos no dicen nada
-        sobre la palabra:
+    Solo cuenta la mayúscula que no se explica por la posición, porque de las
+    tres razones por las que una palabra puede llevarla, dos no dicen nada sobre
+    la palabra en sí:
 
-          abrir oracion   'Paciente refiere...' No es un nombre propio, es la
-                          ortografia normal del espanol.
-          etiquetar campo 'Ocupacion:', 'Alergicos:', 'Toxicos:'. Van en
-                          mayuscula porque encabezan un apartado de la
-                          plantilla de la historia clinica.
-          ser el nombre   'Manizales', 'Sjogren', 'Dr'. Esta es la unica que
-                          aporta informacion.
+        abrir oración     es la ortografía normal del español.
+        etiquetar campo   'Ocupacion:', 'Alergicos:' encabezan un apartado de la
+                          plantilla de la historia clínica.
+        ser un nombre     esta es la única que aporta información.
 
-        La primera version de este modulo solo descartaba la primera, y por eso
-        aprendio como nombres propios a 'Ocupacion', 'Alergicos', 'Toxicos',
-        'Quirurgicos', 'Farmacologicos' y 'Acompanante': todas las etiquetas de
-        la plantilla. Se descartan tambien los tokens seguidos de dos puntos.
+    De ahí las dos exclusiones del bucle: el primer token de cada fragmento y
+    todo token seguido de dos puntos. Sin la segunda, el léxico aprendía como
+    nombres propios los rótulos de la plantilla.
     """
     formas = defaultdict(Counter)
 
@@ -154,7 +152,14 @@ def _contar(textos):
 
 
 def _clasificar(conteo):
-    """SIGLA, NOMBRE, COMUN o None si no hay evidencia suficiente."""
+    """
+    Clasifica un token a partir de su contador de formas: SIGLA, NOMBRE o COMUN.
+
+    Devuelve None cuando no hay evidencia suficiente, sea porque el token se vio
+    pocas veces o porque se usa de varias formas sin que ninguna alcance la
+    dominancia exigida. En ese caso no existe una respuesta global correcta y el
+    módulo se abstiene.
+    """
     total = sum(conteo.values())
     if total < MINIMO_OBSERVACIONES:
         return None
@@ -174,10 +179,11 @@ def _clasificar(conteo):
 
 def construir(textos):
     """
-    Construye el lexico a partir de un corpus. Devuelve cuantas entradas quedaron.
+    Construye el léxico a partir de un corpus y devuelve cuántas entradas
+    quedaron.
 
-    textos: iterable de notas SIN limpiar. Las mayusculas del original son toda
-    la materia prima de este modulo, asi que recibe el texto crudo.
+    `textos` es un iterable de notas SIN limpiar: las mayúsculas del original
+    son toda la materia prima de este módulo.
     """
     _LEXICO.clear()
     _OBSERVACIONES.clear()
@@ -198,15 +204,21 @@ def construir(textos):
 
 
 def disponible():
+    """True si hay un léxico de capitalización cargado en memoria."""
     return bool(_LEXICO)
 
 
 def guardar(ruta=RUTA_LEXICO):
+    """
+    Escribe el léxico en disco junto con los parámetros con los que se construyó
+    y el recuento de formas de cada token, que es lo que permite revisar después
+    por qué un token quedó clasificado como quedó.
+    """
     datos = {
         "_descripcion": (
             "Capitalizacion aprendida de las notas del hospital escritas con "
             "mayusculas y minusculas. Generado por casing.construir(); no se "
-            "edita a mano. Para regenerarlo: python casing.py"),
+            "edita a mano. Para regenerarlo: python -m NLP.recursos.casing"),
         "_parametros": {
             "minimo_observaciones": MINIMO_OBSERVACIONES,
             "dominancia": DOMINANCIA,
@@ -221,6 +233,10 @@ def guardar(ruta=RUTA_LEXICO):
 
 
 def cargar(ruta=RUTA_LEXICO):
+    """
+    Lee el léxico ya construido y devuelve cuántas entradas trae, o 0 si el
+    archivo todavía no existe.
+    """
     ruta = Path(ruta)
     if not ruta.exists():
         return 0
@@ -233,35 +249,39 @@ def cargar(ruta=RUTA_LEXICO):
 
 
 # ==========================================================
-# CONSULTA
+# CONSULTA DEL LÉXICO
 # ==========================================================
 
 def clase(token):
-    """SIGLA, NOMBRE, COMUN o None si el corpus no tiene evidencia del token."""
+    """SIGLA, NOMBRE, COMUN, o None si el corpus no tiene evidencia del token."""
     return _LEXICO.get(str(token).lower())
 
 
 def es_sigla(token):
+    """True si el corpus escribe el token habitualmente en mayúsculas."""
     return clase(token) == SIGLA
 
 
 def es_nombre_propio(token):
+    """True si el corpus escribe el token habitualmente con inicial mayúscula."""
     return clase(token) == NOMBRE
 
 
 def siglas(dominancia=None):
     """
-    Las siglas aprendidas. Complementa a diccionario_siglas.json.
+    Conjunto de siglas aprendidas del corpus. Complementa al diccionario de
+    siglas escrito a mano.
 
-    dominancia: si se pasa, solo devuelve las que superan esa fraccion de
-    apariciones en mayuscula. Sirve para separar dos usos distintos:
+    Con `dominancia` se exige además que superen esa fracción de apariciones en
+    mayúscula. El parámetro existe porque las siglas se usan para dos cosas de
+    exigencia distinta:
 
-      proteger un token de la correccion    basta la mayoria simple: proteger
-          de mas no corrompe nada, solo deja una palabra sin corregir;
-      escribirlo en mayuscula en la salida   hace falta mas certeza, porque
-          equivocarse SI cambia el texto. 'ir' aparece en mayuscula el 83,6%
-          de las veces: suficiente para protegerlo, no para convertir en 'IR'
-          todos los 'puede ir al bano' de una nota gritada.
+        proteger un token       basta la mayoría simple; proteger de más no
+                                corrompe nada, solo deja una palabra sin
+                                corregir.
+        escribirlo en mayúscula hace falta más certeza, porque equivocarse sí
+                                altera el texto: convertir en sigla todos los
+                                usos de una palabra frecuente estropea la nota.
     """
     if dominancia is None:
         return {t for t, c in _LEXICO.items() if c == SIGLA}
@@ -278,24 +298,24 @@ def siglas(dominancia=None):
 
 
 def nombres_propios():
+    """Conjunto de tokens que el corpus escribe como nombre propio."""
     return {t for t, c in _LEXICO.items() if c == NOMBRE}
 
 
 # ==========================================================
-# RESTAURACION
+# RESTAURACIÓN DE LA CAPITALIZACIÓN
 # ==========================================================
 
 def restaurar(texto):
     """
-    Devuelve la nota con la capitalizacion que el corpus dice que corresponde.
+    Devuelve la nota con la capitalización que el corpus indica.
 
-    Sobre una nota que ya viene con mayusculas y minusculas no se toca nada: su
-    autor ya dio la informacion y es mejor evidencia que cualquier promedio.
+    Una nota que ya viene con mayúsculas y minúsculas se devuelve sin tocar: lo
+    que escribió su autor es mejor evidencia que cualquier promedio. Solo se
+    reescriben las notas gritadas.
 
-    Los tokens sin evidencia van a minuscula. Es la opcion segura medida: en
-    minusculas spaCy conserva el 94,9% de las etiquetas gramaticales, mientras
-    que dejarlos en mayuscula las hunde al 64,4% y multiplica por 3,6 las
-    entidades falsas.
+    Los tokens sin evidencia pasan a minúscula, que es la opción segura: el
+    análisis gramatical se degrada mucho menos en minúsculas que en mayúsculas.
     """
     texto = str(texto or "")
     if not texto or not texto_gritado(texto):
@@ -321,6 +341,10 @@ def restaurar(texto):
 
 
 def _recapitalizar(palabra, inicio_oracion):
+    """
+    Escribe una palabra según su clase: en mayúsculas si es sigla, con inicial
+    si es nombre propio o si abre oración, y en minúsculas en los demás casos.
+    """
     clase_token = clase(palabra)
 
     if clase_token == SIGLA:
@@ -336,22 +360,17 @@ def _recapitalizar(palabra, inicio_oracion):
 
 def mayusculas_informativas(texto):
     """
-    Tokens del texto cuya mayuscula dice algo sobre la palabra.
+    Tokens de una nota cuya mayúscula aporta información sobre la palabra.
 
-    Es la misma regla con la que se construye el lexico, aplicada ahora a una
-    nota concreta: una mayuscula que se explica por la posicion no es
-    evidencia. Se descartan las de inicio de oracion y las de etiqueta de
-    campo, y queda solo la que no tiene otra explicacion que ser un nombre
+    Aplica a una nota concreta el mismo criterio con el que se construye el
+    léxico: se descartan las mayúsculas de inicio de oración y las de rótulo de
+    campo, y queda solo la que no tiene otra explicación que ser un nombre
     propio o una sigla.
 
-    POR QUE HACE FALTA
-        reglas.entidades() protegia una entidad del NER solo si el token venia
-        en mayuscula en el original, para descartar los falsos positivos que
-        spaCy produce sobre palabras raras. Al pasarle el texto ya
-        recapitalizado ese filtro quedo vacio: restaurar() pone mayuscula al
-        abrir oracion, asi que 'Pacinete' la cumplia y el typo quedaba
-        protegido. Medido: se dejaron de corregir 'pacinete' y
-        'hipotirodismo', que la version anterior si arreglaba.
+    Lo usa la protección por entidades para confirmar lo que propone el
+    reconocedor. Aceptar cualquier mayúscula no sirve, porque sobre un texto ya
+    recapitalizado toda oración abre en mayúscula y hasta una palabra mal
+    escrita pasaría por nombre propio.
     """
     encontrados = set()
     for fragmento in RE_ORACION.split(str(texto or "")):
@@ -367,7 +386,11 @@ def mayusculas_informativas(texto):
 
 
 def diagnosticar(token):
-    """Por que un token quedo clasificado como quedo."""
+    """
+    Por qué un token quedó clasificado como quedó: su clase, el recuento de
+    formas observadas y el porcentaje de cada una. Herramienta de inspección
+    manual.
+    """
     token = str(token).lower()
     conteo = _OBSERVACIONES.get(token)
     if conteo is None:
@@ -386,13 +409,16 @@ def diagnosticar(token):
 
 
 # ==========================================================
-# GENERACION
+# GENERACIÓN DEL ARCHIVO
 # ==========================================================
 
 def main():
-    """Regenera lexico_casing.json leyendo la tabla de triage completa."""
+    """
+    Regenera el léxico de capitalización leyendo la tabla de triage completa e
+    informa de qué parte del corpus resultó aprovechable.
+    """
     import pandas as pd
-    from conexion_bd import obtener_engine
+    from NLP.nucleo.conexion_bd import obtener_engine
 
     print("Leyendo notas...")
     df = pd.read_sql(

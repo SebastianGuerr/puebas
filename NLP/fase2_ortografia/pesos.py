@@ -1,76 +1,62 @@
 """
-Peso clinico de cada palabra: cuanto hay que protegerla del corrector.
+Peso clínico de cada palabra: cuánta protección merece frente al corrector.
 
-EL CAMBIO DE POLITICA QUE INTRODUCE ESTE ARCHIVO
-    Hasta ahora el pipeline funcionaba asi: LanguageTool proponia un cambio y
-    ocho guardias intentaban vetarlo (numeros, diccionario, patrones, entidades,
-    vocabulario, forma, morfemas, terminologia). Es proteger por veto, y tiene
-    un fallo de diseno: basta que UN guardia tenga un agujero para que el cambio
-    pase. El caso que lo demostro:
+EL CRITERIO QUE INTRODUCE ESTE MÓDULO
+    El diseño anterior protegía por veto: el corrector proponía un cambio y una
+    serie de guardias intentaban bloquearlo. Basta con que uno de ellos tenga un
+    hueco para que el cambio pase, y un veto que se puede rodear termina
+    rodeándose.
 
-        AÑOÑ -> anón
-
-    'añoñ' y 'anón' pliegan al mismo 'anon' porque sin_tildes() trataba la eñe
-    como un acento. Eso hacia True a es_restauracion_tilde(), que es la PRIMERA
-    rama de candidatos.elegir() y retorna sin consultar a ninguno de los ocho
-    guardias. Un veto que se puede rodear, tarde o temprano se rodea.
-
-    Aca se invierte: cada palabra recibe un peso clinico ANTES de que el
-    corrector la vea, y la que pesa lo suficiente no llega al corrector. No hay
-    veto que pueda fallar porque no hay nada que vetar.
-
-    Es la misma inversion que ya se hizo en ambiguedad.py con las siglas: en vez
-    de transformar por defecto y proteger por excepcion, no se toca salvo que se
-    demuestre que se puede.
+    Aquí se invierte: cada palabra recibe un peso clínico ANTES de que el
+    corrector la vea, y la que pesa lo suficiente no llega a él. No hay veto que
+    pueda fallar porque no hay nada que vetar. Es la misma inversión que se
+    aplica a las siglas en `recursos/ambiguedad.py`: no se toca nada salvo que
+    se demuestre que se puede.
 
 LA ESCALA
-    El peso es evidencia acumulada, no una clasificacion. Ninguna fuente sola
-    decide, porque ninguna sola es fiable:
+    El peso es evidencia acumulada, no una clasificación. Ninguna fuente decide
+    por sí sola, porque ninguna es fiable por sí sola:
 
-      1.00  correccion directa declarada      es un error conocido: NO se protege
-      0.95  diccionario del proyecto          escrito a mano, decision deliberada
-      0.95  catalogo de sintomas
-      0.90  sufijo de principio activo (DCI)  -pril, -sartan, -azepam, -micina
-      0.85  vocabulario biomedico             medido: 94% de precision
-      0.70  morfemas medicos                  hipo-, -ectomia, -itis
-      0.60  sigla aprendida del corpus        casing.py sobre notas bien escritas
-      0.40  frecuente y desconocida           el hospital la repite y ningun
-                                              diccionario del espanol la conoce
-      0.00  nada
+        1.00  contiene un dígito                 nunca se toca
+        0.95  diccionario, catálogo o léxico externo
+        0.90  termina como un principio activo
+        0.70  contiene morfemas médicos
+        0.60  sigla aprendida del corpus
+        0.45  vocabulario del modelo biomédico
+        0.40  frecuente en el hospital y desconocida para el español
+        0.00  ninguna evidencia
+        0.00  corrección directa declarada       es un error conocido: se
+                                                 corrige siempre
 
     Por encima de UMBRAL_PROTECCION la palabra no pasa al corrector general.
 
-POR QUE EL VOCABULARIO DE spaCy YA NO ES UN VETO
-    Era la proteccion mas amplia del pipeline y estaba mal usada.
-    es_core_news_md se entreno con texto web y reconoce 'conciente',
-    'transplante', 'aprox' y 'fibre'. Como reglas.es_palabra_conocida() los
-    declaraba intocables, esas palabras no se corrigieron NUNCA: medido, 106 de
-    106 notas con 'conciente' quedaron sin tocar.
-
-    Aca spaCy pasa a ser lo que siempre debio ser: una senal debil que suma
-    poco. Que una palabra este en un corpus web no prueba que sea terminologia
-    clinica, y desde luego no prueba que este bien escrita.
+POR QUÉ EL VOCABULARIO DE spaCy NO ES UN VETO
+    Era la protección más amplia del pipeline y estaba mal empleada. El modelo
+    se entrenó con texto web y reconoce faltas de ortografía frecuentes, de modo
+    que declararlas intocables impedía corregirlas para siempre. Aquí pasa a ser
+    lo que debe ser: una señal débil, que suma poco. Que una palabra aparezca en
+    un corpus web no prueba que sea terminología clínica ni que esté bien
+    escrita.
 """
 
-import casing
-import lexico
-import linguistica
-import morfologia
-import reglas
+from NLP.nucleo import linguistica
+from NLP.nucleo import morfologia
+from NLP.nucleo import reglas
+from NLP.recursos import casing
+from NLP.recursos import lexico
 
 # ==========================================================
 # CONFIGURACION
 # ==========================================================
 
-# Por encima de este peso la palabra no llega al corrector general. Se fijo en
-# 0.5 porque es lo que separa las fuentes con evidencia clinica (diccionario,
-# catalogo, farmaco, biomedico, morfemas) de las que solo dicen 'esta palabra
-# existe en alguna parte'.
+# Por encima de este peso la palabra no llega al corrector general. El valor
+# separa las fuentes con evidencia clinica (diccionario, catalogo, farmaco,
+# morfemas) de las que solo indican que la palabra existe en alguna parte.
 UMBRAL_PROTECCION = 0.5
 
 # Peso a partir del cual se intenta arreglar la palabra contra el lexico
-# clinico en vez de dejarla intacta. Es lo que convierte 'abodominal' en
-# 'abdominal' sin preguntarle a un corrector de espanol.
+# clinico en lugar de dejarla intacta. Es lo que convierte 'abodominal' en
+# 'abdominal' sin pasar por un corrector de espanol.
 UMBRAL_CORRECCION_MEDICA = 0.4
 
 # Apariciones en el corpus a partir de las cuales una palabra desconocida deja
@@ -85,25 +71,16 @@ PESOS = {
     "externo": 0.95,
     "farmaco": 0.90,
 
-    # El vocabulario del modelo biomedico NO protege por si solo, y esto se
-    # midio despues de intentarlo:
+    # El vocabulario del modelo biomedico queda deliberadamente por debajo del
+    # umbral de proteccion. El tokenizador se entreno sobre historias clinicas
+    # escritas en espanol, de modo que su vocabulario contiene el idioma
+    # corriente entero y no solo la terminologia: con un peso alto protegia
+    # palabras comunes y, peor, congelaba las mal escritas que tambien figuran
+    # en el, que asi no recibian su tilde.
     #
-    #   La primera version le daba 0.85 y con eso protegia 'disculpas', 'ahora',
-    #   'vida' y 'cuya'. El motivo es obvio en retrospectiva: el tokenizador se
-    #   entreno sobre historias clinicas escritas EN ESPANOL, asi que su
-    #   vocabulario BPE contiene el espanol corriente entero, no solo la
-    #   terminologia. Protegerlo todo era inofensivo para las palabras bien
-    #   escritas, pero congelaba las mal escritas que tambien estaban en el
-    #   vocabulario: 'dificil' quedaba protegido y no recibia su tilde.
-    #
-    #   Se probo restarle el vocabulario de spaCy para quedarse solo con lo
-    #   distintivamente clinico. Peor: spaCy conoce 21 de 22 terminos de prueba
-    #   ('disnea', 'cefalea', 'taquicardia'), asi que la resta dejaba 1.
-    #
-    # Donde SI aporta es como DESTINO de correccion, no como escudo: es la unica
-    # fuente que tenia 'venlafaxina', 'valsalva', 'craneoencefálico' y
-    # 'levofloxacino' para que lexico.cercano() pudiera llegar a ellos. Por eso
-    # se queda por debajo del umbral de proteccion: pesa, pero no basta.
+    # Donde si aporta es como DESTINO de correccion y no como escudo: es la
+    # unica fuente que contiene muchos principios activos y epinimos, y sin ella
+    # el lexico no podria corregir hacia ellos. Por eso pesa, pero no basta.
     "biomedico": 0.45,
     "morfemas": 0.70,
     "sigla_corpus": 0.60,
@@ -116,13 +93,16 @@ _CONTEO = None      # frecuencias del corpus, las inyecta ortografia.py
 
 
 def usar_conteo(conteo):
-    """Recibe el Counter del corpus que ya construye candidatos.py."""
+    """
+    Registra el recuento de frecuencias del corpus, que construye el módulo de
+    candidatos. Sin él, la señal de jerga frecuente queda desactivada.
+    """
     global _CONTEO
     _CONTEO = conteo
 
 
 def frecuencia(palabra):
-    """Veces que el hospital escribio esa palabra. 0 si no hay corpus cargado."""
+    """Veces que la palabra aparece en el corpus. 0 si no hay corpus cargado."""
     return _CONTEO.get(str(palabra).lower(), 0) if _CONTEO else 0
 
 
@@ -130,15 +110,17 @@ _frecuencia = frecuencia
 
 
 # ==========================================================
-# PESO
+# CÁLCULO DEL PESO
 # ==========================================================
 
 def peso(palabra):
     """
-    Devuelve (peso, motivo) para una palabra suelta.
+    Devuelve el par (peso, motivo) de una palabra suelta.
 
-    El motivo no es decorativo: es lo que se escribe en el reporte de auditoria
-    para poder explicar despues por que una palabra quedo como quedo.
+    Las fuentes se consultan de mayor a menor autoridad y la primera que
+    reconoce la palabra fija el peso. El motivo acompaña siempre al valor porque
+    es lo que se vuelca en el informe de auditoría: sin él no se puede explicar
+    después por qué una palabra quedó como quedó.
     """
     token = morfologia.normalizar(palabra)
     if not token:
@@ -147,10 +129,10 @@ def peso(palabra):
     if morfologia.tiene_numero(token):
         return PESOS["numero"], "numero"
 
-    # Un error declarado a mano manda sobre cualquier evidencia. Hace falta
-    # porque el vocabulario biomedico contiene faltas de ortografia tan comunes
-    # que el modelo las aprendio: 'transplante' esta ahi y sin esta linea
-    # quedaria protegido, que es peor que como estaba antes.
+    # Un error declarado a mano manda sobre cualquier otra evidencia. Hace
+    # falta porque el vocabulario biomedico incorporo faltas de ortografia tan
+    # frecuentes que el modelo las aprendio, y sin esta comprobacion quedarian
+    # protegidas.
     if token in reglas.DIRECTAS:
         return PESOS["correccion_directa"], "correccion_directa"
 
@@ -177,8 +159,8 @@ def peso(palabra):
     if casing.disponible() and casing.es_sigla(token):
         return PESOS["sigla_corpus"], "sigla_corpus"
 
-    # el hospital la repite y ningun diccionario del espanol la conoce: es
-    # jerga del servicio, un nombre comercial o una sigla que falta
+    # el corpus la repite y ningun diccionario del espanol la reconoce: es jerga
+    # del servicio, un nombre comercial o una sigla que falta en el diccionario
     if (_frecuencia(token) >= FRECUENCIA_JERGA
             and not linguistica.en_vocabulario(token)):
         return PESOS["jerga_frecuente"], "jerga_frecuente"
@@ -187,14 +169,15 @@ def peso(palabra):
 
 
 def protegida(palabra):
-    """True si la palabra no debe llegar al corrector general."""
+    """True si el peso de la palabra alcanza el umbral de protección."""
     return peso(palabra)[0] >= UMBRAL_PROTECCION
 
 
 def pesar_texto(texto):
     """
-    [(palabra, inicio, fin, peso, motivo)] para cada palabra del texto.
-    Es la vista que consume enmascarado.py.
+    Pesa todas las palabras del texto y devuelve una tupla
+    (palabra, inicio, fin, peso, motivo) por cada una, con las posiciones en
+    caracteres. Es la vista que consume el enmascarado clínico.
     """
     salida = []
     for m in reglas.RE_PALABRA.finditer(str(texto).lower()):
@@ -204,7 +187,10 @@ def pesar_texto(texto):
 
 
 def diagnosticar(texto):
-    """Peso de cada palabra de una nota. Para revisar casos puntuales."""
+    """
+    Peso de cada palabra de una nota, con su motivo, si queda protegida y su
+    frecuencia en el corpus. Herramienta de inspección manual.
+    """
     return [
         {"palabra": palabra, "peso": p, "motivo": motivo,
          "protegida": p >= UMBRAL_PROTECCION,
