@@ -638,10 +638,79 @@ def recortar(texto, agresivo=True):
     if not texto:
         return ""
 
-    salida = _recortar(texto, agresivo=True)
-    if salida:
-        return salida
-    return _recortar(texto, agresivo=False)
+    # Se prueba la pasada agresiva, y se acepta solo si no dejo costuras. Si
+    # las dejo, la suave corta menos y suele no tenerlas; y si tampoco vale, se
+    # devuelve el mejor recorte disponible antes que nada. Una frase con algo de
+    # tramite es mejor que una frase rota.
+    agresiva = _recortar(texto, agresivo=True)
+    if agresiva and not crea_costura(texto, agresiva):
+        return agresiva
+
+    suave = _recortar(texto, agresivo=False)
+    if suave and not crea_costura(texto, suave):
+        return suave
+
+    return sin_reducir(texto, agresiva or suave)
+
+
+def _pares_contiguos(texto):
+    """
+    Los pares de palabras contiguas del texto, tramo a tramo.
+
+    Se corta en los signos de puntuacion porque un salto en una coma no es una
+    costura: ahi la frase ya cambiaba de idea. Lo que interesa es la vecindad
+    DENTRO de un tramo, que es la que la gramatica sostiene.
+    """
+    pares = set()
+    for tramo in re.split(r"[.;,:]", str(texto).lower()):
+        palabras = re.findall(r"[^\W\d_]+", tramo)
+        pares |= set(zip(palabras, palabras[1:]))
+    return pares
+
+
+def crea_costura(original, recortado):
+    """
+    True si el recorte deja juntas dos palabras que no lo estaban en la nota.
+
+    QUE MIDE, Y POR QUE ES UN CRITERIO Y NO UN SINTOMA
+        Quitar un tramo por el medio deja pegado lo de antes con lo de despues.
+        El resultado es una frase que nadie escribio:
+
+            'paciente que consulta por dolor'  ->  'paciente que dolor'
+            'paciente quien refiere cuadro'    ->  'paciente cuadro'
+
+        Medido sobre 189 notas, esto era el 70% de todos los fallos del recorte,
+        y 13 de las 17 costuras empezaban por 'paciente': los patrones de
+        tramite y de verbo de reporte se llevan el verbo y dejan el sujeto
+        huerfano pegado a lo siguiente.
+
+        No hace falta enumerar que patron corta mal. Basta comprobar que el
+        recorte no invento ninguna vecindad: si la invento, corto por un sitio
+        por el que no se podia cortar. Es una propiedad del resultado, asi que
+        vale para los patrones de hoy y para los que se añadan manana.
+    """
+    return bool(_pares_contiguos(recortado) - _pares_contiguos(original))
+
+
+def sin_reducir(original, reducido):
+    """
+    Devuelve el recorte, o el texto original si el recorte no dejo nada.
+
+    POR QUE NO SE MARCA NI SE DESCARTA
+        Hubo una version que anadia '(sin informacion relevante)' y otra que
+        tiraba la nota. Las dos obligan a decidir aqui algo que aqui no se puede
+        decidir bien: que una nota no tenga terminologia RECONOCIDA no prueba
+        que no diga nada, solo que el vocabulario no la cubre. Todo el historial
+        de este proyecto es esa confusion -- 'me cai', 'tengo gripa', 'hta' --
+        y cada vez el diccionario tenia el hueco, no la nota.
+
+        Reducir cuando se puede y no tocar cuando no se puede deja esas notas
+        reconocibles: son las unicas cuyo texto de embedding coincide con el
+        normalizado. Se localizan comparando las dos columnas, sin que nadie
+        haya tenido que apostar antes por ellas.
+    """
+    reducido = str(reducido or '').strip()
+    return reducido if reducido else str(original or '').strip()
 
 
 def _recortar(texto, agresivo=True):

@@ -140,6 +140,11 @@ def peso(palabra):
         origen = lexico.fuente(token)
         if origen == lexico.DICCIONARIO:
             return PESOS["diccionario"], "diccionario"
+        if origen == lexico.NO_CLINICO:
+            # un toponimo o una institucion se protege igual que un termino:
+            # no se corrige. Que no sea evidencia clinica es otra pregunta, y
+            # la responde depuracion.py con FUENTES_CURADAS.
+            return PESOS["diccionario"], "no_clinico"
         if origen == lexico.CATALOGO:
             return PESOS["catalogo"], "catalogo"
         if origen == lexico.EXTERNO:

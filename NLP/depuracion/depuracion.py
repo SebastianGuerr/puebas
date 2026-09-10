@@ -128,6 +128,30 @@ PALABRAS_ANATOMIA = {
     "extremidades", "miembro", "miembros", "hueso", "huesos", "musculo",
 }
 
+# Palabras de tiempo. CUANDO ocurrio algo no es POR QUE vino el paciente, y el
+# tiempo de evolucion ya viaja como dato estructurado.
+#
+# Es el tercer caso de lo mismo, y por eso hay tres listas y no una: el CIE-10
+# contiene 'semana', 'pasada' y 'pasado' en sus rubricas, de modo que
+#
+#     'la semana pasada me hospitalizar y el viernes pasado sali'
+#
+# daba tres 'terminos clinicos' -- semana, pasada, pasado -- y salia del
+# pipeline como si fuera un motivo de consulta. No dice ni un sintoma: cuenta un
+# ingreso anterior.
+PALABRAS_TIEMPO = {
+    "dia", "dias", "semana", "semanas", "mes", "meses", "ano", "anos",
+    "hora", "horas", "minuto", "minutos", "rato", "noche", "noches",
+    "madrugada", "tarde", "manana", "anoche", "antier", "antenoche",
+    "lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo",
+    "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto",
+    "septiembre", "setiembre", "octubre", "noviembre", "diciembre",
+    "pasado", "pasada", "pasados", "pasadas", "reciente", "recientemente",
+    "actual", "actualmente", "previo", "previa", "anterior", "ultimo",
+    "ultima", "fin", "principios", "mediados", "finales", "hace", "desde",
+    "aproximadamente", "aprox",
+}
+
 # Numero minimo de palabras con contenido para conservar una nota que no tiene
 # terminologia reconocida. Es la valvula de escape del criterio: una nota larga
 # escrita en lenguaje corriente puede no contener ni un termino del lexico y ser
@@ -401,8 +425,21 @@ def cargar():
     # viterbo' se conservaba porque el municipio esta en el lexico como entrada
     # del diccionario, y luego la reduccion lo dejaba en texto vacio: la nota
     # sobrevivia sin decir nada. La lista es la misma que usa la reduccion.
+    # Entre lo excluido van tambien las palabras de la fuente NO_CLINICO:
+    # municipios, instituciones y vocabulario administrativo.
+    #
+    # No basta con filtrarlas por fuente al recorrer el lexico, porque este
+    # indice va por RAIZ y una misma raiz la puede aportar otra palabra.
+    # 'hospital' seguia dentro aunque su fuente ya fuera no_clinico, y con ella
+    # 'remitida del hospital santa sofia' seguia contando como clinica.
+    no_clinicas = set()
+    if lexico.disponible():
+        no_clinicas = {t for t in lexico.terminos()
+                       if lexico.fuente(t) == lexico.NO_CLINICO}
+
     excluidas = {_stem(p) for p in
-                 PALABRAS_TRAMITE | PALABRAS_ANATOMIA | VACIAS | _lugares()}
+                 PALABRAS_TRAMITE | PALABRAS_ANATOMIA | PALABRAS_TIEMPO
+                 | VACIAS | _lugares() | no_clinicas}
     _RAICES = {r for r in (_stem(p) for p in sueltas)
                if len(r) >= LONGITUD_MINIMA_RAIZ and r not in excluidas}
     return len(_RAICES)
@@ -416,7 +453,8 @@ def es_clinica(palabra):
     gracias a 'vomito', que es la forma que declara el catalogo.
     """
     clave = _plegar(palabra)
-    if clave in PALABRAS_TRAMITE or clave in PALABRAS_ANATOMIA:
+    if (clave in PALABRAS_TRAMITE or clave in PALABRAS_ANATOMIA
+            or clave in PALABRAS_TIEMPO):
         return False
     cargar()
     return _stem(clave) in _RAICES
@@ -445,9 +483,34 @@ def terminos_clinicos(texto):
 
 
 def solo_tramite(texto):
-    """True si todas las palabras con contenido de la nota son de trámite."""
+    """
+    True si la nota no tiene mas que tramite y nombres propios.
+
+    POR QUE NO BASTA CON EXIGIR QUE TODO SEA TRAMITE
+        La version anterior pedia que TODAS las palabras estuvieran en la lista,
+        y por eso dejaba pasar
+
+            'remitido de assbsaluda san cayetano'
+
+        que es una derivacion pura: 'remitido' es tramite, pero 'assbsaluda' y
+        'cayetano' no estan en ninguna lista -- son el nombre de una IPS y de un
+        municipio, y no hay lista que los cubra todos.
+
+        La forma si generaliza: lo que sostiene una nota es la CLINICA. Una
+        palabra que no es terminologia no aporta motivo de consulta, se llame
+        como se llame, asi que basta con que haya tramite y no haya nada
+        clinico.
+
+    Se exige al menos una palabra de tramite: sin ella esto marcaria cualquier
+    nota cuyo vocabulario el lexico todavia no cubra, que es justo el error que
+    el proyecto lleva toda su historia evitando.
+    """
     palabras = con_contenido(texto)
-    return bool(palabras) and all(p in PALABRAS_TRAMITE for p in palabras)
+    if not palabras:
+        return False
+    if not any(p in PALABRAS_TRAMITE for p in palabras):
+        return False
+    return not any(es_clinica(p) for p in palabras)
 
 
 # ==========================================================

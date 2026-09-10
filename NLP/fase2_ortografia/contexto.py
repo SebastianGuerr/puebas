@@ -84,6 +84,9 @@ _MOD = None
 _DISPONIBLE = None
 _CACHE = {}
 
+# se pone a True si la carga fallo, para no reintentarla en cada nota
+_FALLO_CARGA = False
+
 RE_ESPACIOS = re.compile(r"\s+")
 
 
@@ -96,23 +99,51 @@ def _cargar():
     Carga el tokenizador y el modelo la primera vez y los reutiliza. Devuelve
     None, con un aviso, si faltan las librerías o el modelo no se puede obtener.
     """
-    global _TOK, _MOD
+    global _TOK, _MOD, _FALLO_CARGA
     if _MOD is not None:
         return _MOD
-    try:
-        import torch
-        from transformers import AutoModelForMaskedLM, AutoTokenizer
-    except ModuleNotFoundError:
-        print("Aviso: transformers/torch no instalados; la capa de contexto queda desactivada.")
-        return None
-    try:
-        _TOK = AutoTokenizer.from_pretrained(MODELO)
-        _MOD = AutoModelForMaskedLM.from_pretrained(MODELO)
-        _MOD.eval()
-        torch.set_num_threads(4)
-    except Exception as exc:
-        print(f"Aviso: no se pudo cargar {MODELO} ({exc}); capa de contexto desactivada.")
-        return None
+
+    # LA CARGA VA BAJO CANDADO, Y NO ES UNA PRECAUCION TEORICA.
+    #
+    # El orquestador corrige con cuatro hilos, y los cuatro llegaban aqui a la
+    # vez la primera vez. Sin candado, cada uno empezaba a cargar por su cuenta
+    # y el resultado eran dos fallos distintos, los dos por la misma causa:
+    #
+    #     cannot import name 'AutoModelForMaskedLM' from 'transformers'
+    #         un hilo importaba el modulo mientras otro lo estaba importando, y
+    #         veia el espacio de nombres a medio construir
+    #
+    #     Tensor.item() cannot be called on meta tensors
+    #         un hilo empezaba a usar los pesos que otro todavia estaba
+    #         materializando
+    #
+    # Las notas afectadas se quedaban sin corregir, y el aviso no decia que la
+    # causa era la concurrencia. Con el candado, el primero que llega carga y
+    # los demas esperan y reutilizan.
+    with _LOCK:
+        if _MOD is not None:
+            return _MOD
+        if _FALLO_CARGA:
+            return None
+        try:
+            import torch
+            from transformers import AutoModelForMaskedLM, AutoTokenizer
+        except ImportError:
+            print("Aviso: transformers/torch no disponibles; la capa de contexto queda desactivada.")
+            _FALLO_CARGA = True
+            return None
+        try:
+            tok = AutoTokenizer.from_pretrained(MODELO)
+            mod = AutoModelForMaskedLM.from_pretrained(MODELO)
+            mod.eval()
+            torch.set_num_threads(4)
+        except Exception as exc:
+            print(f"Aviso: no se pudo cargar {MODELO} ({exc}); capa de contexto desactivada.")
+            _FALLO_CARGA = True
+            return None
+        # se publican al final y ya listos: hasta esta linea, _MOD sigue siendo
+        # None para cualquier otro hilo, de modo que nadie ve un modelo a medias
+        _TOK, _MOD = tok, mod
     return _MOD
 
 
@@ -201,12 +232,19 @@ def logprob(izquierda, palabra, derecha):
         return _CACHE[clave][0]
 
     izq, der = _recortar(izquierda, derecha)
-    sub = _TOK.encode(" " + palabra.strip(), add_special_tokens=False)
-    if not sub:
-        return None
 
-    total = 0.0
+    # TODO EL USO DEL TOKENIZADOR VA DENTRO DEL CANDADO, NO SOLO EL DEL MODELO.
+    #     El tokenizador rapido de HuggingFace esta implementado en Rust y
+    #     tampoco admite dos hilos a la vez: usarlo en paralelo lanza
+    #     RuntimeError('Already borrowed'). Esta llamada quedaba fuera, y con
+    #     cuatro hilos corrigiendo era otra fuente de notas sin corregir --
+    #     distinta de la carga, y con un mensaje que no decia de que iba.
     with _LOCK:
+        sub = _TOK.encode(" " + palabra.strip(), add_special_tokens=False)
+        if not sub:
+            return None
+
+        total = 0.0
         for k in range(len(sub)):
             prefijo = _TOK.decode(sub[:k]).strip()
             texto = f"{izq}{prefijo}{' ' if prefijo else ''}{_TOK.mask_token} {der.strip()}"
@@ -416,14 +454,15 @@ def esperado(izquierda, derecha, k=6):
         return []
     import torch
     izq, der = _recortar(izquierda, derecha)
-    texto = f"{izq}{_TOK.mask_token} {der.strip()}"
-    ids = _TOK(texto, return_tensors="pt", truncation=True, max_length=256)
-    posiciones = (ids["input_ids"][0] == _TOK.mask_token_id).nonzero()
-    if len(posiciones) == 0:
-        return []
+    # mismo motivo que en logprob(): el tokenizador tampoco es seguro entre hilos
     with _LOCK, torch.no_grad():
+        texto = f"{izq}{_TOK.mask_token} {der.strip()}"
+        ids = _TOK(texto, return_tensors="pt", truncation=True, max_length=256)
+        posiciones = (ids["input_ids"][0] == _TOK.mask_token_id).nonzero()
+        if len(posiciones) == 0:
+            return []
         salida = _MOD(**ids).logits[0, posiciones[0, 0]]
-    prob = torch.softmax(salida, -1)
-    top = torch.topk(prob, k)
-    return [(_TOK.decode([i]).strip(), round(v.item(), 4))
-            for v, i in zip(top.values, top.indices)]
+        prob = torch.softmax(salida, -1)
+        top = torch.topk(prob, k)
+        return [(_TOK.decode([i]).strip(), round(v.item(), 4))
+                for v, i in zip(top.values, top.indices)]

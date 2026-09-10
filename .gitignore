@@ -44,10 +44,11 @@ __pycache__/
 # siglas_detectadas.csv
 NLP/salidas/
 
-# fase 4: triage_estructurado.jsonl/.json y resumen_estructuracion.txt
+# fase 6: vectores.f32, vocabulario.parquet, indice.parquet, manifiesto.json
+# y sin_texto.csv. Se rehacen con 'python -m embedding.vectorizar', aunque sin
+# GPU eso cueste horas: por eso el paquete apende en vez de recalcular.
 embedding/salidas/
 
-# embeddings y clustering: 65 MB entre los dos, los genera exploracion.ipynb
 *.parquet
 
 # exploracion de la base de datos, la genera diccionario_bd/explore_db.py

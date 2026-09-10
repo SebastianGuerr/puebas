@@ -8,6 +8,8 @@ scipy==1.14.1
 scikit-learn==1.4.2
 joblib==1.4.2
 tqdm==4.66.1
+# lo usa pandas para leer y escribir el vocabulario y el indice de embedding/
+pyarrow==25.0.1
 openpyxl==3.1.5
 SQLAlchemy==2.0.35
 pyodbc==5.2.0

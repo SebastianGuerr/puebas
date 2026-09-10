@@ -40,7 +40,9 @@ EL PRINCIPIO
     palabra les inyecta un dato falso. Ante la duda, no se corrige.
 """
 
+import atexit
 import re
+import threading
 
 import language_tool_python
 
@@ -111,6 +113,23 @@ def _es_expansion(original, candidato):
     return all(letra in it for letra in o)
 
 _LT = None
+
+# UN SOLO LanguageTool PARA CUATRO HILOS, Y POR ESO HACE FALTA EL CANDADO.
+#
+# language_tool_python guarda el proceso del servidor en self._server y lo
+# REEMPLAZA cuando una peticion falla y hay que reiniciarlo. Con varios hilos
+# llamando a check() sobre la misma instancia, dos pueden entrar a la vez a ese
+# reinicio y pisarse: el communicate() de uno se traga la linea de arranque que
+# el otro esta esperando con readline(), y los dos quedan bloqueados para
+# siempre. Ninguno lanza excepcion, asi que el try/except de corregir() no se
+# entera y la corrida se cuelga entera con la CPU al 100%.
+#
+# Paso de verdad: la corrida del 9 de septiembre se congelo al 52% con dos
+# hilos trabados de esa forma, y solo se destrabo matando el java a mano.
+#
+# El candado no cuesta casi nada porque contexto.logprob ya serializa la parte
+# lenta de esta fase con su propio candado.
+_LT_LOCK = threading.Lock()
 _CAMBIOS_CONTEXTO = []
 
 
@@ -176,6 +195,28 @@ def iniciar_languagetool(idioma="es"):
 # ==========================================================
 # CORRECCIÓN
 # ==========================================================
+
+def cerrar_languagetool():
+    """
+    Apaga el servidor de LanguageTool al terminar el proceso.
+
+    Sin esto, cada corrida deja vivo su java escuchando en un puerto. El 9 de
+    septiembre habia OCHO servidores huerfanos de corridas anteriores ocupando
+    1,75 GB, y como language_tool_python busca el siguiente puerto libre, cada
+    corrida nueva arrancaba un puerto mas arriba en vez de reutilizar.
+    """
+    global _LT
+    if _LT is None:
+        return
+    try:
+        _LT.close()
+    except Exception:
+        pass
+    _LT = None
+
+
+atexit.register(cerrar_languagetool)
+
 
 def aplicar_directas(texto):
     """
@@ -452,7 +493,8 @@ def corregir(texto, texto_original=None):
 
     lt = iniciar_languagetool()
     try:
-        matches = lt.check(texto)
+        with _LT_LOCK:
+            matches = lt.check(texto)
     except Exception:
         matches = []
 

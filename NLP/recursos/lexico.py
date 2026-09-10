@@ -84,6 +84,25 @@ CATALOGO = "catalogo"           # catalogo de sintomas
 EXTERNO = "externo"             # CIE-10, SNOMED, INVIMA
 BIOMEDICO = "biomedico"         # vocabulario del modelo clinico
 
+# Palabras del diccionario propio que NO son evidencia clinica: municipios,
+# nombres de instituciones y vocabulario administrativo.
+#
+# POR QUE TIENEN FUENTE PROPIA EN VEZ DE QUEDARSE FUERA
+#     Hay que PROTEGERLAS del corrector -- sin la declaracion, 'dorada' se
+#     convirtio en 'morada' -- y a la vez NO pueden contar como motivo de
+#     consulta: 'remitido de assbsaluda san cayetano' no dice a que vino nadie.
+#
+#     Son dos preguntas distintas sobre la misma palabra, y con una sola fuente
+#     no se podian responder distinto. Con esta, pesos.py les da la proteccion
+#     del diccionario y depuracion.py las deja fuera de FUENTES_CURADAS.
+NO_CLINICO = "no_clinico"
+
+# Grupos del diccionario de siglas cuyo contenido y cuyas expansiones son
+# nombres propios o tramite. 'EMI servicio de emergencia medica' aportaba
+# 'servicio' y 'hospital' al lexico clinico, y 'consulta externa' aportaba las
+# dos palabras que hacian pasar por clinica una derivacion.
+GRUPOS_NO_CLINICOS = ("geografia", "instituciones_marcas", "administrativo")
+
 _TERMINOS = {}      # forma plegada -> (forma real, fuente)
 _SYM = None
 _CARGADO = False
@@ -102,27 +121,36 @@ def _plegar(palabra):
 
 def _del_diccionario():
     """
-    Siglas y términos del diccionario del proyecto. Incorpora también las
-    palabras del significado de cada sigla, que son terminología por derecho
-    propio ('hipertensión arterial' detrás de 'hta').
+    Siglas y terminos del diccionario del proyecto, en dos conjuntos:
+    (clinicas, no_clinicas).
+
+    Incorpora tambien las palabras del significado de cada sigla, que son
+    terminologia por derecho propio ('hipertension arterial' detras de 'hta').
+    Las de los grupos de GRUPOS_NO_CLINICOS van al segundo conjunto: se
+    protegen igual, pero no cuentan como motivo de consulta.
     """
     if not RUTA_SIGLAS.exists():
-        return set()
+        return set(), set()
     datos = json.loads(RUTA_SIGLAS.read_text(encoding="utf-8"))
-    salida = set()
+    clinicas, otras = set(), set()
     for clave, valor in datos.items():
         if clave.startswith("_") or clave in ("patrones_protegidos",
                                               "no_restaurar_mayuscula",
                                               "correcciones_directas"):
             continue
+        # los municipios, las instituciones y el vocabulario administrativo van
+        # aparte: se protegen igual, pero no son evidencia clinica
+        destino = otras if clave in GRUPOS_NO_CLINICOS else clinicas
         if isinstance(valor, dict):
-            salida.update(valor)
-            # el significado tambien es terminologia: 'hipertension arterial'
+            destino.update(valor)
+            # el significado tambien cuenta: 'hipertension arterial' detras de
+            # 'hta' es terminologia, igual que 'servicio de emergencia medica'
+            # detras de 'emi' NO lo es
             for significado in valor.values():
-                salida.update(str(significado).split())
+                destino.update(str(significado).split())
         elif isinstance(valor, list):
-            salida.update(valor)
-    return salida
+            destino.update(valor)
+    return clinicas, otras - clinicas
 
 
 def _del_catalogo():
@@ -201,11 +229,17 @@ def construir():
     """
     _TERMINOS.clear()
 
-    # de menos a mas fiable: la fuente buena pisa a la dudosa
+    del_diccionario, no_clinicas = _del_diccionario()
+
+    # De menos a mas fiable: la fuente buena pisa a la dudosa. NO_CLINICO va
+    # despues del CIE-10 a proposito -- 'hospital' y 'consulta' estan ahi y hay
+    # que degradarlas -- y antes del catalogo y del diccionario, que si son
+    # evidencia clinica y tienen que poder recuperarlas.
     for fuente, palabras in ((BIOMEDICO, _del_modelo_biomedico()),
                              (EXTERNO, _del_externo()),
+                             (NO_CLINICO, no_clinicas),
                              (CATALOGO, _del_catalogo()),
-                             (DICCIONARIO, _del_diccionario())):
+                             (DICCIONARIO, del_diccionario)):
         agregadas = 0
         for palabra in palabras:
             palabra = str(palabra).lower().strip()
