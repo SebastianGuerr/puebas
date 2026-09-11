@@ -62,9 +62,28 @@ from NLP import rutas
 SERVIDOR = "http://localhost:11434"
 MODELO = "qwen2.5:3b-instruct"
 
-# Solo se envian al modelo las notas por encima de esta longitud. Ver la
-# cabecera: por debajo, el metodo barato ya acierta y el modelo solo cuesta.
-LONGITUD_MINIMA = 15
+# Longitud minima para consultar al modelo. En 1 significa que las ve TODAS.
+#
+# POR QUE YA NO SE FILTRA POR LONGITUD
+#     El umbral estaba en 15 palabras porque por debajo el recorte por reglas
+#     ya acierta y el modelo solo cuesta tiempo. Sigue siendo verdad para el
+#     recorte, pero el modelo dejo de usarse solo para recortar: ahora tambien
+#     DICTAMINA si la nota tiene un motivo de consulta o no, y ese dictamen es
+#     lo que separa 'quedo igual porque es corta' de 'quedo igual porque no
+#     habia nada que extraer'. Esa distincion hace falta en las cortas tanto
+#     como en las largas.
+#
+#     El precio esta medido y no es pequeno: el 71% del corpus baja de 15
+#     palabras, asi que mandarlas todas multiplica por algo mas de tres el
+#     tiempo de esta fase (de ~4 h a ~14 h por cada 5.000 notas sobre CPU).
+#     Subir este numero vuelve al comportamiento anterior y las notas por
+#     debajo del umbral dejan de recibir dictamen.
+LONGITUD_MINIMA = 1
+
+# El modelo leyo la nota y concluyo que no hay motivo de consulta. Es una
+# RESPUESTA, no un fallo, y por eso tiene nombre propio: quien llama la
+# distingue de un error del modelo y puede dejar la nota intacta a proposito.
+ESTADO_SIN_CONTEXTO = "sin informacion relevante"
 
 TIMEOUT = 120           # segundos por nota
 MAX_TOKENS = 300
@@ -528,7 +547,7 @@ def extraer(nota, detalle=False, referencia=None):
         #
         # Devolver aqui la nota marcada fue un error medido: el texto de
         # embedding pasaba de 128 palabras a 141, porque marcar no reduce.
-        info["estado"] = "sin informacion relevante"
+        info["estado"] = ESTADO_SIN_CONTEXTO
         return info if detalle else None
 
     # el texto sale de la nota, no del modelo (ver _unir)

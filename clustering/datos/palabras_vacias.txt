@@ -1,0 +1,122 @@
+# Palabras que NO deben nombrar un cluster.
+#
+# Se editan a mano y se versionan: es la forma de mejorar los nombres sin tocar
+# codigo. Una linea por palabra; lo que empieza por # es comentario.
+#
+# HAY DOS CLASES DE PALABRA AQUI Y CONVIENE NO MEZCLARLAS AL EDITAR.
+#
+# 1. Vacias del espanol. Aparecen en todo y no distinguen nada.
+#
+# 2. Vacias DE ESTE CORPUS. Son clinicas y significan algo, pero estan en
+#    tantas notas que no separan un grupo de otro: si 'paciente' sale en el 9,5%
+#    de las notas, nombrar un cluster 'paciente' no dice nada de el. Salen del
+#    vocabulario administrativo de la historia clinica.
+#
+# OJO CON LO QUE SE AGREGA A LA SEGUNDA LISTA
+#    Quitar 'dolor' seria tentador -- esta por todas partes -- y seria un error:
+#    'dolor' distingue de verdad frente a 'fiebre' o 'sangrado'. La prueba no es
+#    si la palabra es frecuente, es si aparece por igual en TODOS los clusters.
+#    Para eso esta la columna de reparto del informe.
+
+# --- vacias del espanol ---
+a
+al
+ante
+con
+como
+cuando
+de
+del
+desde
+donde
+el
+ella
+ellas
+ellos
+en
+entre
+era
+es
+esa
+ese
+esta
+estan
+este
+esto
+estoy
+ha
+hace
+hacia
+han
+hasta
+hay
+la
+las
+le
+les
+lo
+los
+mas
+me
+mi
+mucha
+mucho
+muy
+ni
+no
+nos
+o
+para
+pero
+por
+porque
+que
+se
+si
+sin
+sobre
+solo
+son
+su
+sus
+tambien
+te
+tiene
+tengo
+un
+una
+uno
+unos
+unas
+y
+ya
+
+# --- vacias de este corpus: administrativo y de tramite ---
+acude
+atencion
+clinico
+consulta
+consultante
+cuadro
+dias
+evolucion
+femenina
+hora
+horas
+ingresa
+manifiesta
+masculino
+mc
+momento
+motivo
+paciente
+presenta
+quien
+refiere
+refiriendo
+servicio
+sms
+urgencias
+usuaria
+usuario
+valoracion

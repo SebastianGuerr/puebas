@@ -32,12 +32,9 @@ CONFIGURACIÓN
 """
 
 import argparse
-import csv
-import json
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 
 import pandas as pd
 
@@ -47,7 +44,10 @@ from NLP.evaluacion import auditoria
 from NLP.fase1_limpieza.limpieza import analizar, es_vacio, limpiar_conservando_original
 from NLP.fase2_ortografia import ortografia, terminologia
 from NLP.fase3_normalizacion import normalizacion
-from NLP.nucleo import reglas
+from NLP.nucleo import cache as cache_disco
+from NLP.nucleo import datos, reglas
+from NLP.nucleo.progreso import barra, fin_barra
+from NLP.nucleo.salida import EscritorCSV, cabecera_compatible, llaves_escritas, rotar
 from NLP.reduccion import extractor, reduccion
 from NLP.recursos import casing
 
@@ -93,9 +93,24 @@ GUARDAR_CADA = 2000
 BLOQUE_ESCRITURA = 250
 NORMALIZAR = True           # agrega la columna texto_normalizado (fase 3)
 
-# Fase 4: saca del CSV las notas que no dicen nada del paciente. Las descartadas
-# se escriben con su motivo en salidas/notas_descartadas.csv, de modo que
-# ponerlo en False no informa de mas: da el mismo CSV sin filtrar.
+# Fase 4: SENALA las notas que no parecen decir nada del paciente. No las saca
+# del CSV: siguen ahi enteras y se vectorizan igual, y lo unico que cambia es
+# que la fase 5 no les busca un motivo de consulta.
+#
+# POR QUE SENALAR Y NO ELIMINAR
+#     Al revisar lo que tiraba aparecieron falsos descartes: junto al tramite
+#     administrativo real caian motivos legitimos como 'tengo epigastralgia
+#     desde hace 3 dias', porque ese termino solo vive en la fuente biomedica
+#     del lexico, que la depuracion no cuenta como evidencia a proposito.
+#
+#     Los dos errores no cuestan lo mismo. Un falso descarte es irrecuperable:
+#     la nota desaparece del CSV y con ella del embedding y del analisis. Un
+#     falso senalamiento no cuesta nada: la nota sigue completa y solo se queda
+#     sin recortar.
+#
+#     Que notas se senalaron se sabe cruzando por OID contra
+#     salidas/notas_descartadas.csv, que es el archivo de control: sirve para
+#     descubrir que terminos le faltan al diccionario sin perder ni un dato.
 DEPURAR = True
 
 # Fase 5: agrega la columna texto_embedding, la nota reducida a su motivo de
@@ -121,6 +136,11 @@ USAR_LLM = True
 USAR_CACHE = True
 VERSION_CORRECTOR = "3-contexto-por-suma"
 
+# Como se llama en notas_descartadas.csv el veredicto del modelo. Se escribe
+# tal cual en la columna motivo_descarte, al lado de los motivos que pone la
+# depuracion, para poder separar unos de otros al revisar.
+MOTIVO_SIN_CONTEXTO = "el modelo no encontro motivo de consulta"
+
 
 
 # ==========================================================
@@ -134,147 +154,36 @@ def cargar_corpus(engine, filtro):
     frecuencia son mejores cuanto mayor es el corpus observado.
     """
     print("Construyendo lexico del corpus...")
-    df = pd.read_sql(
-        f"SELECT TOP {LIMITE_LEXICO} {COLUMNA} FROM {TABLA} WHERE {filtro}", engine
-    )
+    df = datos.columna_suelta(engine, TABLA, COLUMNA, filtro, LIMITE_LEXICO)
     conteo = ortografia.construir_lexico(df[COLUMNA])
     print(f"  {len(conteo):,} palabras distintas sobre {len(df):,} notas")
 
 
 def cargar_registros(engine, filtro):
     """
-    Descarga los registros que se van a procesar. Con LIMITE_REGISTROS activo la
-    selección se reparte por toda la tabla, para que la muestra no se concentre
-    en un periodo.
-
-    EL ORDEN ES PSEUDOALEATORIO PERO REPETIBLE, Y ESO IMPORTA MUCHO.
-        Antes esto era ORDER BY NEWID(), que sortea una muestra distinta en cada
-        corrida. Suena inofensivo hasta que se cruza con la caché: la caché
-        guarda la corrección de cada TEXTO, así que si la corrida siguiente trae
-        otras 5.000 notas, casi nada coincide y se vuelve a pagar el trabajo
-        entero.
-
-        Pasó el 9 de septiembre: una corrida dejó 4.234 textos corregidos tras
-        horas de trabajo, y relanzarla habría reaprovechado una fracción mínima.
-
-        HASHBYTES sobre la llave da el mismo reparto disperso pero SIEMPRE el
-        mismo, así que repetir una corrida es casi gratis y subir el límite
-        conserva la muestra anterior y solo añade notas nuevas.
+    Descarga los registros que se van a procesar, repartidos por toda la tabla
+    y siempre los mismos entre corridas. El porqué de ese orden repetible está
+    en nucleo/datos.muestra().
     """
     print("Descargando registros...")
-    top = f"TOP {LIMITE_REGISTROS}" if LIMITE_REGISTROS else ""
-    orden = (f"ORDER BY HASHBYTES('MD5', CAST({LLAVE} AS varchar(20)))"
-             if (LIMITE_REGISTROS and MUESTREO_ALEATORIO) else "")
-    df = pd.read_sql(
-        f"SELECT {top} {LLAVE}, {COLUMNA} FROM {TABLA} WHERE {filtro} {orden}", engine
-    )
+    df = datos.muestra(engine, TABLA, [LLAVE, COLUMNA], filtro,
+                       limite=LIMITE_REGISTROS, disperso=MUESTREO_ALEATORIO,
+                       llave=LLAVE)
     print(f"  {len(df):,} registros")
     return df
-
-
-# ==========================================================
-# PROGRESO
-# ==========================================================
-
-ANCHO_BARRA = 34
-
-
-def barra(hechos, total, inicio, etiqueta=""):
-    """
-    Escribe una barra de progreso en la misma linea, con porcentaje, ritmo y
-    tiempo restante estimado.
-
-    Se reescribe la misma linea con un retorno de carro, en vez de saltar de
-    linea, para no llenar la terminal de miles de lineas en una corrida larga.
-    Al terminar, quien llama la cierra con fin_barra().
-    """
-    total = max(total, 1)
-    fraccion = hechos / total
-    lleno = int(ANCHO_BARRA * fraccion)
-    transcurrido = time.time() - inicio
-    ritmo = hechos / transcurrido if transcurrido > 0 else 0
-    falta = (total - hechos) / ritmo if ritmo > 0 else 0
-    sys.stdout.write(
-        f"\r  [{'#' * lleno}{'.' * (ANCHO_BARRA - lleno)}] {fraccion * 100:5.1f}% "
-        f"{hechos:,}/{total:,} | {transcurrido / 60:.1f} min | "
-        f"faltan ~{falta / 60:.1f} min | {ritmo:.1f}/s {etiqueta}   ")
-    sys.stdout.flush()
-
-
-def fin_barra():
-    """Cierra la linea de la barra."""
-    sys.stdout.write("\n")
-    sys.stdout.flush()
-
-
-# ==========================================================
-# SALIDA
-# ==========================================================
-
-def rotar(ruta, conservar=3):
-    """
-    Aparta la version anterior de un archivo antes de escribir la nueva, y
-    devuelve a donde se movio (o None si no habia nada que apartar).
-
-    POR QUE EXISTE
-        Antes se sobrescribia. Una corrida nueva borraba la anterior sin dejar
-        rastro, de modo que comparar dos versiones del pipeline obligaba a
-        acordarse de copiar el CSV a mano ANTES de lanzar, y quien no se
-        acordaba perdia la referencia.
-
-        Y al reves: si alguien renombraba el archivo para guardarlo, cualquier
-        script que lo diera por existente fallaba. Un artefacto generado no
-        puede ser una precondicion; si no esta, se crea.
-
-    Se guardan las ultimas `conservar` versiones con la fecha en el nombre y se
-    borran las mas viejas, para que salidas/ no crezca sin limite.
-    """
-    ruta = Path(ruta)
-    if not ruta.exists():
-        return None
-
-    # La marca tiene resolucion de segundo, asi que dos rotaciones seguidas
-    # chocan. En Windows renombrar sobre un archivo existente lanza
-    # FileExistsError en vez de sobrescribir, de modo que sin el contador la
-    # segunda rotacion aborta la corrida entera. Lo destapo la prueba de la
-    # propia funcion, no el corpus.
-    marca = time.strftime("%Y%m%d-%H%M%S")
-    destino = ruta.with_name(f"{ruta.stem}_{marca}{ruta.suffix}")
-    n = 2
-    while destino.exists():
-        destino = ruta.with_name(f"{ruta.stem}_{marca}-{n}{ruta.suffix}")
-        n += 1
-    ruta.rename(destino)
-
-    previas = sorted(ruta.parent.glob(f"{ruta.stem}_*{ruta.suffix}"), reverse=True)
-    for vieja in previas[conservar:]:
-        try:
-            vieja.unlink()
-        except OSError:
-            pass
-    return destino
 
 
 # ==========================================================
 # PROCESAMIENTO
 # ==========================================================
 
-def clave_cache(texto_limpio, protegidos):
-    """
-    Clave de caché de una nota.
+# Los tres envoltorios de abajo atan la caché genérica de nucleo/cache.py a la
+# configuración de ESTE pipeline: su archivo, su versión y su interruptor. La
+# lógica vive allí; aquí solo se decide con qué parámetros se usa.
 
-    Incluye tres cosas, y las tres son necesarias: el texto ya limpio, los
-    tokens protegidos y la versión del corrector. Los protegidos entran porque
-    una misma nota limpia puede corregirse de forma distinta según las
-    mayúsculas del original, y la versión porque una caché de un corrector
-    anterior contaminaría la corrida.
-    """
-    base = texto_limpio
-    if protegidos:
-        base = texto_limpio + "\x00" + ",".join(sorted(protegidos))
-    # la version entra en la clave: al cambiar el corrector, la cache vieja deja
-    # de aplicar sola en vez de contaminar la corrida con decisiones anteriores
-    return VERSION_CORRECTOR + "\x00" + base
+def clave_cache(texto_limpio, protegidos):
+    """Clave de caché de una nota. El porqué de cada parte, en nucleo/cache.py."""
+    return cache_disco.clave(texto_limpio, VERSION_CORRECTOR, protegidos)
 
 
 def preparar(df):
@@ -349,146 +258,13 @@ def corregir_lote(pendientes):
 
 
 def leer_cache():
-    """Lee la caché de correcciones. Devuelve {} si está desactivada o ilegible."""
-    if not USAR_CACHE or not CACHE_JSON.exists():
-        return {}
-    try:
-        cache = json.loads(CACHE_JSON.read_text(encoding="utf-8"))
-        print(f"Cache previa: {len(cache):,} textos")
-        return cache
-    except Exception:
-        print("Cache ilegible, se ignora")
-        return {}
+    """Correcciones guardadas por corridas anteriores."""
+    return cache_disco.leer(CACHE_JSON, USAR_CACHE)
 
 
 def guardar_cache(nuevos):
-    """
-    Añade las correcciones nuevas a la caché en disco, releyendo antes lo que ya
-    hubiera para no perder lo guardado por una corrida anterior.
-    """
-    if not USAR_CACHE:
-        return
-    cache = {}
-    if CACHE_JSON.exists():
-        try:
-            cache = json.loads(CACHE_JSON.read_text(encoding="utf-8"))
-        except Exception:
-            cache = {}
-    cache.update(nuevos)
-    CACHE_JSON.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
-
-
-# ==========================================================
-# ESCRITURA INCREMENTAL
-# ==========================================================
-
-def cabecera_compatible(ruta, columnas):
-    """
-    Dice si un CSV existente se puede seguir llenando con estas columnas.
-
-    Se compara la cabecera y no solo la existencia del archivo porque la lista
-    de columnas depende de la configuracion: apagar REDUCIR quita
-    texto_embedding, y apagar NORMALIZAR quita texto_normalizado. Apendar filas
-    de cinco campos a un archivo de cuatro produce un CSV que no puede leer
-    nadie, asi que ante cualquier diferencia se prefiere rotar y empezar limpio.
-    """
-    ruta = Path(ruta)
-    if not ruta.exists():
-        return False
-    try:
-        with open(ruta, "r", newline="", encoding="utf-8-sig") as archivo:
-            cabecera = next(csv.reader(archivo), None)
-    except OSError:
-        return False
-    return cabecera == list(columnas)
-
-
-def contar_filas(ruta):
-    """Filas de datos de un CSV, sin contar la cabecera."""
-    with open(ruta, "r", newline="", encoding="utf-8-sig") as archivo:
-        return max(sum(1 for _ in csv.reader(archivo)) - 1, 0)
-
-
-def llaves_escritas(*rutas):
-    """
-    Los OID que ya paso el pipeline en corridas anteriores.
-
-    Mira tanto el CSV de salida como el de descartadas, y esa segunda parte es
-    la que se olvida: una nota que se tiro por no tener contenido clinico ESTA
-    procesada. Si solo se miraran las conservadas, cada relanzamiento volveria a
-    corregir y a pasar por el modelo las mismas notas descartadas, que son
-    justo las que menos valor tienen.
-    """
-    hechas = set()
-    for ruta in rutas:
-        ruta = Path(ruta)
-        if not ruta.exists():
-            continue
-        try:
-            columna = pd.read_csv(ruta, encoding="utf-8-sig", usecols=[LLAVE])
-        except (ValueError, OSError, pd.errors.EmptyDataError):
-            continue
-        hechas.update(columna[LLAVE].dropna().astype("int64").tolist())
-    return hechas
-
-
-class EscritorCSV:
-    """
-    Un CSV que se va llenando mientras la corrida avanza.
-
-    Abre el archivo en la primera escritura, pone la cabecera y desde ahi solo
-    anade filas, vaciando el buffer despues de cada bloque para que otro proceso
-    pueda leer lo que va saliendo sin esperar a que la corrida termine.
-
-    Usa las mismas opciones que el to_csv de antes -- utf-8-sig y comillas en
-    todos los campos -- para que el archivo sea identico al de siempre.
-    """
-
-    def __init__(self, ruta, columnas, reanudar=False):
-        self.ruta = Path(ruta)
-        self.columnas = list(columnas)
-        self.previas = 0        # filas que ya estaban en el archivo
-        self.agregadas = 0      # filas que ha escrito ESTA corrida
-
-        if reanudar and cabecera_compatible(self.ruta, self.columnas):
-            # Continuar el archivo que ya habia. Se abre en modo "a" y con
-            # utf-8 A SECAS, no utf-8-sig: la marca BOM va una sola vez al
-            # principio del archivo y ya esta puesta. Anadirla otra vez
-            # intercalaria tres bytes basura en mitad de los datos.
-            self.previas = contar_filas(self.ruta)
-            self._archivo = open(self.ruta, "a", newline="", encoding="utf-8")
-            self._escritor = csv.writer(self._archivo, quoting=csv.QUOTE_ALL)
-        else:
-            # El archivo se crea YA, con su cabecera, aunque todavia no haya
-            # filas. Dejar la creacion para el primer bloque abre una ventana de
-            # varios minutos en la que triage_limpio.csv sencillamente NO
-            # EXISTE, y una corrida cortada ahi deja al paso siguiente sin
-            # archivo que leer -- con un FileNotFoundError que no explica nada
-            # -- en vez de con uno vacio pero valido.
-            self._archivo = open(self.ruta, "w", newline="", encoding="utf-8-sig")
-            self._escritor = csv.writer(self._archivo, quoting=csv.QUOTE_ALL)
-            self._escritor.writerow(self.columnas)
-            self._archivo.flush()
-
-    @property
-    def filas(self):
-        """Total de filas en el archivo, contando las de corridas anteriores."""
-        return self.previas + self.agregadas
-
-    def agregar(self, df):
-        """Anade las filas de un bloque y las baja a disco."""
-        if df is None or df.empty:
-            return
-        # fillna: csv.writer escribiria 'nan' donde to_csv dejaba el campo vacio
-        for fila in df[self.columnas].fillna("").itertuples(index=False, name=None):
-            self._escritor.writerow(fila)
-        self._archivo.flush()
-        self.agregadas += len(df)
-
-    def cerrar(self):
-        if self._archivo is not None:
-            self._archivo.close()
-            self._archivo = None
+    """Añade las correcciones nuevas a la caché en disco."""
+    cache_disco.guardar(CACHE_JSON, nuevos, USAR_CACHE)
 
 
 def procesar_bloque(bloque, cache, columna_juicio, normalizar, usar_llm):
@@ -524,7 +300,24 @@ def procesar_bloque(bloque, cache, columna_juicio, normalizar, usar_llm):
         bloque["texto_normalizado"] = bloque["texto_corregido"].map(
             normalizacion.normalizar)
 
-    # ---- fase 4: depuracion -------------------------------------------
+    # ---- fase 4: senalar las notas sin contenido clinico ---------------
+    #
+    # SENALA, NO ELIMINA, Y ESA ES LA DECISION IMPORTANTE.
+    #
+    # Antes esta fase sacaba del CSV las notas que no parecian decir nada del
+    # paciente. El problema aparecio al mirar lo que tiraba: junto al tramite
+    # administrativo real caian motivos de consulta legitimos como 'tengo
+    # epigastralgia desde hace 3 dias', porque ese termino solo vive en la
+    # fuente biomedica del lexico y la depuracion no la cuenta como evidencia.
+    #
+    # Un falso descarte es irrecuperable: la nota desaparece del CSV y con ella
+    # del embedding, de los clusters y del analisis. Un falso senalamiento no
+    # cuesta nada: la nota sigue entera, se puede vectorizar, y la marca queda
+    # en motivo_descarte para revisarla y corregir el diccionario.
+    #
+    # Lo unico que cambia para una nota senalada es que la fase 5 no le busca
+    # un motivo de consulta. No es lo mismo tirar la nota que no inventarle un
+    # contexto importante donde no lo hay.
     if DEPURAR:
         veredictos = [depuracion.evaluar(t) for t in bloque[columna_juicio]]
         bloque["util"] = [u for u, _m in veredictos]
@@ -533,32 +326,83 @@ def procesar_bloque(bloque, cache, columna_juicio, normalizar, usar_llm):
         bloque["util"] = True
         bloque["motivo_descarte"] = ""
 
-    descartadas = bloque[~bloque["util"]].copy()
-    conservadas = bloque[bloque["util"]].copy()
+    # El registro aparte se mantiene: es la lista corta que se revisa para
+    # decidir que terminos le faltan al diccionario. Pero ya no es una lista de
+    # bajas, sino un indice de lo senalado -- esas notas TAMBIEN van al CSV.
+    senaladas = bloque[~bloque["util"]].copy()
+    conservadas = bloque.copy()
 
     # ---- fase 5: reduccion al motivo de consulta ----------------------
+    #
+    # EL MODELO VE TODAS LAS NOTAS, Y DICTAMINA ADEMAS DE RECORTAR.
+    #
+    # Antes solo veia las largas y su unico trabajo era recortar. Ahora hace
+    # dos cosas, y la segunda es la que obliga a ensenarselas todas: decir si
+    # la nota TIENE un motivo de consulta.
+    #
+    # Ese dictamen es lo que separa dos casos que en el CSV se ven identicos.
+    # Una nota puede acabar con texto_embedding igual al normalizado porque es
+    # corta y no habia nada que recortar ('tiene fiebre'), o porque el modelo
+    # la leyo entera y concluyo que no dice por que vino el paciente. La
+    # primera es dato bueno; la segunda es la que hay que revisar. Sin
+    # preguntarle a las cortas, las dos quedan mezcladas.
     if REDUCIR:
-        textos, inicio, n = [], time.time(), 0
-        largas = sum(1 for t in conservadas[columna_juicio]
-                     if len(str(t).split()) >= extractor.LONGITUD_MINIMA) if usar_llm else 0
+        textos, marcas, inicio, n = [], [], time.time(), 0
+        total_llm = len(conservadas) if usar_llm else 0
 
         for texto in conservadas[columna_juicio]:
+            texto = str(texto)
             reducido = reduccion.recortar(texto)
-            if usar_llm and len(str(texto).split()) >= extractor.LONGITUD_MINIMA:
+            marca = ""
+
+            if usar_llm:
                 n += 1
-                # si el modelo no encuentra nada o se inventa algo, se queda el
-                # recorte por reglas; y si ese tampoco redujo, la nota tal cual.
-                # Nunca None ni vacio: un fallo del modelo no puede borrar una nota
-                reducido = extractor.extraer(texto, referencia=reducido) or reducido or str(texto)
-                if n % 5 == 0 or n == largas:
-                    barra(n, largas, inicio, "extrayendo")
-            textos.append(reducido)
-        if usar_llm and largas:
-            barra(largas, largas, inicio, "extrayendo")
+                info = extractor.extraer(texto, detalle=True, referencia=reducido)
+
+                if info["estado"] == extractor.ESTADO_SIN_CONTEXTO:
+                    # El modelo opino, y su respuesta fue que no hay nada que
+                    # extraer. La nota se deja EXACTAMENTE como llego -- ni el
+                    # recorte por reglas la toca -- y se anota en el control.
+                    reducido = texto
+                    marca = MOTIVO_SIN_CONTEXTO
+                elif info["motivo"]:
+                    reducido = info["motivo"]
+                # Cualquier otro estado es un fallo del modelo (no respondio, se
+                # invento el texto, devolvio la nota entera). Ahi manda el
+                # recorte por reglas, que es lo que ya estaba en 'reducido'.
+
+                if n % 5 == 0 or n == total_llm:
+                    barra(n, total_llm, inicio, "extrayendo")
+
+            # Nunca None ni vacio: un fallo del modelo no puede borrar una nota.
+            textos.append(reducido or texto)
+            marcas.append(marca)
+
+        if usar_llm and total_llm:
+            barra(total_llm, total_llm, inicio, "extrayendo")
             fin_barra()
         conservadas["texto_embedding"] = textos
+        conservadas["motivo_llm"] = marcas
+    else:
+        conservadas["motivo_llm"] = ""
 
-    return conservadas, descartadas
+    # ---- el archivo de control -----------------------------------------
+    #
+    # Recoge las dos fuentes de senalamiento y CONSERVA cual fue cual, que es
+    # justo lo que se quiere poder distinguir despues:
+    #
+    #     depuracion  la nota no tiene terminologia clinica reconocible
+    #     modelo      el modelo la leyo y no encontro motivo de consulta
+    #
+    # Si coinciden, se guardan los dos motivos separados por '|'. Ninguna de
+    # las dos saca la nota del CSV: todas se vectorizan igual.
+    conservadas["motivo_descarte"] = [
+        " | ".join(m for m in (depurada, llm) if m)
+        for depurada, llm in zip(conservadas["motivo_descarte"], conservadas["motivo_llm"])
+    ]
+    senaladas = conservadas[conservadas["motivo_descarte"] != ""].copy()
+
+    return conservadas, senaladas
 
 
 # ==========================================================
@@ -647,6 +491,16 @@ def main():
     if normalizar:
         columnas.append("texto_normalizado")
 
+    # El CSV conserva sus columnas de siempre. Que notas senalo la fase 4 se
+    # sabe cruzando por OID contra notas_descartadas.csv, que sigue siendo el
+    # archivo de control.
+    #
+    # No sirve deducirlo comparando texto_normalizado con texto_embedding:
+    # sobre las primeras 1.293 notas el 60% ya salian iguales por ser cortas y
+    # no tener nada que recortar ('tiene fiebre', 'tengo dolor'). Esa igualdad
+    # mezclaria 776 notas sanas con el centenar senalado; el cruce por OID da
+    # la lista exacta.
+
     # Fase 4: el juicio se hace sobre el texto normalizado siempre que exista.
     # Preguntar 'esta nota tiene terminologia clinica' sobre el texto sin
     # normalizar mide el diccionario, no la nota: 'me cai' y 'tengo gripa' dan
@@ -687,8 +541,7 @@ def main():
         # resultado sigue siendo valido.
         usar_llm = USAR_LLM and extractor.disponible()
         if usar_llm:
-            print(f"  extractor: {extractor.MODELO} "
-                  f"(solo notas de mas de {extractor.LONGITUD_MINIMA} palabras)")
+            print(f"  extractor: {extractor.MODELO} (todas las notas)")
         columnas.append("texto_embedding")
 
     # ------------------------------------------------------------------
@@ -723,7 +576,11 @@ def main():
         print(f"  el CSV anterior tenia otras columnas; apartado en {anterior.name}")
 
     if reanudar:
-        hechas = llaves_escritas(OUTPUT_CSV, DESCARTADAS_CSV)
+        # Solo el CSV principal: desde que la fase 4 senala en vez de eliminar,
+        # TODAS las notas procesadas acaban ahi. notas_descartadas.csv es un
+        # indice de lo senalado, no una lista de bajas, asi que sus OID estan
+        # tambien en el CSV y mirarlo seria redundante.
+        hechas = llaves_escritas(OUTPUT_CSV)
         if hechas:
             antes = len(df)
             df = df[~df[LLAVE].isin(hechas)]
@@ -761,7 +618,8 @@ def main():
             print(f"  +{len(ok):,} notas -> {OUTPUT_CSV.name} "
                   f"(acumulado {escritor.filas:,})")
             if len(no):
-                print(f"  {len(no):,} descartadas por no aportar informacion clinica")
+                print(f"  {len(no):,} senaladas sin contenido clinico "
+                      f"(van al CSV sin reducir)")
     except KeyboardInterrupt:
         # Cortar a mano es una forma legitima de parar una corrida larga: lo ya
         # escrito es valido y la cache conserva lo corregido, asi que relanzar
@@ -782,7 +640,12 @@ def main():
 
     # El resumen habla de lo que SE PROCESO, que con una interrupcion no es
     # todo lo que se descargo de la base.
-    df = pd.concat([conservadas, descartadas]).sort_index()
+    #
+    # Desde que la fase 4 senala en vez de eliminar, 'conservadas' YA son todas
+    # las notas del bloque y 'descartadas' es un subconjunto suyo, no un grupo
+    # aparte. Concatenarlas contaria dos veces cada nota senalada y falsearia
+    # todos los porcentajes de aqui abajo.
+    df = conservadas
 
     print(f"\n{escritor.agregadas:,} notas nuevas | {escritor.filas:,} en total "
           f"en {OUTPUT_CSV.name}")
@@ -825,8 +688,10 @@ def main():
     motivos = depuracion.resumen(df["motivo_descarte"])
     if motivos:
         n = len(descartadas)
-        print(f"Notas descartadas por no aportar informacion clinica: "
+        print(f"Notas senaladas sin contenido clinico: "
               f"{n:,} de {len(df):,} ({n/len(df)*100:.1f}%)")
+        print(f"  Siguen en el CSV, sin reducir. El motivo de cada una esta "
+              f"en {DESCARTADAS_CSV.name}.")
         for motivo, veces in motivos:
             print(f"  {veces:6}  {motivo}")
         print(f"  Revisa {DESCARTADAS_CSV.name}: una expresion clinica repetida ahi")
@@ -843,7 +708,8 @@ def main():
     print(f"\nCSV: {OUTPUT_CSV}  ({len(conservadas):,} notas)")
     print(f"Reporte: {REPORTE_CSV}")
     if not descartadas.empty:
-        print(f"Descartadas: {DESCARTADAS_CSV}  ({len(descartadas):,} notas)")
+        print(f"Senaladas: {DESCARTADAS_CSV}  ({len(descartadas):,} notas, "
+              f"tambien presentes en el CSV)")
 
 
 if __name__ == "__main__":

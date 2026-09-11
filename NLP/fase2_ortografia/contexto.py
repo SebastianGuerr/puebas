@@ -76,6 +76,65 @@ LONGITUD_MINIMA = 3      # tokens mas cortos no se evaluan
 MAX_CANDIDATOS = 8       # tope por palabra, para acotar el coste
 MAX_CARACTERES = 600     # ventana alrededor del hueco que se le pasa al modelo
 
+# ==========================================================
+# HASTA DONDE PUEDE LLEGAR UNA CORRECCION
+# ==========================================================
+# Que fraccion de la palabra puede cambiar, como mucho, al corregirla. Se mide
+# sobre la mas larga de las dos formas y la condicion es ESTRICTA: cambiar la
+# mitad justa ya no se acepta.
+#
+# EL CASO QUE LO OBLIGA
+#     'me cai' y 'me caí' -- una caida, de los motivos de consulta mas
+#     frecuentes del corpus -- se estaban corrigiendo a 'me contracciones'. Una
+#     caida quedaba registrada como contracciones de parto: no es una errata mal
+#     arreglada, es otro hecho clinico, en otro servicio.
+#
+#     El fallo no estaba en los umbrales. elegir() recorre los candidatos por
+#     tandas de distancia de edicion y, si ninguna tanda cercana convencia,
+#     seguia subiendo SIN TOPE hasta que alguna ganaba. 'contracciones' esta a
+#     10 ediciones de 'cai', pero en un corpus de urgencias con mucha
+#     obstetricia el modelo prefiere 'me contracciones' con holgura, asi que
+#     ganaba su tanda y se aplicaba. Y como la cache guarda por frase, una vez
+#     decidido se repetia en todas las notas iguales.
+#
+#     Barriendo la cache entera con este criterio aparecieron 32 sustituciones
+#     de la misma familia, y la caida no era la peor: 'aro' -> 'alteraciones',
+#     'esi' -> 'estabilidad', 'ggt' -> 'garganta', y sobre todo palabras
+#     espanolas correctas reescritas en otra cosa -- 'una' -> 'urinaria',
+#     'por' -> 'posterior'.
+#
+# POR QUE NO UN UMBRAL DE GANANCIA MAS ALTO
+#     Porque el modelo no estaba dudando: estaba muy seguro, y con razon, de que
+#     'contracciones' es mas probable ahi. Subir la ganancia solo habria
+#     retrasado el caso siguiente. Lo que falta no es confianza del modelo, es la
+#     evidencia que el modelo no puede ver: quien escribio 'cai' tecleo una
+#     palabra de tres letras, y a 'contracciones' no se llega equivocandose de
+#     tecla diez veces.
+#
+# POR QUE RELATIVA Y NO UN NUMERO FIJO DE EDICIONES
+#     Porque el mismo numero de ediciones significa cosas distintas segun el
+#     largo. 3 ediciones son una errata comun en una palabra de dieciseis letras
+#     y son una reescritura completa en una de tres. Medido sobre los casos
+#     reales de la cache, un tope fijo de 3 rechazaba 'apcinete' -> 'paciente' y
+#     'gatsrointetsinal' -> 'gastrointestinal', que son exactamente lo que esta
+#     capa existe para arreglar.
+#
+# LA MEDICION
+#     Sobre 11 correcciones buenas y 32 corrupciones, todas sacadas de la cache
+#     de este corpus:
+#
+#                                              buenas    corrupciones
+#         tope fijo de 3 ediciones              6/11        32/32
+#         distancia relativa < 0.5              10/11       30/32
+#         + Damerau (ver _distancia)            11/11       30/32
+#         + expansion estricta (_es_expansion)  10/11       32/32   <- el elegido
+#
+#     La unica correccion buena que se pierde es 'cucuho' -> 'cuchillo', que cae
+#     justo en 0,50. Se acepta la perdida: no corregir deja la palabra que
+#     escribio el paciente, y corregir mal inventa un hecho clinico que nadie
+#     dijo. Entre esos dos errores este proyecto prefiere siempre el primero.
+DISTANCIA_RELATIVA_MAXIMA = 0.5
+
 ACTIVO = True
 
 _LOCK = threading.Lock()
@@ -279,26 +338,79 @@ def logprob_medio(izquierda, palabra, derecha):
 
 def _distancia(a, b):
     """
-    Distancia de edicion entre dos formas, plegando tildes y espacios.
+    Distancia de edicion entre dos formas, plegando tildes y espacios, con la
+    TRANSPOSICION contando como una sola operacion (Damerau-Levenshtein).
 
     Se pliega porque aqui la distancia mide cuantas TECLAS separan lo escrito
     del candidato, no cuanto difieren como cadenas: 'ala' -> 'a la' es una sola
     insercion desde el punto de vista de quien escribe, y contar el espacio
     aparte la alejaria sin motivo.
+
+    POR QUE LA TRANSPOSICION VALE 1 Y NO 2
+        Por el mismo motivo, llevado hasta el final. Intercambiar dos letras
+        seguidas es el error de digitacion mas comun que existe -- los dedos
+        llegan en el orden equivocado -- y es UN error, no dos. Contandolo como
+        dos, las erratas mas tipicas del corpus parecian reescrituras:
+
+            pro              -> por                 2 ediciones -> 1
+            apcinete         -> paciente            4 ediciones -> 2
+            gatsrointetsinal -> gastrointestinal    4 ediciones -> 2
+
+        Las tres son la misma persona tecleando rapido, y con la distancia
+        clasica quedaban tan lejos de su forma correcta como 'aca' de
+        'asociado', que no tiene nada que ver. Con la transposicion a 1 se
+        separan solas, sin tocar ningun umbral.
     """
     a = _sin_tildes(a.lower().replace(" ", ""))
     b = _sin_tildes(b.lower().replace(" ", ""))
     if a == b:
         return 0
-    if len(a) < len(b):
-        a, b = b, a
-    previa = list(range(len(b) + 1))
-    for i, ca in enumerate(a, 1):
-        actual = [i]
-        for j, cb in enumerate(b, 1):
-            actual.append(min(previa[j] + 1, actual[j - 1] + 1, previa[j - 1] + (ca != cb)))
-        previa = actual
-    return previa[-1]
+
+    # Alineacion optima (Damerau restringido): basta para errores de tecleo,
+    # donde las transposiciones no se solapan entre si.
+    filas, columnas = len(a) + 1, len(b) + 1
+    d = [[0] * columnas for _ in range(filas)]
+    for i in range(filas):
+        d[i][0] = i
+    for j in range(columnas):
+        d[0][j] = j
+    for i in range(1, filas):
+        for j in range(1, columnas):
+            coste = 0 if a[i - 1] == b[j - 1] else 1
+            d[i][j] = min(d[i - 1][j] + 1,          # borrar
+                          d[i][j - 1] + 1,          # insertar
+                          d[i - 1][j - 1] + coste)  # sustituir
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1)   # transponer
+    return d[-1][-1]
+
+
+def _admisible(escrita, candidato):
+    """
+    True si el candidato esta lo bastante cerca de lo escrito como para ser una
+    correccion y no otra palabra. Es el tope que describe
+    DISTANCIA_RELATIVA_MAXIMA.
+
+    Se compara contra la forma MAS LARGA de las dos, que es lo que impide el
+    fallo caracteristico: una abreviatura de tres letras inflada a una palabra
+    de diez. Midiendo contra lo escrito, 'cai' -> 'contracciones' tendria un
+    tope de una edicion y media y quedaria fuera, pero tambien quedaria fuera
+    cualquier expansion legitima; midiendo contra la mas larga, lo que se exige
+    es que las dos formas se PAREZCAN, que es la pregunta correcta.
+
+        cai       -> contracciones    10 de 13 = 0,77   no
+        una       -> urinaria          5 de  8 = 0,63   no
+        apcinete  -> paciente          2 de  8 = 0,25   si
+        pro       -> por               1 de  3 = 0,33   si
+
+    Las expansiones de abreviatura no pasan por aqui: van en su propia tanda
+    (ver _es_expansion y elegir()).
+    """
+    largo = max(len(_sin_tildes(escrita.lower().replace(" ", ""))),
+                len(_sin_tildes(candidato.lower().replace(" ", ""))))
+    if not largo:
+        return False
+    return _distancia(escrita, candidato) < DISTANCIA_RELATIVA_MAXIMA * largo
 
 
 def _sin_tildes(texto):
@@ -323,10 +435,25 @@ def _es_expansion(escrita, candidato):
         'gral' no se equivoco de tecla: abrevio. Una abreviatura conserva todas
         sus letras en orden, y esa forma la distingue de una errata sin depender
         de cuantas ediciones haya de por medio.
+
+    EL LIMITE DE LARGO ES ESTRICTO, Y ESA LETRA IMPORTA
+        Esta tanda se salta el tope de distancia -- es su razon de ser -- asi
+        que lo que entre aqui no lo revisa nadie mas. Admitiendo hasta el DOBLE
+        de largo se colaban dos reescrituras que cumplen la forma de una
+        abreviatura por casualidad, las dos justo en el doble exacto:
+
+            ataco -> alteracion    a-t-a-c-o estan en orden, y 10 = 2 x 5
+            spies -> superiores    s-p-i-e-s estan en orden, y 10 = 2 x 5
+
+        Exigiendo MENOS del doble las dos se caen a la tanda normal, donde la
+        distancia relativa las rechaza, y 'gral' -> 'general' se queda, que es
+        7 sobre 4. Cuanto mas larga es la forma escrita, menos probable es que
+        una palabra cualquiera contenga sus letras en orden por azar; el riesgo
+        estaba concentrado justo en el borde.
     """
     e = _sin_tildes(escrita.lower())
     c = _sin_tildes(candidato.lower().replace(" ", ""))
-    if len(c) <= len(e) or len(c) > 2 * len(e):
+    if len(c) <= len(e) or len(c) >= 2 * len(e):
         return False
     it = iter(c)
     return all(letra in it for letra in e)
@@ -407,10 +534,20 @@ def elegir(izquierda, escrita, derecha, candidatos):
 
     # Las expansiones de abreviatura van en su propia tanda, la primera: son
     # otra operacion distinta de arreglar una errata (ver _es_expansion).
+    #
+    # Lo que no es una expansion tiene que estar ADEMAS lo bastante cerca: es lo
+    # unico que separa arreglar una errata de escribir otra palabra, y sin ello
+    # el recorrido por tandas acaba aceptando cualquier cosa con tal de que el
+    # modelo la prefiera (ver DISTANCIA_RELATIVA_MAXIMA).
     por_distancia = {}
     for candidato in candidatos:
-        tanda = -1 if _es_expansion(escrita, candidato) else _distancia(escrita, candidato)
-        por_distancia.setdefault(tanda, []).append(candidato)
+        if _es_expansion(escrita, candidato):
+            por_distancia.setdefault(-1, []).append(candidato)
+        elif _admisible(escrita, candidato):
+            por_distancia.setdefault(_distancia(escrita, candidato), []).append(candidato)
+
+    if not por_distancia:
+        return None
 
     for distancia in sorted(por_distancia):
         mejor, mejor_lp = None, base
