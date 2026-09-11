@@ -49,6 +49,13 @@ NLP/salidas/
 # GPU eso cueste horas: por eso el paquete apende en vez de recalcular.
 embedding/salidas/
 
+# fase 7: asignacion.parquet, clusters.csv, notas.csv, proyeccion.parquet,
+# mapa.png, informe.txt y barrido.csv. Se rehacen con 'python -m clustering'
+# en un minuto, asi que no hay motivo para versionarlos, y versionarlos tiene
+# uno en contra: cada corrida ensucia el diff con un PNG y siete mil lineas de
+# CSV que cambian enteras en cuanto se mueve un parametro.
+clustering/salidas/
+
 *.parquet
 
 # exploracion de la base de datos, la genera diccionario_bd/explore_db.py

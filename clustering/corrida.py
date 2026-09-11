@@ -1,9 +1,9 @@
 """
-Una corrida completa: de los embeddings guardados a clusters con nombre.
+Una corrida completa: de los embeddings guardados a temas con nombre.
 
 QUE HACE ESTE MODULO Y POR QUE EXISTE APARTE
-    Encadena los cuatro pasos -- leer, reducir, agrupar, nombrar -- y no hace
-    nada mas. Ni dibuja ni imprime.
+    Encadena los cinco pasos -- leer, reducir, agrupar, nombrar, fundir en
+    temas -- y no hace nada mas. Ni dibuja ni imprime.
 
     Esta separado porque hay dos consumidores con necesidades distintas y el
     calculo es el mismo para ambos: el visor, que quiere una figura en una
@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from clustering import agrupar, corpus, etiquetas, rutas
+from clustering import agrupar, corpus, etiquetas, rutas, temas
 
 
 @dataclass
@@ -37,10 +37,20 @@ class Corrida:
     """
     El resultado completo, ya listo para dibujar o escribir.
 
+    HAY DOS NIVELES Y LOS DOS VIAJAN JUNTOS
+        El GRUPO es lo que encontro HDBSCAN: especifico, apretado, y son
+        muchos. El TEMA junta los grupos que hablan de lo mismo (ver temas.py).
+        Se llevan los dos en la misma tabla porque sirven para cosas distintas
+        y ninguna de las dos es prescindible: el grupo para leer un caso y
+        auditar el agrupamiento, el tema para contar por dia y cruzar contra el
+        clima y el calendario, que es el objetivo del proyecto.
+
     textos    un renglon por texto distinto vivo, con todo pegado: fila, texto,
-              n_notas, cluster, confianza y las coordenadas x, y del mapa.
+              n_notas, cluster, tema, confianza y las coordenadas x, y.
     nombres   {cluster: 'palabra palabra palabra'}
     representantes {cluster: el texto real mas central del grupo}
+    temas     {cluster: tema} -- el mapa del nivel fino al general
+    nombres_tema, representantes_tema  lo mismo, un nivel arriba
     difusas   palabras repartidas por todos los clusters: las candidatas a
               datos/palabras_vacias.txt.
     metricas  las cifras con que se juzga la corrida (ver agrupar.resumen).
@@ -54,6 +64,9 @@ class Corrida:
     representantes: dict
     difusas: list
     metricas: dict
+    temas: dict = field(default_factory=dict)
+    nombres_tema: dict = field(default_factory=dict)
+    representantes_tema: dict = field(default_factory=dict)
     firma: tuple = None
     parametros: dict = field(default_factory=dict)
 
@@ -62,6 +75,12 @@ class Corrida:
         if cluster == -1:
             return "ruido"
         return f"{cluster}. {self.nombres.get(cluster, 'sin nombre')}"
+
+    def nombre_tema_de(self, tema):
+        """Lo mismo un nivel arriba."""
+        if tema == -1:
+            return "sin tema"
+        return f"{tema}. {self.nombres_tema.get(tema, 'sin nombre')}"
 
     def tabla(self):
         """
@@ -82,18 +101,103 @@ class Corrida:
             for c in agregado["cluster"]]
         agregado["representante"] = [
             self.representantes.get(c, "") for c in agregado["cluster"]]
+        agregado["tema"] = [self.temas.get(c, -1) for c in agregado["cluster"]]
+        agregado["tema_nombre"] = [
+            self.nombres_tema.get(t, "sin tema" if t == -1 else "sin nombre")
+            for t in agregado["tema"]]
         return (agregado.sort_values(["notas", "textos"], ascending=False)
                 .reset_index(drop=True)
-                [["cluster", "nombre", "textos", "notas", "confianza",
+                [["cluster", "nombre", "tema", "tema_nombre", "textos",
+                  "notas", "confianza", "representante"]])
+
+    def tabla_temas(self):
+        """
+        Un renglon por TEMA. Es la tabla con la que se trabaja de aqui en
+        adelante: la que se cruza por fecha contra clima, calendario y eventos.
+
+        Lleva 'grupos' -- cuantos grupos de HDBSCAN se fundieron en el tema --
+        porque es lo que permite ver de un vistazo si un tema es una fusion de
+        verdad o un grupo que se quedo solo, y eso cambia como se lee su nombre.
+        """
+        datos = self.textos
+        agregado = (datos.groupby("tema", dropna=False)
+                    .agg(textos=("fila", "size"),
+                         notas=("n_notas", "sum"))
+                    .reset_index())
+        agregado["tema"] = agregado["tema"].astype(int)
+
+        grupos = {t: 0 for t in agregado["tema"]}
+        for cluster, tema in self.temas.items():
+            grupos[tema] = grupos.get(tema, 0) + 1
+
+        agregado["grupos"] = [grupos.get(t, 0) for t in agregado["tema"]]
+        agregado["nombre"] = [
+            self.nombres_tema.get(t, "sin tema" if t == -1 else "sin nombre")
+            for t in agregado["tema"]]
+        agregado["representante"] = [
+            self.representantes_tema.get(t, "") for t in agregado["tema"]]
+        agregado["parte"] = agregado["notas"] / max(int(datos["n_notas"].sum()), 1)
+        return (agregado.sort_values("notas", ascending=False)
+                .reset_index(drop=True)
+                [["tema", "nombre", "grupos", "textos", "notas", "parte",
                   "representante"]])
+
+    def notas(self):
+        """
+        Un renglon por NOTA: OID, su tema, su cluster y el texto.
+
+        Es la vista que responde "¿que notas agrupo exactamente aqui?", y por
+        eso va ordenada como se lee y no como se calcula: por TEMA de mayor a
+        menor, dentro de cada tema por grupo, y dentro de cada grupo las notas
+        de mas confianza arriba. Las notas sin tema, al final de todo. Abierta
+        en Excel, recorrerla de arriba a abajo es auditar los dos niveles de
+        mayor a menor impacto, y ver seguidos los grupos que un tema fundio es
+        la forma mas rapida de juzgar si la fusion tenia sentido.
+
+        Deshace la deduplicacion: si 'dolor abdominal' es un solo texto que
+        representa 17 notas, aqui salen los 17 OID. Es a proposito. clusters.csv
+        cuenta grupos y este cuenta notas, que es la unidad con la que se cruza
+        contra la fecha de triage.
+        """
+        mapa = self.textos.set_index("fila")[
+            ["cluster", "tema", "confianza", "texto"]]
+        salida = self.indice.merge(mapa, left_on="fila", right_index=True,
+                                   how="inner")
+        salida["nombre"] = [
+            self.nombres.get(c, "ruido" if c == -1 else "sin nombre")
+            for c in salida["cluster"]]
+        salida["tema_nombre"] = [
+            self.nombres_tema.get(t, "sin tema" if t == -1 else "sin nombre")
+            for t in salida["tema"]]
+
+        # El orden de temas y grupos es el de tabla_temas() y tabla(): por
+        # notas. Se traduce a un rango para poder ordenar por el sin repetir
+        # los groupby.
+        orden_tema = {int(t): i for i, t in
+                      enumerate(self.tabla_temas()["tema"].to_numpy())}
+        orden = {int(c): i for i, c in
+                 enumerate(self.tabla()["cluster"].to_numpy())}
+        salida["_tema"] = [orden_tema.get(int(t), len(orden_tema))
+                           for t in salida["tema"]]
+        salida["_orden"] = [orden.get(int(c), len(orden)) for c in salida["cluster"]]
+        # lo que no tiene tema, al final, pase lo que pase con su tamano
+        salida.loc[salida["tema"] == -1, "_tema"] = len(orden_tema) + 1
+
+        return (salida.sort_values(["_tema", "_orden", "confianza"],
+                                   ascending=[True, True, False])
+                .reset_index(drop=True)
+                [["OID", "tema", "tema_nombre", "cluster", "nombre",
+                  "confianza", "texto"]])
 
 
 def ejecutar(minimo_notas=1, vecinos=agrupar.VECINOS,
              dimensiones=agrupar.DIMENSIONES,
              tamano_minimo=agrupar.TAMANO_MINIMO,
-             muestras_minimas=agrupar.MUESTRAS_MINIMAS):
+             muestras_minimas=agrupar.MUESTRAS_MINIMAS,
+             epsilon=agrupar.EPSILON, n_temas=temas.TEMAS,
+             umbral=temas.UMBRAL):
     """
-    Corre los cuatro pasos y devuelve una Corrida.
+    Corre los cinco pasos y devuelve una Corrida.
 
     La firma se toma ANTES de calcular a proposito. Si el pipeline escribe
     mientras UMAP esta corriendo, esta corrida describe el estado anterior --
@@ -109,7 +213,8 @@ def ejecutar(minimo_notas=1, vecinos=agrupar.VECINOS,
                                    vecinos=vecinos)
     grupos, confianza = agrupar.agrupar(proyeccion,
                                         tamano_minimo=tamano_minimo,
-                                        muestras_minimas=muestras_minimas)
+                                        muestras_minimas=muestras_minimas,
+                                        epsilon=epsilon)
     plano = agrupar.proyectar_mapa(vectores)
 
     textos = textos.copy()
@@ -121,14 +226,41 @@ def ejecutar(minimo_notas=1, vecinos=agrupar.VECINOS,
     nombres, representantes, difusas = etiquetas.nombrar(
         textos, textos["cluster"].to_numpy(), vectores)
 
+    # El segundo nivel. Se calcula sobre los centroides de los grupos que
+    # acaban de salir, asi que va despues por necesidad y no por orden.
+    mapa_temas = temas.fundir(vectores, textos["cluster"].to_numpy(),
+                              textos["n_notas"].to_numpy(),
+                              n_temas=n_temas, umbral=umbral)
+    textos["tema"] = temas.aplicar(textos, mapa_temas)
+
+    # Los temas se nombran con la MISMA maquinaria que los grupos: el TF-IDF de
+    # etiquetas.py toma como documento la etiqueta que se le pase, asi que
+    # pasandole la columna de tema mide que palabras distinguen un tema de los
+    # otros temas. Reusarlo no es ahorro de lineas: es lo que garantiza que un
+    # nombre de tema y uno de grupo signifiquen lo mismo y se puedan leer
+    # seguidos sin cambiar de vara.
+    nombres_tema, representantes_tema, _ = etiquetas.nombrar(
+        textos, textos["tema"].to_numpy(), vectores)
+
+    metricas = agrupar.resumen(textos["cluster"].to_numpy(),
+                               textos["n_notas"].to_numpy())
+    metricas["coherencia"] = agrupar.coherencia(
+        vectores, textos["cluster"].to_numpy(), textos["n_notas"].to_numpy())
+    metricas["temas"] = len(set(mapa_temas.values()))
+    metricas["separacion"] = temas.separacion(
+        vectores, textos["cluster"].to_numpy(),
+        textos["n_notas"].to_numpy(), mapa_temas)
+
     return Corrida(
         textos=textos,
         indice=indice,
         nombres=nombres,
         representantes=representantes,
         difusas=difusas,
-        metricas=agrupar.resumen(textos["cluster"].to_numpy(),
-                                 textos["n_notas"].to_numpy()),
+        metricas=metricas,
+        temas=mapa_temas,
+        nombres_tema=nombres_tema,
+        representantes_tema=representantes_tema,
         firma=marca,
         parametros={
             "minimo_notas": minimo_notas,
@@ -136,6 +268,8 @@ def ejecutar(minimo_notas=1, vecinos=agrupar.VECINOS,
             "dimensiones": dimensiones,
             "tamano_minimo": tamano_minimo,
             "muestras_minimas": muestras_minimas or tamano_minimo,
+            "epsilon": epsilon,
+            "temas": n_temas or f"umbral {umbral}",
             "semilla": agrupar.SEMILLA,
         },
     )
@@ -147,7 +281,7 @@ def ejecutar(minimo_notas=1, vecinos=agrupar.VECINOS,
 
 def guardar(corrida):
     """
-    Deja en salidas/ los cuatro archivos de datos que describe rutas.py.
+    Deja en salidas/ los archivos de datos que describe rutas.py.
 
     El mapa.png no se escribe aqui porque para tenerlo hace falta una figura ya
     dibujada, y eso es asunto de mapa.py.
@@ -155,9 +289,19 @@ def guardar(corrida):
     asignacion.parquet es el que importa para lo que viene despues: devuelve el
     cluster a cada OID deshaciendo la deduplicacion, y es la tabla que se cruza
     por OID con la fecha de triage para buscar los patrones temporales, que es
-    el objetivo del proyecto. Los otros tres son para mirar y para poder
-    comparar dos corridas.
+    el objetivo del proyecto. Los otros son para mirar y para poder comparar
+    dos corridas.
+
+    notas.csv lleva los mismos renglones que asignacion.parquet y se escribe
+    igual. No es redundancia por descuido: el parquet es tipado, comprimido y
+    se lee con pandas, y este se abre en Excel con el nombre del grupo al lado
+    y las notas ordenadas para leerlas. Auditar un agrupamiento es una tarea de
+    ojo humano, y obligar a escribir un script para hacerla es lo que hace que
+    no se haga.
     """
+    # asignacion lleva las dos columnas, tema y cluster. La que se usa para el
+    # cruce temporal es tema; cluster va al lado para poder bajar al detalle
+    # sin volver a juntar tablas.
     asignacion = corpus.repartir(corrida.textos, corrida.indice)
     asignacion.to_parquet(rutas.ASIGNACION, index=False)
 
@@ -165,21 +309,27 @@ def guardar(corrida):
     # utf-8-sig y no utf-8: sin el BOM, Excel en Windows abre el CSV en cp1252 y
     # parte todas las tildes de los textos representantes.
     tabla.to_csv(rutas.CLUSTERS, index=False, encoding="utf-8-sig")
+    corrida.tabla_temas().to_csv(rutas.TEMAS, index=False, encoding="utf-8-sig")
+    corrida.notas().to_csv(rutas.NOTAS, index=False, encoding="utf-8-sig")
 
-    corrida.textos[["fila", "texto", "n_notas", "cluster", "confianza",
+    corrida.textos[["fila", "texto", "n_notas", "cluster", "tema", "confianza",
                     "x", "y"]].to_parquet(rutas.PROYECCION, index=False)
 
-    rutas.INFORME.write_text(_informe(corrida), encoding="utf-8")
+    rutas.INFORME.write_text(informe(corrida), encoding="utf-8")
     return asignacion, tabla
 
 
-def _informe(corrida):
+def informe(corrida):
     """
     Las metricas y los parametros de la corrida, en texto plano.
 
     Va con los parametros dentro y no solo las cifras: un informe que dice '36
     clusters y 30% de ruido' sin decir con que tamano minimo salio no se puede
     comparar con el de la semana que viene, que es la unica razon de escribirlo.
+
+    Es publica porque se escribe a salidas/informe.txt Y se imprime en consola
+    al final de 'python -m clustering'. Son el mismo texto a proposito: lo que
+    se lee en la terminal es exactamente lo que queda en disco.
     """
     m = corrida.metricas
     lineas = ["CORRIDA DE AGRUPAMIENTO", "", "PARAMETROS"]
@@ -193,11 +343,38 @@ def _informe(corrida):
         f"  clusters          {m['clusters']:,}",
         f"  textos en ruido   {m['textos_en_ruido']:,} ({m['ruido_textos']:.1%})",
         f"  notas en ruido    {m['notas_en_ruido']:,} ({m['ruido_notas']:.1%})",
+        f"  temas             {m.get('temas', 0):,}",
+        f"  coherencia        {m.get('coherencia', 0):.3f}"
+        f"   (coseno medio al centro del grupo, en el espacio de bge-m3;",
+        "                     dos frases al azar de este corpus dan 0,47)",
+        f"  separacion        {m.get('separacion', float('nan')):.3f}"
+        f"   (coseno medio entre grupos del mismo tema; dos",
+        "                     centroides al azar dan 0,67, esa es la vara)",
         "",
         "El ruido no es un fallo: un motivo de consulta que nadie mas escribio",
         "de forma parecida no pertenece a ningun grupo. Ver agrupar.py.",
         "",
-        "CLUSTERS (por notas)",
+        "=" * 70,
+        "TEMAS (por notas) -- ESTE ES EL NIVEL QUE SE CRUZA CONTRA CLIMA",
+        "=" * 70,
+    ]
+
+    for fila in corrida.tabla_temas().itertuples(index=False):
+        if fila.tema == -1:
+            continue
+        lineas.append(
+            f"  {fila.tema:3d}  {fila.notas:5,} notas ({fila.parte:4.1%})  "
+            f"{fila.grupos:3d} grupos  {fila.nombre}")
+        lineas.append(f"       ejemplo: {_recortar(fila.representante, 105)}")
+
+    lineas += [
+        "",
+        "=" * 70,
+        "GRUPOS (por notas) -- el nivel fino, con el tema de cada uno",
+        "=" * 70,
+        "Sirve para auditar la fusion: si dos grupos del mismo tema no tienen",
+        "nada que ver, o dos de temas distintos son lo mismo, se ve aqui.",
+        "",
     ]
 
     for fila in corrida.tabla().itertuples(index=False):
@@ -206,8 +383,8 @@ def _informe(corrida):
         lineas.append(
             f"  {fila.cluster:3d}  {fila.notas:5,} notas  "
             f"{fila.textos:4,} textos  conf {fila.confianza:.2f}  "
-            f"{fila.nombre}")
-        lineas.append(f"       ejemplo: {_recortar(fila.representante, 110)}")
+            f"[tema {fila.tema:2d}] {fila.nombre}")
+        lineas.append(f"       ejemplo: {_recortar(fila.representante, 105)}")
 
     if corrida.difusas:
         lineas += [

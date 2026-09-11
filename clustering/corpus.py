@@ -139,10 +139,18 @@ def repartir(textos, indice):
     Es la operacion inversa a la del docstring del modulo: se agrupo por texto
     distinto y aqui ese resultado vuelve a cada OID que comparte el texto. Es lo
     que hace que la salida se pueda cruzar por OID con la fecha de triage.
+
+    Van las dos columnas del resultado, tema y cluster. El cruce contra clima y
+    calendario se hace por TEMA -- el cluster es demasiado fino para que una
+    serie diaria tenga senal -- pero el cluster viaja al lado porque es lo que
+    permite bajar al detalle de un tema sin rehacer la corrida.
     """
-    mapa = textos.set_index("fila")[["cluster", "texto"]]
+    columnas = ["cluster", "texto"]
+    if "tema" in textos.columns:
+        columnas = ["tema"] + columnas
+    mapa = textos.set_index("fila")[columnas]
     salida = indice.merge(mapa, left_on="fila", right_index=True, how="inner")
-    return salida[["OID", "cluster", "texto"]].reset_index(drop=True)
+    return salida[["OID"] + columnas].reset_index(drop=True)
 
 
 # ==========================================================

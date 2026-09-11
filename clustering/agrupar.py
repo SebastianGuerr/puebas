@@ -61,6 +61,30 @@ REPRODUCIBILIDAD
 
 import numpy as np
 
+
+def _umap():
+    """
+    Importa UMAP callando UN aviso concreto, y solo ese.
+
+    'n_jobs value 1 overridden to 1 by setting random_state' no describe un
+    problema: describe la decision de REPRODUCIBILIDAD que se tomo aqui a
+    proposito y que esta explicada arriba. Sale dos veces por corrida -- una
+    por reduccion -- y encabeza la salida del comando, justo donde lo primero
+    que se lee tiene que ser el resultado.
+
+    Se silencia por el texto del mensaje y no apagando los avisos de UMAP en
+    bloque: cualquier otro que aparezca sigue saliendo, que es el unico motivo
+    de que exista un sistema de avisos.
+    """
+    import warnings
+
+    import umap
+
+    warnings.filterwarnings(
+        "ignore", message=r".*n_jobs value .* overridden.*")
+    return umap
+
+
 # ==========================================================
 # PARAMETROS -- lo unico que hay que tocar para explorar
 # ==========================================================
@@ -71,6 +95,26 @@ import numpy as np
 VECINOS = 15
 
 # Dimensiones sobre las que se agrupa. Ver 'DOS REDUCCIONES Y NO UNA'.
+#
+# SIGUE EN 5 Y ESO ES UN RESULTADO, NO UN DESCUIDO.
+#     Es el parametro que mas invita a tocar -- el notebook exploratorio usaba
+#     50 -- y el barrido dice que es el que menos hace. Con el resto fijo
+#     (vecinos 15, tamano 10, muestras 3) sobre 1.957 textos:
+#
+#         dimensiones    5      10     15     30     50
+#         grupos        71      68     68     62     66
+#         ruido notas  14,4%  14,3%  16,3%  13,6%  16,1%
+#         coherencia   0,834  0,832  0,834  0,826  0,833
+#
+#     No hay tendencia: la coherencia se mueve menos de 0,01 y el ruido sube y
+#     baja sin direccion. Es ruido de medida. Y tiene sentido -- UMAP ya
+#     resolvio el problema de la dimension al construir el grafo de vecinos;
+#     darle 50 salidas en vez de 5 no le da mas informacion, solo mas sitio
+#     donde ponerla.
+#
+#     Asi que se queda en 5, que es la mas barata de reducir y de agrupar. Lo
+#     que si cambia el resultado son los dos parametros de HDBSCAN de aqui
+#     abajo.
 DIMENSIONES = 5
 
 # min_dist=0 deja que UMAP apile los puntos de un mismo vecindario tan juntos
@@ -78,14 +122,69 @@ DIMENSIONES = 5
 # encuentre densidad es justo lo que se quiere.
 DISTANCIA_MINIMA = 0.0
 
-# El grupo mas pequeno que cuenta como grupo. Es el parametro que mas cambia el
-# resultado y el que hay que mover primero: subirlo da menos grupos, mas
+# El grupo mas pequeno que cuenta como grupo. Subirlo da menos grupos, mas
 # grandes y mas ruido; bajarlo, muchos grupos diminutos. El valor bueno se
-# encuentra mirando el informe, no adivinando.
-TAMANO_MINIMO = 15
+# encuentra con 'python -m clustering --barrido', no adivinando.
+#
+# Estaba en 15 y bajo a 10. Sobre 1.957 textos, con muestras_minimas en 3:
+#
+#     tamano_minimo   8      10     15     20     30
+#     grupos         82      71     46     35     25
+#     ruido notas  13,0%  14,4%  16,5%  21,6%  18,1%
+#     coherencia   0,838  0,834  0,817  0,813  0,795
+#
+# 10 es donde deja de comprar cobertura y empieza a pagarla: bajar a 8 gana
+# punto y medio de ruido a cambio de once grupos mas que leer, y subir a 15
+# cuesta ruido y coherencia a la vez. Tendra que volver a mirarse cuando el
+# corpus crezca: un grupo de 10 textos sobre 1.957 no es lo mismo que sobre
+# 20.000, donde ese tamano ya es una rareza y no un patron.
+TAMANO_MINIMO = 10
 
-# Cuan conservador es al declarar densidad. None lo iguala a TAMANO_MINIMO.
-MUESTRAS_MINIMAS = None
+# LA PERILLA DE LA PRECISION, Y NO ES TAMANO_MINIMO.
+#
+# min_samples es lo conservador que es HDBSCAN al declarar que una zona es
+# densa. Los dos parametros suenan parecido y hacen cosas distintas:
+#
+#   TAMANO_MINIMO    de que tamano para arriba algo cuenta como grupo.
+#   MUESTRAS_MINIMAS cuanta evidencia exige para creerse que hay densidad.
+#
+# Igualandolos -- que es lo que hace None, y es el valor de fabrica de la
+# libreria -- se pide lo mas estricto posible, y de ahi sale la montana de
+# ruido. Bajandolo se rescata de la cola larga lo que si tenia vecinos: parte
+# entra a los grupos que ya existian y parte forma grupos nuevos y pequenos,
+# asi que bajan el ruido y sube la cuenta de grupos a la vez. Es la diferencia
+# entre 'no se parece a nada' y 'no me atrevo a decir que se parece a algo'.
+#
+# Se paga en pureza: cuanto mas bajo, mas puntos dudosos entran a algun grupo.
+# Por eso va acompanado de la coherencia en el informe, que es lo que mide si
+# lo que entro pertenecia de verdad.
+#
+# ESTABA EN None Y ERA LO QUE PRODUCIA CASI TODO EL RUIDO.
+#     Con tamano_minimo en 15, moverlo es lo unico que hizo falta para bajar el
+#     ruido diez puntos sin perder nada:
+#
+#         muestras_minimas    1      3      5     10     15 (=None)
+#         grupos             54     46     43     42     36
+#         ruido notas      15,1%  16,5%  17,5%  23,2%  26,4%
+#         coherencia       0,820  0,817  0,818  0,826  0,820
+#
+#     La coherencia no se mueve. Esos diez puntos de ruido no eran frases que
+#     no pertenecian a ningun grupo: eran frases que SI pertenecian y que
+#     HDBSCAN no se atrevia a colocar, porque None le pide la exigencia maxima.
+#     Es el valor de fabrica de la libreria y no una eleccion.
+#
+#     Se deja en 3 y no en 1 por margen: con 1 basta un solo vecino para
+#     sostener un punto, y sobre un corpus que va a crecer diez veces eso
+#     empieza a pegar cosas por casualidad. 3 da casi la misma cobertura
+#     pidiendo evidencia de verdad.
+MUESTRAS_MINIMAS = 3
+
+# Distancia por debajo de la cual dos micro-grupos se declaran el mismo. Con 0
+# se apaga y manda solo la jerarquia. Subirlo pega los grupos que HDBSCAN parte
+# por un valle de densidad estrecho -- tipico cuando la misma dolencia se
+# escribe de dos formas -- sin tener que subir TAMANO_MINIMO, que ademas
+# aumentaria el ruido.
+EPSILON = 0.0
 
 SEMILLA = 42
 
@@ -100,7 +199,7 @@ def proyectar(vectores, dimensiones=DIMENSIONES, vecinos=VECINOS,
     que esto se rompa en silencio el dia que alguien cambie
     embedding/modelo.py y deje de normalizar.
     """
-    import umap
+    umap = _umap()
 
     n = len(vectores)
     if n <= dimensiones + 1:
@@ -123,7 +222,7 @@ def proyectar(vectores, dimensiones=DIMENSIONES, vecinos=VECINOS,
 
 
 def agrupar(proyeccion, tamano_minimo=TAMANO_MINIMO,
-            muestras_minimas=MUESTRAS_MINIMAS):
+            muestras_minimas=MUESTRAS_MINIMAS, epsilon=EPSILON):
     """
     Devuelve (etiquetas, confianza) con HDBSCAN sobre la proyeccion.
 
@@ -141,12 +240,51 @@ def agrupar(proyeccion, tamano_minimo=TAMANO_MINIMO,
     agrupador = hdbscan.HDBSCAN(
         min_cluster_size=int(tamano_minimo),
         min_samples=int(muestras_minimas) if muestras_minimas else None,
+        cluster_selection_epsilon=float(epsilon),
         metric="euclidean",
         cluster_selection_method="eom",
         prediction_data=False,
     )
     etiquetas = agrupador.fit_predict(np.asarray(proyeccion, dtype=np.float64))
     return etiquetas, agrupador.probabilities_
+
+
+def coherencia(vectores, etiquetas, n_notas):
+    """
+    Que tan apretado es cada grupo EN EL ESPACIO DE bge-m3, de 0 a 1.
+
+    Es la unica metrica de calidad que se puede comparar entre corridas con
+    distinto numero de dimensiones. Todo lo que se mida sobre la salida de UMAP
+    -- silueta, DBCV -- mide tambien la reduccion, y una reduccion a 5
+    dimensiones y otra a 30 no producen numeros del mismo orden: se estaria
+    comparando la vara y no lo medido. El espacio de los 1.024 numeros no
+    cambia entre corridas, asi que ahi si.
+
+    Se mide como la similitud coseno media de cada texto con el centro de su
+    grupo, pesando por notas y promediando los grupos tambien por notas. El
+    ruido no entra: no tiene centro al que parecerse.
+
+    Como leerla: recordar que el coseno medio entre dos frases al azar de este
+    corpus es 0,47 (ver arriba). Un grupo con 0,75 no esta 'un poco' por encima
+    del azar, esta muy por encima; y una caida de 0,75 a 0,70 al aflojar un
+    parametro es mucho mas grande de lo que aparenta.
+    """
+    etiquetas = np.asarray(etiquetas)
+    n_notas = np.asarray(n_notas, dtype=np.float64)
+    valores, pesos = [], []
+    for c in sorted(set(etiquetas) - {-1}):
+        filas = np.where(etiquetas == c)[0]
+        bloque = np.asarray(vectores[filas], dtype=np.float64)
+        peso = n_notas[filas]
+        centro = np.average(bloque, axis=0, weights=peso)
+        norma = np.linalg.norm(centro)
+        if norma:
+            centro = centro / norma
+        valores.append(float(np.average(bloque @ centro, weights=peso)))
+        pesos.append(float(peso.sum()))
+    if not valores:
+        return 0.0
+    return float(np.average(valores, weights=pesos))
 
 
 def resumen(etiquetas, n_notas):
@@ -197,7 +335,7 @@ def proyectar_mapa(vectores, vecinos=VECINOS_MAPA,
     son dos vecindarios que en 2 dimensiones no tenian donde separarse. El que
     manda es el color.
     """
-    import umap
+    umap = _umap()
 
     n = len(vectores)
     if n <= 3:

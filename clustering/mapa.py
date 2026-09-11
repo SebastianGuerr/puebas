@@ -2,16 +2,23 @@
 El dibujo: una corrida convertida en una figura que se puede leer.
 
 COMO SE LEE ESTE MAPA, QUE NO ES OBVIO
-    Los COLORES vienen del agrupamiento, que se hizo sobre 5 dimensiones. Las
-    POSICIONES vienen de otra reduccion, a 2 dimensiones, hecha solo para poder
-    dibujar. Son dos espacios distintos (ver agrupar.py).
+    Los COLORES son el TEMA, no el grupo. Las POSICIONES vienen de una
+    reduccion a 2 dimensiones hecha solo para poder dibujar, distinta de la de
+    5 sobre la que se agrupo (ver agrupar.py).
+
+    Se colorea por tema y no por grupo por dos razones. La de fondo: el tema es
+    el nivel con el que se va a trabajar, y el mapa tiene que mostrar lo que se
+    va a usar. La practica: con 130 grupos y una paleta de 20 colores, cada
+    color se repetia seis veces y el mapa no se podia leer -- dos manchas del
+    mismo color no querian decir nada. Con 20 temas hay un color por tema y
+    volver a mirar el mapa sirve para algo.
 
     La consecuencia practica es que dos puntos pegados con colores distintos NO
     son un fallo: son dos vecindarios que en 2 dimensiones no tenian donde
     separarse. Y la distancia entre dos manchas lejanas no significa nada,
     porque UMAP conserva la vecindad local y no las distancias globales. El
     mapa sirve para ver la FORMA del corpus y para leer los textos por encima;
-    lo que manda siempre es el numero de cluster.
+    lo que manda siempre es el numero de tema.
 
 POR QUE EL TAMANO DEL PUNTO Y NO SOLO SU POSICION
     Cada punto es un texto DISTINTO, no una nota, porque es asi como se agrupa
@@ -28,11 +35,15 @@ POR QUE MATPLOTLIB Y NO PLOTLY
     hace _conectar_hover.
 
 EL PANEL DE LA DERECHA NO ES DECORACION
-    El mapa dice donde estan los grupos y el panel dice cuales importan,
-    medidos en NOTAS. Son preguntas distintas: un cluster puede ocupar media
-    pantalla con muchos textos raros y pesar menos que una mancha pequena de
-    frases repetidas. Los colores son los mismos en los dos lados, que es lo
-    que permite pasar del nombre a la mancha.
+    El mapa dice donde estan los temas y el panel dice cuales importan, medidos
+    en NOTAS. Son preguntas distintas: un tema puede ocupar media pantalla con
+    muchos textos raros y pesar menos que una mancha pequena de frases
+    repetidas. Los colores son los mismos en los dos lados, que es lo que
+    permite pasar del nombre a la mancha.
+
+    El panel lista TEMAS porque es la respuesta a "de que viene la gente al
+    hospital", que es la pregunta del proyecto. Los grupos que componen cada
+    tema estan en salidas/clusters.csv y en el globo del hover.
 """
 
 import textwrap
@@ -41,9 +52,9 @@ import numpy as np
 
 from clustering import rutas
 
-# Cuantos clusters se listan en el panel. Mas de esto no cabe legible, y el
-# resto sigue estando en salidas/clusters.csv, que es donde se mira en serio.
-CLUSTERS_EN_PANEL = 18
+# Cuantos temas se listan en el panel. Mas de esto no cabe legible, y el resto
+# sigue estando en salidas/temas.csv, que es donde se mira en serio.
+TEMAS_EN_PANEL = 20
 
 COLOR_RUIDO = "#d7d7d7"
 
@@ -55,25 +66,26 @@ AREA_POR_NOTA = 5
 AREA_MAXIMA = 190
 
 
-def color_de(cluster):
+def color_de(tema):
     """
-    Color estable de un cluster: el mismo numero da el mismo color entre
-    corridas, que es lo que permite comparar dos mapas de un vistazo.
+    Color estable de un tema: el mismo numero da el mismo color entre corridas,
+    que es lo que permite comparar dos mapas de un vistazo.
 
-    Con mas de 20 clusters los colores se repiten y no hay forma de evitarlo
-    con una paleta legible. Por eso el numero va escrito sobre la mancha: el
-    color agrupa a ojo, el numero identifica.
+    tab20 tiene exactamente 20 colores y el valor por defecto de temas.py son
+    20 temas, asi que normalmente hay uno por tema y ninguno se repite. Si se
+    piden mas con --temas, vuelven a repetirse; por eso el numero va escrito
+    sobre la mancha, para que el color agrupe a ojo y el numero identifique.
     """
     import matplotlib.pyplot as plt
 
-    if cluster == -1:
+    if tema == -1:
         return COLOR_RUIDO
-    return plt.get_cmap("tab20")(int(cluster) % 20)
+    return plt.get_cmap("tab20")(int(tema) % 20)
 
 
 def dibujar(figura, corrida):
     """
-    Vacia la figura y dibuja el mapa mas el panel de clusters.
+    Vacia la figura y dibuja el mapa mas el panel de temas.
 
     Recibe la figura en vez de crearla para que el visor pueda refrescar la
     ventana que ya esta abierta: crear una nueva en cada refresco haria
@@ -86,7 +98,7 @@ def dibujar(figura, corrida):
     eje_mapa = figura.add_subplot(rejilla[0, 0])
     eje_panel = figura.add_subplot(rejilla[0, 1])
 
-    tabla = corrida.tabla()
+    tabla = corrida.tabla_temas()
     _dibujar_mapa(eje_mapa, corrida)
     _dibujar_panel(eje_panel, corrida, tabla)
     _titular(figura, corrida)
@@ -96,7 +108,7 @@ def dibujar(figura, corrida):
 def _dibujar_mapa(eje, corrida):
     """El scatter, las etiquetas de cada grupo y el hover."""
     datos = corrida.textos
-    es_ruido = datos["cluster"].to_numpy() == -1
+    es_ruido = datos["tema"].to_numpy() == -1
     areas = np.minimum(
         AREA_BASE + AREA_POR_NOTA * (datos["n_notas"].to_numpy() - 1),
         AREA_MAXIMA)
@@ -113,40 +125,45 @@ def _dibujar_mapa(eje, corrida):
 
     if (~es_ruido).any():
         indices = np.where(~es_ruido)[0]
-        colores = [color_de(c) for c in datos["cluster"].to_numpy()[indices]]
+        colores = [color_de(t) for t in datos["tema"].to_numpy()[indices]]
         capas.append((eje.scatter(
             datos["x"].to_numpy()[indices], datos["y"].to_numpy()[indices],
             s=areas[indices], c=colores, linewidths=0.3,
             edgecolors="white", alpha=0.9, zorder=2), indices))
 
-    _numerar_grupos(eje, corrida)
+    _numerar_temas(eje, corrida)
 
     eje.set_xticks([])
     eje.set_yticks([])
     for lado in eje.spines.values():
         lado.set_color("#dddddd")
     eje.set_xlabel(
-        "posiciones: UMAP 2D solo para dibujar  |  colores: HDBSCAN sobre 5D  |  "
+        "posiciones: UMAP 2D solo para dibujar  |  colores: TEMA  |  "
         "area: notas que representa el texto",
         fontsize=8, color="#777777")
 
     _conectar_hover(eje, corrida, capas)
 
 
-def _numerar_grupos(eje, corrida):
+def _numerar_temas(eje, corrida):
     """
-    Escribe el numero de cada cluster sobre su mancha.
+    Escribe el numero de cada TEMA sobre su mancha.
 
-    La posicion es la MEDIANA de sus puntos y no la media: un cluster con dos
+    Antes numeraba los grupos y con 130 el mapa quedaba tapado de cifras. Los
+    temas son veinte y caben.
+
+    La posicion es la MEDIANA de sus puntos y no la media: un tema con dos
     textos sueltos lejos del resto -- que pasa, porque el agrupamiento es sobre
     otro espacio -- arrastraria la media hasta un hueco vacio y la etiqueta
-    quedaria flotando lejos de la mancha que nombra.
+    quedaria flotando lejos de la mancha que nombra. Con temas pasa mas que con
+    grupos, porque un tema funde grupos que no tienen por que caer juntos en la
+    proyeccion de 2 dimensiones.
     """
     datos = corrida.textos
-    for cluster in sorted(c for c in datos["cluster"].unique() if c != -1):
-        bloque = datos[datos["cluster"] == cluster]
+    for tema in sorted(t for t in datos["tema"].unique() if t != -1):
+        bloque = datos[datos["tema"] == tema]
         eje.annotate(
-            str(int(cluster)),
+            str(int(tema)),
             (bloque["x"].median(), bloque["y"].median()),
             fontsize=9, fontweight="bold", color="#1a1a1a",
             ha="center", va="center", zorder=5,
@@ -163,8 +180,8 @@ def _halo():
 
 
 def _dibujar_panel(eje, corrida, tabla):
-    """Los clusters mas grandes en notas, con el nombre que salio del TF-IDF."""
-    visibles = tabla[tabla["cluster"] != -1].head(CLUSTERS_EN_PANEL)
+    """Los temas mas grandes en notas, con el nombre que salio del TF-IDF."""
+    visibles = tabla[tabla["tema"] != -1].head(TEMAS_EN_PANEL)
     if visibles.empty:
         eje.text(0.5, 0.5, "Todavia no hay ningun grupo:\ntodo cayo como ruido.",
                  ha="center", va="center", fontsize=10, color="#666666")
@@ -175,16 +192,16 @@ def _dibujar_panel(eje, corrida, tabla):
     visibles = visibles.iloc[::-1]
     posiciones = np.arange(len(visibles))
     eje.barh(posiciones, visibles["notas"],
-             color=[color_de(c) for c in visibles["cluster"]],
+             color=[color_de(t) for t in visibles["tema"]],
              edgecolor="white", linewidth=0.5)
 
     eje.set_yticks(posiciones)
     eje.set_yticklabels(
-        [f"{int(c)}. {n}" for c, n in zip(visibles["cluster"], visibles["nombre"])],
+        [f"{int(t)}. {n}" for t, n in zip(visibles["tema"], visibles["nombre"])],
         fontsize=8)
-    eje.set_xlabel("notas que representa el grupo", fontsize=8.5)
+    eje.set_xlabel("notas que representa el tema", fontsize=8.5)
     eje.set_title(
-        f"Grupos mas grandes  ({len(tabla[tabla['cluster'] != -1])} en total)",
+        f"Temas mas grandes  ({len(tabla[tabla['tema'] != -1])} en total)",
         fontsize=10, fontweight="bold", loc="left")
     eje.grid(axis="x", alpha=0.25, linewidth=0.6)
     eje.set_axisbelow(True)
@@ -197,9 +214,11 @@ def _dibujar_panel(eje, corrida, tabla):
     # cortada contra el borde del panel.
     eje.set_xlim(0, visibles["notas"].max() * 1.22)
 
-    for y, (notas, textos) in enumerate(zip(visibles["notas"],
-                                            visibles["textos"])):
-        eje.text(notas, y, f" {int(notas):,}n / {int(textos):,}t",
+    # notas y cuantos grupos se fundieron: '412n / 7g' dice a la vez cuanto
+    # pesa el tema y si es una fusion de verdad o un grupo que quedo solo.
+    for y, (notas, grupos) in enumerate(zip(visibles["notas"],
+                                            visibles["grupos"])):
+        eje.text(notas, y, f" {int(notas):,}n / {int(grupos)}g",
                  va="center", fontsize=7, color="#555555")
 
 
@@ -208,7 +227,8 @@ def _titular(figura, corrida):
     m = corrida.metricas
     figura.suptitle(
         f"Motivos de triage agrupados  |  {m['textos']:,} textos distintos  |  "
-        f"{m['notas']:,} notas  |  {m['clusters']:,} grupos  |  "
+        f"{m['notas']:,} notas  |  {m.get('temas', 0):,} temas  |  "
+        f"{m['clusters']:,} grupos  |  "
         f"ruido {m['ruido_textos']:.0%} de los textos "
         f"({m['ruido_notas']:.0%} de las notas)",
         fontsize=12, fontweight="bold", y=0.975)
@@ -254,13 +274,22 @@ def _conectar_hover(eje, corrida, capas):
     globo.set_visible(False)
 
     def contenido(fila):
+        """
+        Los DOS niveles en el globo, el tema arriba y el grupo debajo.
+
+        El color de la mancha es el tema, asi que apuntando solo se sabe eso;
+        y la pregunta que sigue -- 'vale, pero por que esta ESTA frase en ESE
+        tema' -- se responde con el grupo, que es el que la puso ahi. Sin los
+        dos, auditar la fusion obliga a ir al CSV.
+        """
         registro = datos.iloc[fila]
-        cluster = int(registro["cluster"])
-        cabecera = corrida.nombre_de(cluster)
+        cabecera = corrida.nombre_tema_de(int(registro["tema"]))
+        grupo = corrida.nombre_de(int(registro["cluster"]))
         cuerpo = textwrap.fill(" ".join(str(registro["texto"]).split()), 74)
         pie = (f"{int(registro['n_notas'])} nota(s)"
                f"  |  confianza {registro['confianza']:.2f}")
-        return f"{cabecera}\n{'-' * 34}\n{cuerpo}\n{pie}"
+        return (f"TEMA {cabecera}\n     grupo {grupo}\n"
+                f"{'-' * 34}\n{cuerpo}\n{pie}")
 
     def mover(evento):
         if evento.inaxes is not eje:

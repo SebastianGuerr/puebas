@@ -1,10 +1,13 @@
 """
-La ventana. Punto de entrada del paquete.
+La ventana que se refresca sola mientras el pipeline sigue escribiendo.
 
-    python -m clustering.visor                 abre la ventana y la deja viva
-    python -m clustering.visor --una-vez       calcula, dibuja y no refresca
-    python -m clustering.visor --guardar       ademas escribe salidas/
-    python -m clustering.visor --tamano-minimo 10
+    python -m clustering --vivo
+
+EL PUNTO DE ENTRADA ES __main__.py, NO ESTE ARCHIVO
+    Aqui esta el bucle de refresco y nada mas. La linea de comandos, el orden
+    de los pasos y la escritura de salidas/ viven en __main__.py, para que haya
+    un solo sitio donde mirar que hace el comando. 'python -m clustering.visor'
+    sigue funcionando y es un atajo de 'python -m clustering --vivo'.
 
 QUE ES 'EN VIVO'
     NLP/procesar.py y embedding/centinela.py estan corriendo: cada 15 minutos
@@ -27,22 +30,9 @@ POR QUE LA PRIMERA VEZ TARDA
     esta colgado. Va imprimiendo en que paso esta.
 """
 
-import argparse
 import time
 
 from clustering import corpus, corrida as motor, mapa
-
-# Segundos entre comprobaciones. No es cada cuanto se recalcula: es cada cuanto
-# se mira si hace falta.
-INTERVALO_DEFECTO = 60
-
-# Repeticiones minimas para que un texto entre al mapa. UNO, es decir todos.
-#
-# Estaba en 15 y era un error grave: el 93% de los textos distintos aparece una
-# sola vez, asi que con 15 el mapa se dibujaba con 5 de los 1.957 textos y
-# parecia que no habia nada que agrupar. La cola larga no es sobra a limpiar,
-# es el corpus (ver corpus.cargar).
-MINIMO_DEFECTO = 1
 
 
 def calcular(args, aviso=print):
@@ -52,7 +42,10 @@ def calcular(args, aviso=print):
     resultado = motor.ejecutar(
         minimo_notas=args.minimo_notas,
         vecinos=args.vecinos,
+        dimensiones=args.dimensiones,
         tamano_minimo=args.tamano_minimo,
+        muestras_minimas=args.muestras_minimas,
+        epsilon=args.epsilon,
     )
     m = resultado.metricas
     aviso(f"  {m['textos']:,} textos distintos / {m['notas']:,} notas")
@@ -113,49 +106,25 @@ def _refrescar(figura, args, estado):
         print("  salidas escritas en clustering/salidas/")
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Abre una ventana con el mapa de clusters de los motivos "
-                    "de triage ya vectorizados. Solo lee embedding/salidas/.")
-    parser.add_argument("--intervalo", type=float, default=INTERVALO_DEFECTO,
-                        help="segundos entre comprobaciones (por defecto: 60)")
-    parser.add_argument("--minimo-notas", type=int, default=MINIMO_DEFECTO,
-                        help="repeticiones minimas por texto (por defecto: 1, "
-                             "es decir todos)")
-    parser.add_argument("--vecinos", type=int, default=None,
-                        help="vecinos de UMAP: la escala de lo que se busca")
-    parser.add_argument("--tamano-minimo", type=int, default=None,
-                        help="grupo mas pequeno que cuenta como grupo")
-    parser.add_argument("--una-vez", action="store_true",
-                        help="calcula una sola vez y no refresca")
-    parser.add_argument("--guardar", action="store_true",
-                        help="escribe tambien clustering/salidas/")
-    args = parser.parse_args()
+def vivo(figura, args, firma_inicial=None):
+    """
+    Deja la ventana abierta, recalculando solo cuando embedding/salidas/ cambie.
 
-    if args.intervalo <= 0 or args.minimo_notas < 1:
-        parser.error("intervalo debe ser positivo y minimo-notas >= 1")
+    Recibe la figura YA DIBUJADA por __main__.py con la primera corrida, y
+    firma_inicial es el estado de embedding/salidas/ con el que se calculo esa
+    primera. Sin ese dato el bucle no sabria que ya esta dibujado lo ultimo y
+    repetiria el minuto de UMAP nada mas abrir la ventana, para pintar
+    exactamente lo mismo.
 
-    # None significa 'el valor de agrupar.py', que es donde estan documentados.
-    # Repetirlos aqui como default los duplicaria y se desincronizarian.
-    from clustering import agrupar
-    args.vecinos = args.vecinos or agrupar.VECINOS
-    args.tamano_minimo = args.tamano_minimo or agrupar.TAMANO_MINIMO
-
+    No vuelve hasta que se cierra la ventana.
+    """
     import matplotlib.pyplot as plt
     from matplotlib.animation import FuncAnimation
 
-    figura = plt.figure(figsize=(16.5, 9), facecolor="white")
-    figura.canvas.manager.set_window_title("Clusters de motivos de triage")
-
-    estado = {}
-    _refrescar(figura, args, estado)
-
-    if args.una_vez:
-        plt.show()
-        return
-
     print(f"\nVentana abierta. Comprueba cada {args.intervalo:.0f}s si el "
           f"pipeline agrego embeddings; recalcula solo si cambio.")
+
+    estado = {"firma": firma_inicial}
     animacion = FuncAnimation(
         figura,
         lambda _: _refrescar(figura, args, estado),
@@ -168,5 +137,21 @@ def main():
     plt.show()
 
 
+def main():
+    """
+    Atajo historico: 'python -m clustering.visor' == 'python -m clustering --vivo'.
+
+    Se delega en vez de tener otro argparse aqui. Dos analizadores de linea de
+    comandos sobre los mismos parametros se desincronizan a la primera opcion
+    que se agregue en uno y se olvide en el otro, y el sintoma es que la misma
+    bandera hace cosas distintas segun como se invoque.
+    """
+    import sys
+
+    from clustering.__main__ import main as principal
+    return principal(sys.argv[1:] + ["--vivo"])
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    sys.exit(main())
