@@ -159,17 +159,35 @@ def cargar_corpus(engine, filtro):
     print(f"  {len(conteo):,} palabras distintas sobre {len(df):,} notas")
 
 
-def cargar_registros(engine, filtro):
+def cargar_registros(engine, filtro, excluir=()):
     """
-    Descarga los registros que se van a procesar, repartidos por toda la tabla
-    y siempre los mismos entre corridas. El porqué de ese orden repetible está
-    en nucleo/datos.muestra().
+    Descarga las notas que TODAVIA no estan limpias, repartidas por toda la
+    tabla y siempre en el mismo orden entre corridas. El porqué de ese orden
+    repetible está en nucleo/datos.muestra().
+
+    POR QUE LAS YA LIMPIAS SE EXCLUYEN EN LA CONSULTA Y NO AL LLEGAR
+        Antes se bajaban LIMITE_REGISTROS notas y las ya hechas se filtraban en
+        pandas. Como el orden es fijo a proposito, pedir 5.000 cuando ya habia
+        5.000 limpias devolvia EXACTAMENTE esas 5.000 y dejaba cero por
+        procesar: la corrida arrancaba, cargaba diccionarios, escribia sus
+        salidas y terminaba sin tocar una sola nota nueva.
+
+        Visto desde fuera no parecia un error, parecia que el pipeline no hacia
+        nada. Paso el 11 de septiembre y costo una manana entenderlo.
+
+        Ademas obligaba a subir --limite a mano cargando con el lastre: pedir
+        20.000 para conseguir 15.000 nuevas, y al final de la tabla pedir
+        90.000 para conseguir las ultimas.
+
+        Con la exclusion en el WHERE, --limite significa lo que dice: cuantas
+        notas NUEVAS procesa esta corrida. 2.000 son 2.000, se este por la
+        primera o por la ultima.
     """
     print("Descargando registros...")
     df = datos.muestra(engine, TABLA, [LLAVE, COLUMNA], filtro,
                        limite=LIMITE_REGISTROS, disperso=MUESTREO_ALEATORIO,
-                       llave=LLAVE)
-    print(f"  {len(df):,} registros")
+                       llave=LLAVE, excluir=excluir)
+    print(f"  {len(df):,} notas nuevas")
     return df
 
 
@@ -464,10 +482,71 @@ def main():
         entradas = normalizacion.cargar()
         print(f"  {entradas:,} expresiones de normalizacion (modo {normalizacion.MODO})")
 
+    # ------------------------------------------------------------------
+    # QUE SE VA A ESCRIBIR Y QUE ESTA ESCRITO YA -- LAS DOS COSAS ANTES DE
+    # BAJAR NADA.
+    #
+    # Esto se decidia mas abajo, DESPUES de la descarga, y ese orden era justo
+    # lo que rompia --limite: no se le puede pedir "2.000 notas nuevas" a la
+    # base de datos si todavia no se sabe cuales estan hechas. Aqui se resuelve
+    # primero que columnas lleva el CSV (de eso depende si el archivo anterior
+    # sirve o hay que rotarlo), luego si se continua o se empieza de cero, y
+    # solo entonces se leen los OID ya escritos para pasarselos a la consulta.
+    # ------------------------------------------------------------------
+    normalizar = NORMALIZAR and normalizacion.disponible()
+    columnas = [LLAVE, "texto_original", "texto_corregido"]
+    if normalizar:
+        columnas.append("texto_normalizado")
+    if REDUCIR:
+        columnas.append("texto_embedding")
+
+    # Fase 4: el juicio se hace sobre el texto normalizado siempre que exista.
+    # Preguntar 'esta nota tiene terminologia clinica' sobre el texto sin
+    # normalizar mide el diccionario, no la nota: 'me cai' y 'tengo gripa' dan
+    # cero terminos hasta que la fase 3 los traduce.
+    columna_juicio = "texto_normalizado" if normalizar else "texto_corregido"
+    columnas_descarte = [LLAVE, "texto_original", columna_juicio,
+                         "motivo_descarte"]
+
+    # ------------------------------------------------------------------
+    # Relanzar CONTINUA el CSV; no lo rehace.
+    #
+    # Antes cada corrida rotaba el archivo y empezaba por el bloque 1, y con
+    # una tabla que se procesa a razon de un bloque cada media hora eso
+    # significaba que interrumpir para revisar algo costaba todo lo andado.
+    # Ahora se leen los OID que ya estan escritos, la consulta los salta, y lo
+    # nuevo se anade al final.
+    #
+    # Es lo mismo que ya hacia embedding/: la corrida barata es la que no
+    # repite trabajo. Para empezar de cero a proposito esta --rehacer.
+    # ------------------------------------------------------------------
+    reanudar = not args.rehacer
+
+    if args.rehacer:
+        anterior = rotar(OUTPUT_CSV)
+        rotar(DESCARTADAS_CSV)
+        if anterior:
+            print(f"  --rehacer: version anterior apartada en {anterior.name}")
+    elif not cabecera_compatible(OUTPUT_CSV, columnas) and OUTPUT_CSV.exists():
+        anterior = rotar(OUTPUT_CSV)
+        rotar(DESCARTADAS_CSV)
+        reanudar = False
+        print(f"  el CSV anterior tenia otras columnas; apartado en {anterior.name}")
+
+    # Solo el CSV principal: desde que la fase 4 senala en vez de eliminar,
+    # TODAS las notas procesadas acaban ahi. notas_descartadas.csv es un indice
+    # de lo senalado, no una lista de bajas, asi que sus OID estan tambien en el
+    # CSV y mirarlo seria redundante.
+    hechas = llaves_escritas(OUTPUT_CSV) if reanudar else set()
+    if hechas:
+        print(f"  ya limpias de corridas anteriores: {len(hechas):,} notas "
+              f"(la consulta las salta)")
+
     cargar_corpus(engine, filtro)
-    df = cargar_registros(engine, filtro)
+    df = cargar_registros(engine, filtro, excluir=hechas)
     if df.empty:
-        print("No hay registros.")
+        print("\nNo quedan notas nuevas: la tabla entera esta limpia. "
+              "Para rehacerla desde cero usa --rehacer.")
         return
 
     df = preparar(df)
@@ -486,11 +565,6 @@ def main():
     # 5.000, asi que hacerlo por bloque multiplicaria el arranque por el numero
     # de bloques.
     # ------------------------------------------------------------------
-    normalizar = NORMALIZAR and normalizacion.disponible()
-    columnas = [LLAVE, "texto_original", "texto_corregido"]
-    if normalizar:
-        columnas.append("texto_normalizado")
-
     # El CSV conserva sus columnas de siempre. Que notas senalo la fase 4 se
     # sabe cruzando por OID contra notas_descartadas.csv, que sigue siendo el
     # archivo de control.
@@ -501,11 +575,6 @@ def main():
     # mezclaria 776 notas sanas con el centenar senalado; el cruce por OID da
     # la lista exacta.
 
-    # Fase 4: el juicio se hace sobre el texto normalizado siempre que exista.
-    # Preguntar 'esta nota tiene terminologia clinica' sobre el texto sin
-    # normalizar mide el diccionario, no la nota: 'me cai' y 'tengo gripa' dan
-    # cero terminos hasta que la fase 3 los traduce.
-    columna_juicio = "texto_normalizado" if normalizar else "texto_corregido"
     if DEPURAR:
         print(f"Fase 4: {depuracion.cargar():,} raices clinicas indexadas")
 
@@ -542,55 +611,12 @@ def main():
         usar_llm = USAR_LLM and extractor.disponible()
         if usar_llm:
             print(f"  extractor: {extractor.MODELO} (todas las notas)")
-        columnas.append("texto_embedding")
 
     # ------------------------------------------------------------------
     # El bucle de bloques. Cada vuelta deja notas TERMINADAS en el CSV, no a
     # medio procesar: un bloque pasa por las fases 2 a 5 completas antes de
     # escribirse. Por eso el archivo se puede leer mientras la corrida sigue.
     # ------------------------------------------------------------------
-    # ------------------------------------------------------------------
-    # Relanzar CONTINUA el CSV; no lo rehace.
-    #
-    # Antes cada corrida rotaba el archivo y empezaba por el bloque 1, y con
-    # una tabla que se procesa a razon de un bloque cada media hora eso
-    # significaba que interrumpir para revisar algo costaba todo lo andado.
-    # Ahora se leen los OID que ya estan escritos, se saltan, y las notas
-    # nuevas se anaden al final.
-    #
-    # Es lo mismo que ya hacia embedding/: la corrida barata es la que no
-    # repite trabajo. Para empezar de cero a proposito esta --rehacer.
-    # ------------------------------------------------------------------
-    columnas_descarte = [LLAVE, "texto_original", columna_juicio, "motivo_descarte"]
-    reanudar = not args.rehacer
-
-    if args.rehacer:
-        anterior = rotar(OUTPUT_CSV)
-        rotar(DESCARTADAS_CSV)
-        if anterior:
-            print(f"  --rehacer: version anterior apartada en {anterior.name}")
-    elif not cabecera_compatible(OUTPUT_CSV, columnas) and OUTPUT_CSV.exists():
-        anterior = rotar(OUTPUT_CSV)
-        rotar(DESCARTADAS_CSV)
-        reanudar = False
-        print(f"  el CSV anterior tenia otras columnas; apartado en {anterior.name}")
-
-    if reanudar:
-        # Solo el CSV principal: desde que la fase 4 senala en vez de eliminar,
-        # TODAS las notas procesadas acaban ahi. notas_descartadas.csv es un
-        # indice de lo senalado, no una lista de bajas, asi que sus OID estan
-        # tambien en el CSV y mirarlo seria redundante.
-        hechas = llaves_escritas(OUTPUT_CSV)
-        if hechas:
-            antes = len(df)
-            df = df[~df[LLAVE].isin(hechas)]
-            print(f"  ya procesadas en corridas anteriores: {antes - len(df):,} notas "
-                  f"(se saltan)")
-            if df.empty:
-                print("\nNo hay notas nuevas que procesar. "
-                      "Sube --limite o usa --rehacer.")
-                return
-
     escritor = EscritorCSV(OUTPUT_CSV, columnas, reanudar=reanudar)
     escritor_descartes = EscritorCSV(DESCARTADAS_CSV, columnas_descarte,
                                      reanudar=reanudar)

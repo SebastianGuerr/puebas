@@ -42,6 +42,7 @@ EL PRINCIPIO
 
 import atexit
 import re
+import subprocess
 import threading
 
 import language_tool_python
@@ -196,6 +197,63 @@ def iniciar_languagetool(idioma="es"):
 # CORRECCIÓN
 # ==========================================================
 
+def _matar_arbol(proceso):
+    """
+    Mata el proceso del servidor Y TODOS SUS DESCENDIENTES, y espera a que
+    mueran de verdad.
+
+    POR QUE NO BASTA CON MATAR EL PROCESO QUE ARRANCO Popen
+        Porque ese no es el servidor. 'java -cp ... HTTPServer' resulta ser un
+        lanzador que arranca UN SEGUNDO java, y el segundo es el que abre el
+        puerto. Medido el 11 de septiembre: Popen arranca el java 14180, ese
+        arranca el java 1228, y el que aparece escuchando en 8083 es el 1228.
+
+        Matar solo al lanzador deja vivo al servidor, y con el los extremos de
+        escritura de stdout y stderr que heredo al nacer. El pipe no llega
+        nunca a EOF, el hilo lector de la libreria se queda en readline() para
+        siempre, y el proceso de Python NO SALE aunque el trabajo este hecho y
+        escrito.
+
+        Es ademas el origen de los servidores huerfanos que motivaron esta
+        funcion: cada corrida dejaba un java escuchando su puerto y la
+        siguiente arrancaba un puerto mas arriba. El 11 de septiembre habia
+        tres a la vez, en 8081, 8082 y 8083.
+
+    Los descendientes se enumeran ANTES de matar al padre: una vez muerto,
+    Windows los reasigna y dejan de ser localizables desde este pid.
+    """
+    try:
+        import psutil
+    except ImportError:
+        psutil = None
+
+    if psutil is not None:
+        try:
+            padre = psutil.Process(proceso.pid)
+            familia = padre.children(recursive=True) + [padre]
+            for miembro in familia:
+                try:
+                    miembro.kill()
+                except psutil.Error:
+                    pass
+            psutil.wait_procs(familia, timeout=10)
+            return
+        except psutil.Error:
+            pass
+
+    # Sin psutil (no esta en requirements, llega de arrastre) taskkill /T baja
+    # el arbol igual. Si tampoco hay, queda el kill de siempre: se sabe que no
+    # alcanza, pero es mejor que no intentar nada.
+    try:
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proceso.pid)],
+                       capture_output=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        try:
+            proceso.kill()
+        except OSError:
+            pass
+
+
 def cerrar_languagetool():
     """
     Apaga el servidor de LanguageTool al terminar el proceso.
@@ -204,10 +262,46 @@ def cerrar_languagetool():
     septiembre habia OCHO servidores huerfanos de corridas anteriores ocupando
     1,75 GB, y como language_tool_python busca el siguiente puerto libre, cada
     corrida nueva arrancaba un puerto mas arriba en vez de reutilizar.
+
+    POR QUE NO SE LLAMA A _LT.close() A SECAS
+        Porque cuelga el proceso para siempre, y lo hace JUSTO AL FINAL, con el
+        trabajo ya hecho y escrito. Paso el 10 y el 11 de septiembre: las notas
+        completas en el CSV, el resumen impreso, y el prompt sin volver nunca.
+
+        El close() de la libreria termina en _terminate_server(), que hace:
+
+            self._server.terminate()
+            self._server.communicate()[1]      # <-- sin timeout
+
+        communicate() arranca un hilo lector por pipe y los espera con join()
+        sin plazo, mientras el hilo '_consume' de la propia libreria lleva
+        desde el arranque leyendo ese mismo stdout. Con el servidor de verdad
+        todavia vivo (ver _matar_arbol) el pipe no cierra, ningun lector
+        termina, y el join se queda ahi. El stack era siempre identico:
+
+            cerrar_languagetool -> close -> _terminate_server
+              -> communicate -> join -> _wait_for_tstate_lock
+
+        Aqui se hace lo unico que hacia falta: bajar el arbol de procesos
+        entero y cerrar los pipes SIN LEERLOS.
     """
     global _LT
     if _LT is None:
         return
+
+    servidor = getattr(_LT, "_server", None)
+    if servidor is not None:
+        _matar_arbol(servidor)
+        for flujo in (servidor.stdin, servidor.stdout, servidor.stderr):
+            try:
+                flujo.close()
+            except OSError:
+                pass
+        # Con _server en None, _server_is_alive() da False y el close() de la
+        # libreria se salta su propio _terminate_server: ya no hay nada que
+        # apagar y solo queda que limpie lo suyo.
+        _LT._server = None
+
     try:
         _LT.close()
     except Exception:
