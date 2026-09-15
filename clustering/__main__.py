@@ -13,6 +13,10 @@ Punto de entrada unico de la fase 7. Un comando, de los embeddings a los grupos.
     python -m clustering --notas 10            10 notas por tema en consola
     python -m clustering --vivo                deja la ventana refrescandose
     python -m clustering --barrido             prueba parametros y no agrupa
+    python -m clustering --validar             pone a prueba las decisiones
+    python -m clustering --anclar              fija la identidad de los temas
+    python -m clustering --serie               la serie diaria para la fase 8
+    python -m clustering --puente              ¿se puede cruzar con el calendario?
 
 DOS NIVELES: GRUPO Y TEMA
     HDBSCAN encuentra grupos finos -- separa 'diarrea nauseas' de 'vomito
@@ -42,6 +46,9 @@ POR QUE ESTE ARCHIVO Y NO UNO QUE LO CONTENGA TODO
         corrida.py   encadena los cinco pasos y escribe salidas/
         mapa.py      el dibujo
         barrido.py   probar parametros y medirlos
+        validacion.py poner a prueba que el resultado valga algo
+        anclas.py    la identidad permanente de los temas entre corridas
+        fechas.py    el puente a la fase 8: OID -> fecha -> serie diaria
 
 LA VENTANA ES matplotlib Y NO plotly
     La exploracion del notebook era un px.scatter, que necesita un navegador y
@@ -128,6 +135,39 @@ def _argumentos(argv=None):
     otros.add_argument("--barrido", action="store_true",
                        help="prueba combinaciones de parametros, escribe "
                             "salidas/barrido.csv y sale sin agrupar")
+    # --barrido elige entre configuraciones; --validar pregunta si alguna vale.
+    # Son las dos mitades de la misma duda y por eso viven juntas aqui.
+    otros.add_argument("--validar", action="store_true",
+                       help="pone a prueba las decisiones del agrupamiento "
+                            "(modelo nulo, estabilidad, siluetas, codo de "
+                            "temas, catalogo clinico) y sale sin agrupar")
+    otros.add_argument("--rapido", action="store_true",
+                       help="con --validar, omite las pruebas que vuelven a "
+                            "reducir: segundos en vez de minutos, y sin "
+                            "respuesta sobre estabilidad")
+
+    # LOS TRES MODOS DE LA FASE 8. Van aqui y no en un paquete aparte porque
+    # los tres se apoyan en una corrida del agrupamiento y en nada mas; el
+    # analisis contra el clima si sera otro paquete.
+    puente = parser.add_argument_group(
+        "el puente a la fase 8 (cruce contra fechas y calendario)")
+    puente.add_argument("--anclar", action="store_true",
+                        help="fija la identidad permanente de los temas en "
+                             "datos/anclas.csv. Sin esto los numeros de tema "
+                             "cambian entre corridas y ninguna serie temporal "
+                             "significa nada")
+    puente.add_argument("--rehacer", action="store_true",
+                        help="con --anclar, reemplaza unas anclas que ya "
+                             "existan. EMPIEZA UNA SERIE NUEVA: lo calculado "
+                             "antes deja de ser comparable")
+    puente.add_argument("--serie", action="store_true",
+                        help="construye salidas/serie_diaria.csv: notas por "
+                             "tema y por dia con sus denominadores, lista para "
+                             "cruzar contra clima y calendario")
+    puente.add_argument("--puente", action="store_true",
+                        help="dice si el proyecto esta en condiciones de "
+                             "cruzar contra el calendario y que falta. No "
+                             "calcula nada: solo comprueba")
 
     args = parser.parse_args(argv)
 
@@ -145,6 +185,14 @@ def _argumentos(argv=None):
         parser.error("--umbral es un coseno: tiene que estar entre 0 y 1")
     if args.vivo and args.sin_ventana:
         parser.error("--vivo abre una ventana: no se puede con --sin-ventana")
+    if args.rapido and not args.validar:
+        parser.error("--rapido solo significa algo junto a --validar")
+    if args.rehacer and not args.anclar:
+        parser.error("--rehacer solo significa algo junto a --anclar")
+    modos = (args.barrido, args.validar, args.anclar, args.serie, args.puente)
+    if sum(bool(modo) for modo in modos) > 1:
+        parser.error("--barrido, --validar, --anclar, --serie y --puente son "
+                     "modos distintos: uno a la vez")
 
     # --guardar es lo contrario de --sin-guardar. Se traduce aqui para que el
     # resto del modulo y el visor lean el mismo atributo.
@@ -255,6 +303,215 @@ def _barrido(args):
     return 0
 
 
+def _validar(args):
+    """Pone a prueba las decisiones del agrupamiento y no agrupa en firme."""
+    from clustering import validacion
+
+    print("Validacion del agrupamiento. --barrido elige entre configuraciones;")
+    print("esto pregunta si alguna vale.\n")
+    inicio = time.time()
+    resultado = validacion.ejecutar(
+        minimo_notas=args.minimo_notas,
+        rapido=args.rapido,
+        vecinos=args.vecinos,
+        dimensiones=args.dimensiones,
+        tamano_minimo=args.tamano_minimo,
+        muestras_minimas=args.muestras_minimas,
+        epsilon=args.epsilon,
+    )
+    print(f"\n  {time.time() - inicio:.0f}s\n")
+    print(validacion.texto(resultado))
+
+    if args.guardar:
+        print(f"Informe en {validacion.guardar(resultado)}")
+
+    # La figura se dibuja siempre que se vaya a mostrar o a guardar algo. Es
+    # barata -- todo lo que pinta ya esta calculado -- y es donde se ve la
+    # FORMA de las curvas, que en la tabla hay que reconstruir fila por fila.
+    if args.sin_ventana and not args.guardar:
+        return 0
+
+    import matplotlib
+    if args.sin_ventana:
+        matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    figura = validacion.dibujar(resultado, umbral_actual=args.umbral)
+    if args.guardar:
+        print(f"Figura en {validacion.guardar_figura(figura)}")
+    if not args.sin_ventana:
+        figura.canvas.manager.set_window_title("Validacion del agrupamiento")
+        plt.show()
+    return 0
+
+
+# ==========================================================
+# LOS TRES MODOS DE LA FASE 8
+# ==========================================================
+
+def _parametros(args):
+    """Los parametros del agrupamiento que los tres modos comparten."""
+    return dict(
+        minimo_notas=args.minimo_notas,
+        vecinos=args.vecinos,
+        dimensiones=args.dimensiones,
+        tamano_minimo=args.tamano_minimo,
+        muestras_minimas=args.muestras_minimas,
+        epsilon=args.epsilon,
+        n_temas=args.temas,
+        umbral=args.umbral,
+    )
+
+
+def _vectores_de(resultado):
+    """
+    Los vectores de bge-m3 alineados con resultado.textos.
+
+    La Corrida no los lleva dentro -- son varias decenas de MB y ninguno de sus
+    consumidores los necesitaba -- asi que se releen del almacen y se reordenan
+    por numero de fila, que es barato y es la misma fuente de la que salieron.
+    """
+    import numpy as np
+
+    from clustering import corpus
+
+    textos, vectores, _ = corpus.instantanea()
+    orden = {int(fila): posicion for posicion, fila in enumerate(textos["fila"])}
+    filas = [orden[int(fila)] for fila in resultado.textos["fila"]]
+    return np.asarray(vectores)[filas]
+
+
+def _anclar(args):
+    """
+    Fija la identidad permanente de los temas. Se corre UNA vez, no por corrida.
+
+    Hace una corrida completa a proposito en vez de leer salidas/: las anclas
+    son la definicion de las unidades de analisis de aqui en adelante, y
+    fabricarlas a partir de unos archivos que pueden ser de otro dia y de otros
+    parametros es justo el tipo de cosa que despues nadie puede reconstruir.
+    """
+    from clustering import anclas, corrida as motor
+
+    print("Creando las anclas: la identidad permanente de los temas.")
+    print("Se corre UNA vez. Rehacerlas despues empieza una serie nueva.\n")
+
+    inicio = time.time()
+    resultado = motor.ejecutar(**_parametros(args))
+    print(f"  corrida de referencia: {time.time() - inicio:.0f}s")
+
+    tabla, matriz = anclas.crear(
+        _vectores_de(resultado),
+        resultado.textos["cluster"].to_numpy(),
+        resultado.textos["n_notas"].to_numpy(),
+        resultado.temas,
+        resultado.nombres_tema,
+        notas_administrativas=anclas.administrativas(resultado.textos,
+                                                     resultado.indice))
+
+    print(f"  {len(tabla)} anclas a partir de "
+          f"{resultado.metricas['clusters']} grupos\n")
+    print(tabla.to_string(index=False))
+
+    papeleo = tabla[~tabla["clinica"]]
+    if len(papeleo):
+        print(f"\n  {len(papeleo)} ancla(s) son mas de la mitad tramite "
+              f"administrativo y quedan marcadas con clinica=False:")
+        for fila in papeleo.itertuples(index=False):
+            print(f"    [{fila.id}] {fila.nombre}  "
+                  f"({fila.parte_administrativa:.0%} administrativas)")
+        print("  Su serie diaria mide como se llenan los formularios, no quien")
+        print("  llega enfermo. Se calculan igual; excluirlas es decision de")
+        print("  quien analice, y ahora esta escrito en el archivo.")
+
+    if not args.guardar:
+        print("\n--sin-guardar: no se escribio nada.")
+        return 0
+
+    ruta = anclas.guardar(tabla, matriz, procedencia={
+        "reemplazar": bool(args.rehacer),
+        "parametros": dict(resultado.parametros),
+        "corpus": {"textos": int(resultado.metricas["textos"]),
+                   "notas": int(resultado.metricas["notas"])},
+    })
+    print(f"\nAnclas escritas en {ruta}")
+    print("  El nombre de cada una se puede corregir a mano en ese CSV: el")
+    print("  centroide no se toca, asi que renombrar no cambia ninguna serie.")
+    print("  VERSIONA LOS DOS ARCHIVOS. Si se pierden, las series calculadas")
+    print("  antes dejan de ser comparables con las nuevas.")
+    return 0
+
+
+def _serie(args):
+    """Construye la serie diaria por tema y la deja en salidas/."""
+    from clustering import anclas, corpus, corrida as motor, fechas
+
+    if not anclas.existen():
+        raise SystemExit(
+            "No hay anclas, asi que los temas no tienen identidad estable y la "
+            "serie no seria comparable con ninguna otra.\n"
+            "  python -m clustering --anclar\n"
+            "Ver clustering/anclas.py para por que esto no es opcional.")
+
+    print("Construyendo la serie diaria por tema.\n")
+    resultado = motor.ejecutar(**_parametros(args))
+    asignacion = corpus.repartir(resultado.textos, resultado.indice)
+
+    if resultado.informe_anclas:
+        print(anclas.texto(resultado.informe_anclas))
+        print()
+
+    engine = fechas._engine()
+    hueco = fechas.ventana(engine=engine)
+    print(f"  ventana con motivo de consulta: {hueco['desde'].date()} a "
+          f"{hueco['hasta'].date()} ({hueco['dias']} dias)")
+
+    fecha_por_oid = fechas.fechas_de(asignacion["OID"].unique(), engine=engine)
+    cobertura = fechas.cobertura(desde=hueco["desde"], hasta=hueco["hasta"],
+                                 engine=engine)
+    tabla_anclas, _ = anclas.cargar()
+    serie = fechas.serie(asignacion, fecha_por_oid, cobertura,
+                         tabla_anclas=tabla_anclas)
+
+    dias = max(fecha_por_oid["fecha"].nunique(), 1)
+    print(f"  serie: {len(serie):,} filas "
+          f"({serie['fecha'].nunique()} dias x {serie['ancla'].nunique()} temas)")
+    print(f"  notas por dia en el corpus: {len(fecha_por_oid) / dias:.1f}")
+
+    if args.guardar:
+        ruta_serie, ruta_cobertura = fechas.guardar(serie, cobertura)
+        print(f"\n  {ruta_serie}\n  {ruta_cobertura}")
+
+    print("\nLA COLUMNA QUE SE MODELA ES 'parte', NO 'notas'.")
+    print("  La cobertura de HCTMOTCON cae unos 9 puntos por ano, asi que una")
+    print("  serie de conteos trae una tendencia a la baja que no es del")
+    print("  hospital. Ver clustering/fechas.py.")
+    return 0
+
+
+def _puente(args):
+    """Dice si se puede arrancar la fase 8 y que falta. No calcula la serie."""
+    import pandas as pd
+
+    from clustering import corpus, corrida as motor, fechas, rutas
+
+    print("Comprobando si el proyecto puede cruzar contra el calendario.\n")
+
+    if rutas.ASIGNACION.exists():
+        asignacion = pd.read_parquet(rutas.ASIGNACION)
+        print(f"  leyendo la ultima corrida: {len(asignacion):,} notas\n")
+    else:
+        print("  no hay asignacion.parquet todavia; corriendo el agrupamiento\n")
+        resultado = motor.ejecutar(**_parametros(args))
+        asignacion = corpus.repartir(resultado.textos, resultado.indice)
+
+    texto = fechas.informe(fechas.diagnostico(asignacion))
+    print(texto)
+    if args.guardar:
+        rutas.PUENTE.write_text(texto, encoding="utf-8")
+        print(f"Informe en {rutas.PUENTE}")
+    return 0
+
+
 def _corrida(args):
     """La corrida normal: calcular, escribir, imprimir y dibujar."""
     from clustering import corrida as motor, mapa
@@ -305,7 +562,17 @@ def _corrida(args):
 def main(argv=None):
     args = _argumentos(argv)
     try:
-        return _barrido(args) if args.barrido else _corrida(args)
+        if args.barrido:
+            return _barrido(args)
+        if args.validar:
+            return _validar(args)
+        if args.anclar:
+            return _anclar(args)
+        if args.serie:
+            return _serie(args)
+        if args.puente:
+            return _puente(args)
+        return _corrida(args)
     except ImportError as error:
         # Es el fallo de la primera vez en una maquina nueva y merece decir que
         # instalar, no una traza de veinte lineas.

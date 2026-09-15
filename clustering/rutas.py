@@ -38,6 +38,33 @@ QUE HAY EN salidas/
     barrido.csv          una fila por combinacion de parametros probada con
                          --barrido, con sus metricas. Es como se elige el
                          tamano minimo y las dimensiones sin adivinar.
+    validacion.txt       lo que dice --validar: si el agrupamiento se
+                         distingue de uno hecho sobre datos sin estructura, y
+                         si se repite al cambiar la semilla, la dimension o el
+                         20% del corpus. barrido.csv elige entre configuraciones;
+                         esto dice si alguna vale.
+    validacion.png       los cuatro paneles de lo mismo: el codo, la silueta
+                         por grupo, la coherencia contra su suelo y las barras
+                         de estabilidad. Se mira junto al .txt, que es el que
+                         lleva las advertencias de como se lee cada numero.
+    serie_diaria.csv     una fila por (fecha, ancla): las notas de ese tema ese
+                         dia, con los denominadores al lado. Es LA tabla que se
+                         cruza contra clima y calendario. Ver fechas.py.
+    cobertura_diaria.csv una fila por fecha: cuantos triages hubo, a cuantos les
+                         escribieron el motivo y cuantos llegaron hasta el
+                         agrupamiento. Sin esto la serie de arriba no se puede
+                         interpretar, porque la cobertura se mueve con el tiempo.
+    informe_fase8.txt    si el proyecto esta en condiciones de cruzar contra el
+                         calendario, y que falta si no.
+
+QUE HAY EN datos/
+    palabras_vacias.txt  las que no sirven para nombrar un grupo.
+    anclas.csv           la identidad permanente de cada tema: id y nombre. Se
+                         edita a mano (para renombrar) y se versiona.
+    anclas.npy           el centroide congelado de cada ancla, alineado con el
+                         CSV fila por fila.
+    anclas_origen.json   de que corrida salieron y cuando. Es lo que permite
+                         saber si dos series son comparables entre si.
 """
 
 from pathlib import Path
@@ -56,5 +83,18 @@ PROYECCION = SALIDAS / "proyeccion.parquet"
 MAPA = SALIDAS / "mapa.png"
 INFORME = SALIDAS / "informe.txt"
 BARRIDO = SALIDAS / "barrido.csv"
+VALIDACION = SALIDAS / "validacion.txt"
+VALIDACION_FIGURA = SALIDAS / "validacion.png"
+
+# Las anclas viven en datos/ y NO en salidas/ porque son la definicion de las
+# unidades de analisis: si una corrida las sobreescribe, las series de los meses
+# anteriores dejan de ser comparables con las nuevas. Ver anclas.py.
+ANCLAS = DATOS / "anclas.csv"
+ANCLAS_VECTORES = DATOS / "anclas.npy"
+ANCLAS_ORIGEN = DATOS / "anclas_origen.json"
+
+SERIE = SALIDAS / "serie_diaria.csv"
+COBERTURA = SALIDAS / "cobertura_diaria.csv"
+PUENTE = SALIDAS / "informe_fase8.txt"
 
 SALIDAS.mkdir(exist_ok=True)

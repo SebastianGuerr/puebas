@@ -138,6 +138,18 @@ DISTANCIA_MINIMA = 0.0
 # cuesta ruido y coherencia a la vez. Tendra que volver a mirarse cuando el
 # corpus crezca: un grupo de 10 textos sobre 1.957 no es lo mismo que sobre
 # 20.000, donde ese tamano ya es una rareza y no un patron.
+#
+# LA COLUMNA 'coherencia' DE ESA TABLA ESTA INFLADA POR EL TAMANO.
+#     El suelo de la coherencia sube cuando los grupos son chicos (ver
+#     coherencia() aqui abajo), asi que parte de la caida de 0,838 a 0,795 es el
+#     suelo bajando y no calidad perdiendose. Corregido contra el nulo sobre
+#     5.020 textos, la ganancia real va de 0,126 a 0,100 por el mismo rango.
+#
+#     La eleccion de 10 aguanta: la direccion es la misma. Lo que cambia es el
+#     margen, que es la mitad del que parecia, y que entre 8 y 10 la ganancia es
+#     identica -- los dos dan 0,126 -- asi que ahi ya no decide la metrica sino
+#     cuantos grupos se quieren leer. La proxima vez que se toque esto, la
+#     columna que hay que mirar es la ganancia de --validar y no esta.
 TAMANO_MINIMO = 10
 
 # LA PERILLA DE LA PRECISION, Y NO ES TAMANO_MINIMO.
@@ -264,10 +276,45 @@ def coherencia(vectores, etiquetas, n_notas):
     grupo, pesando por notas y promediando los grupos tambien por notas. El
     ruido no entra: no tiene centro al que parecerse.
 
-    Como leerla: recordar que el coseno medio entre dos frases al azar de este
-    corpus es 0,47 (ver arriba). Un grupo con 0,75 no esta 'un poco' por encima
-    del azar, esta muy por encima; y una caida de 0,75 a 0,70 al aflojar un
-    parametro es mucho mas grande de lo que aparenta.
+    COMO SE LEE -- CORREGIDO, Y LA VERSION ANTERIOR ERA FALSA
+        Aqui decia que el suelo era 0,47, el coseno medio entre dos frases al
+        azar, y que por tanto un grupo con 0,75 estaba 'muy por encima del
+        azar'. No es cierto y el error no es pequeno.
+
+        La coherencia no compara dos frases: compara una frase con la MEDIA de
+        su grupo, y promediar vectores que ya correlacionan 0,47 entre si
+        produce un centro al que todos se parecen mucho mas. El suelo real de
+        un grupo de n textos SIN NINGUNA ESTRUCTURA es sqrt((1+(n-1)*0,4636)/n),
+        verificado contra el corpus:
+
+            n            2      5     10     20     50    100
+            azar puro  0,856  0,755  0,718  0,700  0,689  0,685
+
+        Un grupo de dos textos sin nada en comun da 0,86. Los 0,847 que este
+        paquete reportaba como resultado de la corrida entera estan por debajo
+        de eso.
+
+        Dos consecuencias:
+
+        1. El suelo depende del TAMANO del grupo, asi que la coherencia baja
+           sola cuando los grupos crecen. Las tablas de este mismo archivo que
+           fijaron TAMANO_MINIMO miden en parte ese efecto y no calidad; la
+           conclusion aguanta, pero por la mitad del margen que parecia.
+        2. Una coherencia sola no se puede leer. Hay que leerla contra su nulo,
+           que calcula validacion.calibrar() barajando las etiquetas entre los
+           textos: conserva los tamanos de grupo y destruye toda relacion con el
+           contenido.
+
+        Sobre la corrida de 5.020 textos: coherencia 0,851, nulo 0,728,
+        GANANCIA +0,122. Esa ganancia es lo unico comparable entre corridas, y
+        para dimensionarla: el mismo pipeline sobre datos SIN estructura saca
+        una coherencia de 0,725 con ganancia -0,001.
+
+    LO QUE ESTA METRICA NO PUEDE VER
+        Solo mira hacia adentro del grupo. Partir un tema real en cinco pedazos
+        apretados la SUBE. Para lo otro -- que los grupos esten separados entre
+        si -- hace falta la silueta, que validacion.siluetas() calcula en este
+        mismo espacio y por tanto es igual de comparable entre corridas.
     """
     etiquetas = np.asarray(etiquetas)
     n_notas = np.asarray(n_notas, dtype=np.float64)

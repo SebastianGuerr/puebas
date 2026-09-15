@@ -19,6 +19,19 @@ networkx==3.6.1
 matplotlib==3.9.2
 seaborn==0.13.2
 
+# fase 8 (patrones/). Modelos de conteo y agrupamiento de datos mixtos.
+#   statsmodels  el Poisson condicional del diseno cruzado por estratos
+#                (ConditionalPoisson) y la correccion Benjamini-Hochberg
+#                (multipletests). Es la unica pieza del proyecto que no se
+#                podia escribir a mano en un rato.
+#   kmodes       K-Prototypes. OJO: ultima version de 2022, clasificada como
+#                alpha y declara soportar Python 3.6-3.10, no 3.11. Funciona
+#                aqui, pero si un dia deja de hacerlo, patrones/comparacion.py
+#                sigue corriendo sin el: los otros dos algoritmos son de
+#                scikit-learn.
+statsmodels==0.15.0
+kmodes==0.12.2
+
 # NLP / text processing
 spacy==3.7.5
 medspacy==1.3.1

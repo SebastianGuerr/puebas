@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from clustering import agrupar, corpus, etiquetas, rutas, temas
+from clustering import agrupar, anclas, corpus, etiquetas, rutas, temas
 
 
 @dataclass
@@ -51,6 +51,11 @@ class Corrida:
     representantes {cluster: el texto real mas central del grupo}
     temas     {cluster: tema} -- el mapa del nivel fino al general
     nombres_tema, representantes_tema  lo mismo, un nivel arriba
+    detalle_anclas  a que ancla fue cada grupo y con cuanta similitud. Es el
+              nivel que SI se puede comparar con la corrida de la semana
+              pasada: el numero de tema se renumera y el de ancla no.
+    informe_anclas  anclas gemelas, vacias y grupos huerfanos. Hay que leerlo
+              antes de construir una serie: ver anclas.revisar().
     difusas   palabras repartidas por todos los clusters: las candidatas a
               datos/palabras_vacias.txt.
     metricas  las cifras con que se juzga la corrida (ver agrupar.resumen).
@@ -67,6 +72,11 @@ class Corrida:
     temas: dict = field(default_factory=dict)
     nombres_tema: dict = field(default_factory=dict)
     representantes_tema: dict = field(default_factory=dict)
+    # El anclaje. Son None cuando todavia no se han creado las anclas, que es
+    # un estado valido: el paquete funciona sin ellas y lo unico que no se
+    # puede hacer es comparar esta corrida con la anterior.
+    detalle_anclas: pd.DataFrame = None
+    informe_anclas: dict = None
     firma: tuple = None
     parametros: dict = field(default_factory=dict)
 
@@ -159,8 +169,10 @@ class Corrida:
         cuenta grupos y este cuenta notas, que es la unidad con la que se cruza
         contra la fecha de triage.
         """
-        mapa = self.textos.set_index("fila")[
-            ["cluster", "tema", "confianza", "texto"]]
+        columnas = ["cluster", "tema", "confianza", "texto"]
+        if "ancla" in self.textos.columns:
+            columnas = ["ancla"] + columnas
+        mapa = self.textos.set_index("fila")[columnas]
         salida = self.indice.merge(mapa, left_on="fila", right_index=True,
                                    how="inner")
         salida["nombre"] = [
@@ -183,11 +195,18 @@ class Corrida:
         # lo que no tiene tema, al final, pase lo que pase con su tamano
         salida.loc[salida["tema"] == -1, "_tema"] = len(orden_tema) + 1
 
+        # 'ancla' va PRIMERA de las tres etiquetas, aunque 'tema' sea la que se
+        # viene leyendo desde siempre: es la unica de las tres cuyo numero
+        # significa lo mismo en dos corridas distintas. Quien audite esta tabla
+        # tiene que ver eso antes que nada.
+        columnas = ["OID", "tema", "tema_nombre", "cluster", "nombre",
+                    "confianza", "texto"]
+        if "ancla" in salida.columns:
+            columnas.insert(1, "ancla")
+
         return (salida.sort_values(["_tema", "_orden", "confianza"],
                                    ascending=[True, True, False])
-                .reset_index(drop=True)
-                [["OID", "tema", "tema_nombre", "cluster", "nombre",
-                  "confianza", "texto"]])
+                .reset_index(drop=True)[columnas])
 
 
 def ejecutar(minimo_notas=1, vecinos=agrupar.VECINOS,
@@ -242,6 +261,24 @@ def ejecutar(minimo_notas=1, vecinos=agrupar.VECINOS,
     nombres_tema, representantes_tema, _ = etiquetas.nombrar(
         textos, textos["tema"].to_numpy(), vectores)
 
+    # EL ANCLAJE. Va despues de los temas porque necesita sus centroides, y es
+    # lo que convierte el resultado en algo comparable con la corrida anterior.
+    # Si no hay anclas todavia, la corrida sigue igual y la columna queda en -1:
+    # el paquete tiene que poder usarse antes de haberlas creado.
+    detalle_anclas = None
+    informe_anclas = None
+    if anclas.existen():
+        tabla_anclas, matriz_anclas = anclas.cargar()
+        columna, detalle_anclas = anclas.aplicar(
+            vectores, textos["cluster"].to_numpy(),
+            textos["n_notas"].to_numpy(),
+            tabla=tabla_anclas, matriz=matriz_anclas)
+        textos["ancla"] = columna
+        informe_anclas = anclas.revisar(detalle_anclas, tabla_anclas,
+                                        matriz_anclas)
+    else:
+        textos["ancla"] = -1
+
     metricas = agrupar.resumen(textos["cluster"].to_numpy(),
                                textos["n_notas"].to_numpy())
     metricas["coherencia"] = agrupar.coherencia(
@@ -261,6 +298,8 @@ def ejecutar(minimo_notas=1, vecinos=agrupar.VECINOS,
         temas=mapa_temas,
         nombres_tema=nombres_tema,
         representantes_tema=representantes_tema,
+        detalle_anclas=detalle_anclas,
+        informe_anclas=informe_anclas,
         firma=marca,
         parametros={
             "minimo_notas": minimo_notas,
@@ -345,14 +384,25 @@ def informe(corrida):
         f"  notas en ruido    {m['notas_en_ruido']:,} ({m['ruido_notas']:.1%})",
         f"  temas             {m.get('temas', 0):,}",
         f"  coherencia        {m.get('coherencia', 0):.3f}"
-        f"   (coseno medio al centro del grupo, en el espacio de bge-m3;",
-        "                     dos frases al azar de este corpus dan 0,47)",
+        f"   (coseno medio al centro del grupo, en el espacio de bge-m3)",
+        "                     NO se lee contra 0,47. El suelo de esta metrica",
+        "                     depende del tamano del grupo y ronda 0,72 para",
+        "                     grupos de diez textos SIN ninguna estructura.",
+        "                     Lo que se lee es la ganancia sobre ese suelo, y",
+        "                     eso lo calcula 'python -m clustering --validar'.",
         f"  separacion        {m.get('separacion', float('nan')):.3f}"
         f"   (coseno medio entre grupos del mismo tema; dos",
-        "                     centroides al azar dan 0,67, esa es la vara)",
+        "                     centroides al azar dan 0,66, esa vara si es",
+        "                     correcta -- no depende del tamano del tema. Lo",
+        "                     que no hace es justificar el umbral: el enlace",
+        "                     completo la obliga a subir con el. Ver --validar.)",
         "",
         "El ruido no es un fallo: un motivo de consulta que nadie mas escribio",
         "de forma parecida no pertenece a ningun grupo. Ver agrupar.py.",
+        "",
+        "Estas cifras describen la corrida, no la validan. Lo segundo es",
+        "'python -m clustering --validar': modelo nulo, estabilidad y contraste",
+        "contra el catalogo clinico. Leerlo antes de apoyar decisiones aqui.",
         "",
         "=" * 70,
         "TEMAS (por notas) -- ESTE ES EL NIVEL QUE SE CRUZA CONTRA CLIMA",
@@ -385,6 +435,24 @@ def informe(corrida):
             f"{fila.textos:4,} textos  conf {fila.confianza:.2f}  "
             f"[tema {fila.tema:2d}] {fila.nombre}")
         lineas.append(f"       ejemplo: {_recortar(fila.representante, 105)}")
+
+    if corrida.informe_anclas:
+        from clustering import anclas as _anclas
+        lineas += ["", "=" * 70, ""]
+        lineas.append(_anclas.texto(corrida.informe_anclas))
+    else:
+        lineas += [
+            "",
+            "=" * 70,
+            "SIN ANCLAS: LOS NUMEROS DE TEMA DE ESTA CORRIDA NO SON COMPARABLES",
+            "  con los de ninguna otra. Se renumeran por tamano, asi que el tema",
+            "  12 de hoy no es el tema 12 de la semana que viene. Medido: sin",
+            "  anclaje solo el 64-74% de las notas cae en el mismo tema al",
+            "  repetir la corrida; con anclaje, el 95-97%.",
+            "",
+            "  Antes de construir cualquier serie temporal:",
+            "      python -m clustering --anclar",
+        ]
 
     if corrida.difusas:
         lineas += [

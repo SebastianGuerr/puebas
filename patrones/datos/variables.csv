@@ -1,0 +1,11 @@
+variable,ventana_dias,familia,primaria,motivo
+precip_consenso_mm,1,clima,si,"Lluvia del dia. La premisa de partida del proyecto: piso mojado, accidentes de transito y caidas el mismo dia."
+precip_7d,7,clima,si,"Lluvia acumulada de la semana. Encharcamiento y criaderos: es la ventana con la que se estudia dengue y gastrointestinales, no la del dia."
+lluvia_fuerte,2,clima,si,"Aguacero. Es la unica bandera de clima con reparto (11,4% de los dias) y la que corresponde a un evento agudo, no a un nivel."
+humedad_consenso,7,clima,si,"Humedad sostenida. Via de plausibilidad para consultas respiratorias; se mira a una semana y no a un dia porque el efecto propuesto es de exposicion mantenida."
+temp_max_consenso,1,clima,si,"Maxima del dia. Es la unica variable termica con algo de rango (sd 1,29 contra 0,60 de la media) y la ruta plausible es cardiovascular."
+vigilancia_respiratorias,7,vigilancia,si,"Ventana de circulacion viral declarada por vigilancia. Si los temas respiratorios no suben aqui, el agrupamiento no esta midiendo lo que dice medir."
+vigilancia_vectores,14,vigilancia,si,"Temporada de dengue declarada. Ventana larga porque un brote dura semanas."
+es_quincena,1,calendario,no,"Dia de pago. Cambia quien consulta y cuando, pero no hay una via biologica: exploratoria."
+evento_n,2,eventos,no,"Aglomeraciones en la ciudad. Plausible para trauma, pero los eventos son pocos y cortos: exploratoria."
+precip_30d,30,clima,no,"Acumulado del mes. Casi toda su variacion es estacional; se deja como exploratoria para poder reportar que se miro."

@@ -58,6 +58,21 @@ ENLACE COMPLETO Y NO PROMEDIO, QUE ES LO QUE EVITA EL ENCADENAMIENTO
     lectura es directa y es la que se quiere: 'dentro de un tema, no hay dos
     grupos mas distintos que el umbral'.
 
+EL TEMA MAS GRANDE SE VUELVE GENERICO, Y ESO NO SE VE EN NINGUNA METRICA
+    Medido sobre las 41 anclas que salieron de esta fusion: la correlacion
+    entre 'cuantos grupos fundio un tema' y 'cuanto se parece al centro de
+    todos los demas temas' es +0,655. El tema mayor, que fundio 16 grupos,
+    queda a 0,964 del centro de todo.
+
+    Es aritmetica, no un fallo del enlace: promediar cosas distintas da algo
+    que se parece un poco a todo y mucho a nada. El resultado es un tema que
+    absorbe lo inespecifico -- malestar, dolor sin localizar -- y cuya serie
+    diaria es una mezcla que no va a responder limpiamente a ninguna variable.
+
+    No hay metrica de este modulo que lo delate: su coherencia y su separacion
+    salen normales. Lo detecta anclas.revisar() y hay que leerlo antes de
+    interpretar la serie de ese tema.
+
 LO QUE ESTO NO ES
     No es una taxonomia clinica. Nadie le dijo a esto que existan 'trauma' o
     'respiratorio': son los que salen de como se parecen las frases, y por eso
@@ -231,6 +246,29 @@ def separacion(vectores, etiquetas, n_notas, mapa):
     entre si que las frases sueltas, porque promediar borra lo particular. Asi
     que lo que dice que un tema es bueno no es pasar de 0,47 sino quedar
     claramente por encima de 0,67.
+
+    ESA VARA ES CORRECTA, A DIFERENCIA DE LA DE LA COHERENCIA
+        Medida sobre la corrida de 5.020 textos da 0,663, y no depende del
+        tamano del tema: es un promedio sobre PARES de centroides, no la
+        distancia a un centro que se acerca a todos por promediar. El fallo que
+        validacion.py encontro en la coherencia no aplica aqui.
+
+    LO QUE SI HAY QUE SABER: NO SIRVE PARA ELEGIR EL UMBRAL
+        El enlace completo GARANTIZA por construccion que ningun par dentro de
+        un tema baje del umbral. Asi que subir el umbral sube esta metrica
+        necesariamente, sin que eso signifique que los temas sean mejores:
+
+            umbral    0,60   0,68   0,70   0,75   0,80
+            temas       16     35     41     60     91
+            separac  0,754  0,794  0,801  0,829  0,858
+
+        Es el parametro escrito de otra forma. Sirve para comprobar que la
+        fusion hizo lo que se le pidio, y para comparar dos corridas AL MISMO
+        umbral. Para elegir el umbral hace falta otra cosa -- el dendrograma o
+        el catalogo clinico, los dos en 'python -m clustering --validar' -- y
+        lo que esa validacion dice es que el corpus no tiene un numero natural
+        de temas, asi que 0,70 es una decision de granularidad y hay que
+        presentarla como tal.
     """
     grupos, puntos, pesos = centroides(vectores, etiquetas, n_notas)
     indice = {c: i for i, c in enumerate(grupos)}

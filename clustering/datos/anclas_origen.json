@@ -1,0 +1,20 @@
+{
+  "reemplazar": true,
+  "parametros": {
+    "minimo_notas": 1,
+    "vecinos": 15,
+    "dimensiones": 5,
+    "tamano_minimo": 10,
+    "muestras_minimas": 3,
+    "epsilon": 0.0,
+    "temas": "umbral 0.7",
+    "semilla": 42
+  },
+  "corpus": {
+    "textos": 5020,
+    "notas": 6751
+  },
+  "creado": "2026-09-14T11:51:34",
+  "anclas": 41,
+  "dimension": 1024
+}

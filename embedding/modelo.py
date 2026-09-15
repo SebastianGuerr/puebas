@@ -14,10 +14,26 @@ POR QUE LONGITUD_MAXIMA = 128 Y NO LOS 8192 QUE TRAE DE FABRICA
     en 8192 se paga aunque el texto sea de seis palabras.
 
     Medido sobre la columna texto_embedding de la corrida de 28.095 notas:
-    mediana 6 palabras, percentil 95 en 47 y el maximo en 60. Con 128 tokens
-    entra el peor caso entero y sobra sitio. Ese margen existe gracias a la
-    fase 5 de NLP/: sobre texto_normalizado, que llega a 405 palabras, este
-    numero tendria que ser bastante mas alto.
+    mediana 6 palabras, percentil 95 en 47 y el maximo en 60. Ese margen existe
+    gracias a la fase 5 de NLP/: sobre texto_normalizado, que llega a 405
+    palabras, este numero tendria que ser bastante mas alto.
+
+    OJO: LO DE ARRIBA CUENTA PALABRAS Y LA VENTANA CUENTA TOKENS
+        Aqui decia que 'con 128 tokens entra el peor caso entero y sobra
+        sitio', y eso salia de leer 60 palabras como si fueran 60 tokens.
+        bge-m3 gasta 1,99 tokens por palabra sobre este corpus -- el vocabulario
+        clinico espanol se parte mucho -- asi que el margen es la mitad de lo
+        que parecia.
+
+        Medido sobre el vocabulario real (5.020 textos): mediana 13 tokens, p99
+        en 95 y maximo 170. Se truncan 10 textos, que son 10 notas de 6.751
+        (0,15%).
+
+        La decision se sostiene -- 0,15% es despreciable -- pero ya no sobra
+        sitio, y los textos que se cortan son las notas de ingreso con
+        antecedentes, justo el tipo de nota que mas crece al sumar servicios.
+        'python -m clustering --validar' lo vuelve a medir en cada corrida en
+        vez de confiar en este parrafo.
 
     Si algun dia se vectoriza una columna mas larga, hay que subirlo, y como
     entra en la identidad del modelo, la matriz vieja deja de valer sola.

@@ -145,9 +145,15 @@ def repartir(textos, indice):
     serie diaria tenga senal -- pero el cluster viaja al lado porque es lo que
     permite bajar al detalle de un tema sin rehacer la corrida.
     """
+    # El orden importa: 'ancla' primero porque es la columna con la que se
+    # construye la serie temporal. tema y cluster viajan al lado para poder
+    # bajar al detalle, pero el numero de tema NO es comparable entre corridas
+    # y el de ancla si. Ver anclas.py.
     columnas = ["cluster", "texto"]
     if "tema" in textos.columns:
         columnas = ["tema"] + columnas
+    if "ancla" in textos.columns:
+        columnas = ["ancla"] + columnas
     mapa = textos.set_index("fila")[columnas]
     salida = indice.merge(mapa, left_on="fila", right_index=True, how="inner")
     return salida[["OID"] + columnas].reset_index(drop=True)

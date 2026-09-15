@@ -56,6 +56,15 @@ embedding/salidas/
 # CSV que cambian enteras en cuanto se mueve un parametro.
 clustering/salidas/
 
+# fase 8: tablero.csv, tablero_ancho.csv, calendario_diario.parquet,
+# eventos_fechados.parquet, asociacion.csv, modelos.csv, agrupamiento.csv,
+# comparacion.csv, informe.txt y figuras/. Se rehacen con 'python -m patrones'.
+# Lo que SI se versiona de ese paquete es patrones/datos/variables.csv, que es
+# la lista de hipotesis escrita a mano: es el unico archivo del proyecto cuyo
+# valor depende de haber sido escrito ANTES de ver los resultados, asi que
+# tiene que quedar en el historial con su fecha.
+patrones/salidas/
+
 *.parquet
 
 # exploracion de la base de datos, la genera diccionario_bd/explore_db.py
@@ -97,3 +106,12 @@ _[!_]*
 # Las correcciones hechas a mano SI se versionan: son trabajo humano que no se
 # puede regenerar, y son la unica vara para medir el corrector.
 !NLP/datos/referencia_correcciones.json
+
+# Las anclas son la IDENTIDAD de los temas: definen las unidades con las que se
+# cuenta la serie diaria. Las escribe un script, pero si se pierden, las series
+# calculadas antes dejan de ser comparables con las nuevas y no hay forma de
+# recuperar la correspondencia. Es el mismo motivo de linea_base.json, y por eso
+# van en datos/ aunque nazcan de un calculo. Ver clustering/anclas.py.
+!clustering/datos/anclas.csv
+!clustering/datos/anclas.npy
+!clustering/datos/anclas_origen.json
