@@ -53,7 +53,6 @@ import unicodedata
 import urllib.error
 import urllib.request
 
-from NLP import rutas
 
 # ==========================================================
 # CONFIGURACION

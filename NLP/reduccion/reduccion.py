@@ -489,6 +489,27 @@ def _es_clinica(palabra):
     return plano in _LEXICO
 
 
+def _protegido_por_clinica(tramo):
+    """
+    True si el tramo habla lo bastante del paciente como para que no pueda ser
+    trámite, diga lo que diga el clasificador.
+
+    SE MIDE CON LA MISMA DENSIDAD QUE USA EL FILTRO INSTITUCIONAL
+        Es deliberado, y el umbral es el mismo. Con eso, las dos defensas de
+        este módulo dicen lo mismo sobre un tramo: si `_quitar_institucional()`
+        lo conservaría por hablar de clínica, el clasificador no puede tirarlo.
+        Dos criterios distintos darían un tramo que una defensa salva y la otra
+        descarta, y quien lea el resultado no sabría cuál mandó.
+
+        La primera version de este freno pregunto a depuracion.py, que tiene un
+        lexico mas estrecho a proposito (resta region anatomica suelta y
+        tramite). Sobre 'olor fetido por herida quirurgica a nivel axilar
+        izquierdo' encontraba UN termino, 'herida', y el tramo se perdia igual.
+        El lexico curado de este modulo reconoce los siete.
+    """
+    return densidad_clinica(tramo) >= DENSIDAD_MINIMA
+
+
 def _quitar_clasificador(texto):
     """
     Quita los tramos que el clasificador de frases da por administrativos.
@@ -528,9 +549,32 @@ def _quitar_clasificador(texto):
     if not any(marcados):
         return texto
 
-    sobran = {t for t, malo in zip(tramos, marcados) if malo}
-    utiles = [t for t, malo in zip(tramos, marcados) if not malo]
-    if not utiles:
+    # EL CLASIFICADOR PROPONE; LA TERMINOLOGIA VERIFICA.
+    #
+    # El clasificador juzga el tramo entero y se deja llevar por como EMPIEZA.
+    # Un tramo que abre con 'paciente ingresa refiriendo' o 'consulta por
+    # cuadro clinico' se parece muchisimo a un tramite, y lo es -- hasta que
+    # sigue. Medido al activarlo por primera vez sobre 100 notas reparadas,
+    # se llevo por delante tres motivos de consulta enteros:
+    #
+    #     'consulta por cuadro clinico 8 dias de evolucion consistente en
+    #      desviacion de la comisura labial lado izquierdo'      -> descartado
+    #     'paciente ingresa refiriendo ... olor fetido por herida
+    #      quirurgica a nivel axilar izquierdo'                  -> descartado
+    #
+    # Ninguno vuelve: el tramo se tira entero y las fases siguientes ya no lo
+    # ven. Por eso el veredicto del clasificador no basta por si solo.
+    #
+    # El freno es el mismo criterio que usa extractor.py para aceptar lo que
+    # devuelve el modelo de lenguaje: un tramo con terminologia clinica de
+    # sobra no es tramite, diga lo que diga quien lo juzgo. Y es el mismo
+    # principio del resto del proyecto -- el modelo propone, las reglas
+    # verifican -- aplicado aqui, que es donde faltaba.
+    sobran = {t for t, malo in zip(tramos, marcados)
+              if malo and not _protegido_por_clinica(t)}
+    if not sobran:
+        return texto
+    if not [t for t in tramos if t not in sobran]:
         return texto
 
     # se reconstruye quitando solo los tramos marcados, conservando el resto

@@ -5,7 +5,7 @@ la tabla de triage y devuelve un texto limpio, corregido y normalizado. Al final
 aplica una depuracion que saca del CSV las notas que no dicen nada del paciente.
 La extraccion estructurada y los embeddings viven en `embedding/`, y el
 planteamiento completo de las ocho fases esta en
-[docs/planteamiento.md](docs/planteamiento.md).
+[docs/README.md](docs/README.md).
 
 ## Como se ejecuta
 
@@ -19,12 +19,20 @@ que ejecutar un archivo suelto (`python NLP/recursos/lexico.py`) falla con
 # Lo que queda fuera va a salidas/notas_descartadas.csv con su motivo.
 python -m NLP.procesar
 
+# ANTES DE NADA: comprueba que esten los artefactos que el pipeline da por
+# hechos. procesar.py lo ejecuta solo y se PARA si falta alguno de los que
+# hacen que la corrida salga entera y equivocada. Ver nucleo/requisitos.py.
+python -m NLP.nucleo.requisitos
+
 # recursos: se construyen una vez y se reutilizan en cada corrida
+python -m spacy download es_core_news_md  # sin el, la fase 2 corrige a ciegas
 python -m NLP.recursos.extraer_cie10    # PDF del CIE-10  -> datos/lexico_externo.txt
 python -m NLP.recursos.lexico           # lexico clinico  -> salidas/lexico_clinico.json
 python -m NLP.recursos.casing           # capitalizacion  -> salidas/lexico_casing.json
 python -m NLP.recursos.detectar_siglas  # que falta en el diccionario
-python -m NLP.reduccion.frases          # clasificador de tramos del embedding
+# clasificador de tramos: SOLO reentrenar. NO usar 'python -m NLP.reduccion.frases',
+# que regenera datos/frases_etiquetadas.csv (curado a mano) y borra ese trabajo.
+python -c "from NLP.reduccion import frases; frases.entrenar()"
 
 # medicion
 python -m NLP.evaluacion.auditoria      # que cambio el pipeline y donde
@@ -117,10 +125,10 @@ No corrigen texto: construyen y cargan las fuentes que el corrector consulta.
 Dentro de `reduccion/`, `reduccion.py` quita lo que sobra con patrones enumerados
 y `frases.py` cubre lo que ellos no ven: clasifica cada tramo de la nota como
 del paciente o del servicio, con un codificador clinico congelado y una
-regresion logistica encima. Se entrena con `python -m NLP.reduccion.frases`, que
-etiqueta el corpus usando las propias reglas como etiquetador debil y escribe
-`datos/frases_etiquetadas.csv`. Ese archivo se corrige a mano: es como se mejora
-el clasificador sin tocar codigo.
+regresion logistica encima. `datos/frases_etiquetadas.csv` se corrige a mano y es
+la fuente de verdad; se reentrena con `frases.entrenar()`. El comando
+`python -m NLP.reduccion.frases` REGENERA ese archivo desde las reglas y destruye
+la correccion manual: solo se usa para arrancar desde cero.
 
 Dentro de `fase2_ortografia/`, `ortografia.py` solo orquesta. El trabajo esta
 repartido: `pesos.py` decide cuanto hay que proteger cada palabra,

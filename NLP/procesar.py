@@ -42,10 +42,10 @@ from NLP import rutas
 from NLP.depuracion import depuracion
 from NLP.evaluacion import auditoria
 from NLP.fase1_limpieza.limpieza import analizar, es_vacio, limpiar_conservando_original
-from NLP.fase2_ortografia import ortografia, terminologia
+from NLP.fase2_ortografia import coherencia, ortografia, terminologia
 from NLP.fase3_normalizacion import normalizacion
 from NLP.nucleo import cache as cache_disco
-from NLP.nucleo import datos, reglas
+from NLP.nucleo import datos, reglas, requisitos
 from NLP.nucleo.progreso import barra, fin_barra
 from NLP.nucleo.salida import EscritorCSV, cabecera_compatible, llaves_escritas, rotar
 from NLP.reduccion import extractor, reduccion
@@ -93,6 +93,20 @@ GUARDAR_CADA = 2000
 BLOQUE_ESCRITURA = 250
 NORMALIZAR = True           # agrega la columna texto_normalizado (fase 3)
 
+# Fase 2b: compara lo corregido con la nota original y deshace lo que la
+# estropeo. Cuesta 2,6 ms por nota y, medido sobre 8.751, toca el 0,4% de
+# ellas: rescata cosas como 'ahogado' -> 'abogado', 'volcamiento' ->
+# 'tocamiento' y 'tosiendo' -> 'comiendo', que son las que ensucian el
+# clustering porque cambian el motivo sin dejar rastro.
+#
+# Solo puede DESHACER correcciones, nunca proponer una nueva, asi que
+# apagarlo devuelve el comportamiento anterior exacto.
+REVISAR_COHERENCIA = True
+
+# Lo que la fase 2b deshizo, para el resumen del final. Es una lista y no un
+# contador porque lo que interesa revisar son los pares concretos.
+_INCIDENCIAS = []
+
 # Fase 4: SENALA las notas que no parecen decir nada del paciente. No las saca
 # del CSV: siguen ahi enteras y se vectorizan igual, y lo unico que cambia es
 # que la fase 5 no les busca un motivo de consulta.
@@ -134,7 +148,18 @@ USAR_LLM = True
 # identificador y la cache anterior deja de aplicarse sola, sin depender de que
 # alguien se acuerde de borrarla.
 USAR_CACHE = True
-VERSION_CORRECTOR = "3-contexto-por-suma"
+
+# 4: la corrida del 15 de septiembre se hizo con es_core_news_md SIN INSTALAR,
+# y eso cambia el corrector entero, no un detalle. Sin el modelo,
+# linguistica.en_vocabulario() devuelve False para toda palabra y
+# reglas.entidades() el conjunto vacio, asi que las cinco capas que consultan
+# una u otra -- enmascarado, pesos, sugerencias, terminologia y vocabulario --
+# decidian sin la señal que las gobierna: 'dipirona' o 'cefalea' figuraban como
+# desconocidas y quedaban expuestas. Toda la cache anterior a esa instalacion
+# guarda esas decisiones, y reutilizarla reproduce el daño intacto.
+#
+# Se suma la fase 2b (coherencia.py), que tambien cambia lo que sale.
+VERSION_CORRECTOR = "4-con-spacy-y-coherencia"
 
 # Como se llama en notas_descartadas.csv el veredicto del modelo. Se escribe
 # tal cual en la columna motivo_descarte, al lado de los motivos que pone la
@@ -313,6 +338,29 @@ def procesar_bloque(bloque, cache, columna_juicio, normalizar, usar_llm):
     ]
     bloque["texto_original"] = bloque[COLUMNA].astype(str)
 
+    # ---- fase 2b: coherencia contra la nota original ------------------
+    #
+    # Deshace las correcciones que no se sostienen al compararlas con lo que
+    # habia escrito. terminologia.py ya veto lo que se ve mirando dos palabras;
+    # esta capa ve la nota, que es donde esta la evidencia del resto.
+    #
+    # VA FUERA DE LA CACHE A PROPOSITO
+    #     La cache guarda lo que devolvio el corrector, que es caro de calcular.
+    #     Esto cuesta 2,6 ms por nota, asi que no compensa guardarlo, y ademas
+    #     interesa que se vuelva a aplicar entero cuando cambien el lexico de
+    #     capitalizacion o los diccionarios: una cache lo congelaria.
+    if REVISAR_COHERENCIA:
+        revisados, incidencias = [], []
+        for limpio, corregido, original in zip(bloque["texto_limpio"],
+                                               bloque["texto_corregido"],
+                                               bloque["texto_original"]):
+            texto, incid = coherencia.revisar(limpio, corregido, original)
+            revisados.append(texto)
+            incidencias.extend(incid)
+        bloque["texto_corregido"] = revisados
+        if incidencias:
+            _INCIDENCIAS.extend(incidencias)
+
     # ---- fase 3: normalizacion ----------------------------------------
     if normalizar:
         bloque["texto_normalizado"] = bloque["texto_corregido"].map(
@@ -447,6 +495,15 @@ def main():
         LIMITE_REGISTROS = args.limite
     if args.sin_llm:
         USAR_LLM = False
+
+    # ANTES DE NADA: QUE ESTEN LOS ARTEFACTOS QUE ESTO DA POR HECHOS.
+    #
+    # Va aqui, y no mas abajo, porque el dano que evita no se ve en ningun
+    # sitio despues. Sin lexico_clinico.json la fase 5 descarta toda oracion
+    # larga y el CSV sale entero, con todas sus filas y todas sus columnas
+    # llenas: nada aguas abajo puede notar que le falta el motivo de consulta.
+    # Ver NLP/nucleo/requisitos.py para la lista y lo que rompe cada uno.
+    requisitos.exigir()
 
     print(f"Registros a procesar: {LIMITE_REGISTROS or 'todos'} | "
           f"LLM: {'si' if USAR_LLM else 'no'}")
@@ -696,6 +753,18 @@ def main():
         print("  legitima, lo que falta es una entrada en el diccionario.")
         for motivo, orig, reemp, veces, oid in sospechosas[:15]:
             print(f"  {veces:5}  [{motivo:34}] {orig} -> {reemp}  (OID {oid})")
+
+    if _INCIDENCIAS:
+        conteo = {}
+        for orig, reemp, motivo in _INCIDENCIAS:
+            conteo[(motivo, orig, reemp)] = conteo.get((motivo, orig, reemp), 0) + 1
+        print(f"\nCorrecciones deshechas por incoherentes con la nota: "
+              f"{len(_INCIDENCIAS):,} en {len(conteo):,} formas distintas")
+        print("  Son cambios que ya habian pasado el guardian clinico y que al")
+        print("  compararlos con la nota original no se sostienen.")
+        for (motivo, orig, reemp), veces in sorted(conteo.items(),
+                                                   key=lambda x: -x[1])[:15]:
+            print(f"  {veces:5}  [{motivo:36}] {orig} -> {reemp}")
 
     alarmas = terminologia.resumen_alarmas()
     if alarmas:

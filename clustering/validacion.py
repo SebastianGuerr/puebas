@@ -217,7 +217,6 @@ def siluetas(vectores, proyeccion, etiquetas, maximo=MAXIMO_SILUETA,
 
     El ruido se excluye de las dos: no es un grupo y no tiene centro.
     """
-    from sklearn.metrics import silhouette_score
 
     etiquetas = np.asarray(etiquetas)
     dentro = etiquetas != -1

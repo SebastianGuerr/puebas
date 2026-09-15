@@ -45,7 +45,6 @@ pasar todo a minúsculas.
 
 import json
 import re
-import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
