@@ -1,7 +1,7 @@
 # Estado del plan
 
-Última actualización: 2026-09-15 (sesión de planificación). Actualizar este archivo al
-reclamar y al cerrar cada ítem.
+Última actualización: 2026-09-15 (sesión de ejecución, E0.1 cerrado). Actualizar este
+archivo al reclamar y al cerrar cada ítem.
 
 ## 1. Lectura obligatoria al abrir una sesión
 
@@ -10,21 +10,16 @@ reclamar y al cerrar cada ítem.
 3. `python -m NLP.nucleo.requisitos` — debe mostrar todo en OK.
 4. `git status` — ver §2 antes de tocar nada.
 
-## 2. Estado del repositorio al cierre de la sesión del 2026-09-15
+## 2. Estado del repositorio
 
-**Cambios sin commit** (pendiente E0.1; el commit lo autoriza el propietario):
+**Último commit**: `ba63bfc` — *consolidar la sesion de diagnostico y plan del 15/09
+(E0.1)*, 25 archivos, +4.086 / −18. Recoge los 13 archivos y carpetas que la sesión de
+planificación dejó sin versionar (desglosados, `NLP/docs/` son 11 archivos y
+`NLP/reparacion/` son 3). El detalle por archivo está en `bitacora/2026-09-15-E0.1.md`.
 
-| Archivo | Cambio |
-|---|---|
-| `NLP/nucleo/requisitos.py` | nuevo: verificación de artefactos; detiene `procesar.py` si falta uno exigido |
-| `NLP/fase2_ortografia/coherencia.py` | nuevo: fase 2b, deshace correcciones incoherentes con la nota |
-| `NLP/reparacion/__init__.py`, `reparar.py`, `comparacion.py` | nuevo: reprocesa un CSV existente y clasifica cada nota |
-| `NLP/docs/*` | nuevo: esta documentación |
-| `NLP/procesar.py` | fase 2b integrada; `requisitos.exigir()` al inicio; `VERSION_CORRECTOR = "4-con-spacy-y-coherencia"`; resumen de reversiones |
-| `NLP/reduccion/reduccion.py` | freno por densidad clínica en `_quitar_clasificador` |
-| `NLP/README.md` | comandos de requisitos y spaCy; enlace a `docs/README.md`; advertencia sobre `frases.py` |
-| `NLP/evaluacion/escaneo.py`, `referencia.py`, `NLP/recursos/casing.py`, `NLP/reduccion/extractor.py`, `clustering/validacion.py` | imports inertes eliminados |
-| `planeacion.md` (raíz) | puntero a `NLP/docs/` |
+**Árbol de trabajo**: limpio (`git status --porcelain -uall` sin salida). `main` va
+**1 commit por delante de `origin/main`**; el `push` no se ha hecho y lo decide el
+propietario (ver los pendientes de la bitácora de E0.1).
 
 **Artefactos generados hoy** (en `NLP/salidas/`, no versionados; se regeneran con el
 comando indicado):
@@ -40,10 +35,13 @@ comando indicado):
 **Instalado hoy**: modelo `es_core_news_md` de spaCy (su ausencia dejaba la fase 2 sin
 vocabulario ni protección de nombres propios); `pyflakes`.
 
-**Proceso en curso al cerrar la sesión**: `python -m NLP.reparacion.reparar` sobre las
-9.311 notas de `triage_limpio.csv`, sin `--aplicar`. Escribe `salidas/triage_reparado.csv`
-e `informe_reparacion.csv` al terminar. Si al abrir la sesión no existen con fecha
-posterior al 2026-09-15 14:00, relanzar el comando (usa la caché; tarda ~2–3 h en frío).
+**Proceso en curso**: `python -m NLP.reparacion.reparar` (sin `--aplicar`) sobre las
+9.311 notas de `triage_limpio.csv`, relanzado a las 15:36 en la sesión de ejecución
+porque el de la sesión anterior no llegó a terminar: `triage_reparado.csv` e
+`informe_reparacion.csv` seguían siendo los de la prueba de 100 notas (13:42). Escribe
+ambos al terminar, más el resumen por término en pantalla. Registro de la corrida en el
+log de la sesión. Si vuelve a interrumpirse, relanzar el mismo comando: la caché
+(`cache_correcciones.json`) conserva lo ya corregido.
 
 ## 3. Resultados medidos hoy (línea base informal)
 
@@ -64,8 +62,8 @@ Estados: `pendiente`, `en curso`, `bloqueado`, `cerrado`. La evidencia enlaza a
 
 | Ítem | Título | Estado | Sesión | Evidencia |
 |---|---|---|---|---|
-| E0.1 | Consolidar el trabajo del 15/09 (commit) | pendiente (P) | | |
-| E0.2 | Terminar y revisar la reparación completa | en curso | 2026-09-15 (job en segundo plano) | |
+| E0.1 | Consolidar el trabajo del 15/09 (commit) | cerrado | 2026-09-15 (ejecución) | `bitacora/2026-09-15-E0.1.md` — commit `ba63bfc` |
+| E0.2 | Terminar y revisar la reparación completa | en curso | 2026-09-15 (ejecución) | job relanzado 15:36; pendiente el informe |
 | E0.3 | Aplicar la reparación y revectorizar | pendiente | | |
 | E0.4 | Homogeneizar la escritura de CSV | pendiente | | |
 | E0.5 | Línea base de métricas | pendiente | | |
@@ -118,19 +116,28 @@ Estados: `pendiente`, `en curso`, `bloqueado`, `cerrado`. La evidencia enlaza a
 - `nucleo/clinico.py` (256 líneas) carga spaCy + medspaCy y solo se usan sus dos
   tablas. → E6.3.
 - Duplicaciones de lógica listadas en `ARQUITECTURA.md` §5. → E6.0.
+- El repositorio no tiene `.gitattributes`: git avisa `LF will be replaced by CRLF` en
+  los archivos que se añaden con finales LF. Mientras no se fije el final de línea, la
+  comparación byte a byte que pide E0.4 depende de cómo esté el árbol de trabajo. → E0.4.
 
 ## 6. Próximas tres acciones
 
 (Al cerrar cualquiera de ellas: bitácora con la lista de documentación de `PLAN.md` §4.1.)
 
-1. Cerrar E0.2 cuando termine el job: revisar el resumen por término del informe y
-   escribir `bitacora/2026-09-15-E0.2.md`.
-2. E0.1: presentar el commit al propietario.
-3. E1.2: escribir `evaluacion/paridad_docs.py` y cerrar el ítem; después E1.3 (`FLUJO.md`).
+1. **E0.2** (en curso): cuando termine el job, revisar término a término el resumen de
+   `perdio_motivo`, clasificar cada uno benigno o real y escribir
+   `bitacora/2026-09-15-E0.2.md`. Criterio: `recupero_motivo` > `perdio_motivo` y cero
+   términos con veredicto real.
+2. **E0.3** en cuanto E0.2 quede cerrado: `reparar --aplicar`, revectorizar y
+   `python -m clustering --validar`.
+3. **E1.2**: escribir `evaluacion/paridad_docs.py` y cerrar el ítem; después E1.3
+   (`FLUJO.md`).
 
+Pendiente del propietario: autorizar (o no) el `push` de `ba63bfc` a `origin/main`.
 
 ## Historial
 
 | Fecha | Ítem | Cambio |
 |---|---|---|
 | 2026-09-15 | previo al plan | Primera versión |
+| 2026-09-15 | E0.1 | §2 reescrita (commit `ba63bfc`, árbol limpio); E0.1 a `cerrado`; job de reparación relanzado; §5 añade el aviso de finales de línea; §6 reordenada |
