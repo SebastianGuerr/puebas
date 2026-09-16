@@ -258,18 +258,18 @@ Formato: Autores (año). Título. Publicación. Identificador. — Idea que se t
 
 | Modelo | Base | Licencia | Uso previsto | Estado | Notas |
 |---|---|---|---|---|---|
-| `es_core_news_md` (spaCy 3.7) | — | MIT | vocabulario y entidades en fase 2 | en uso | instalado 2026-09-15; su ausencia dejaba la fase 2 sin protección |
+| `es_core_news_md` (spaCy 3.7.0) | AnCora v2.8 + WikiNER | **GPL-3.0** | vocabulario y entidades en fase 2 | en uso, con obligación | instalado 2026-09-15. La licencia del **modelo** es GPL-3.0 (la del paquete `spacy` es MIT); verificado el 2026-09-16 en `meta.json` del paquete instalado: `"license": "GNU GPL 3.0"`, heredada de AnCora. Ver §5 |
 | `PlanTL-GOB-ES/roberta-base-biomedical-clinical-es` | RoBERTa | Apache-2.0 | modelo de contexto (fase 2) y características del clasificador de frases | en uso | |
 | `BAAI/bge-m3` | XLM-R large | MIT | embeddings (paquete `embedding/`) | en uso | comparar; ver 1.5 |
-| `qwen2.5:3b-instruct` (Ollama) | Qwen2.5 | Apache-2.0 | extractor de motivo (fase 5), solo copia literal verificada | en uso, restringir | 5,5 tok/s en CPU; un prompt de reescritura corrompe contenido clínico (medido) |
-| `PlanTL-GOB-ES/bsc-bio-ehr-es` | RoBERTa, 1,1 B tokens clínicos | Apache-2.0 | verificador enmascarado de pares en zona gris | evaluar | minusculizar antes; PLL para varios subtokens |
+| `qwen2.5:3b-instruct` (Ollama) | Qwen2.5 | **Qwen Research License** (no comercial) | extractor de motivo (fase 5), solo copia literal verificada | en uso, **decisión pendiente** | 5,5 tok/s en CPU; un prompt de reescritura corrompe contenido clínico (medido). NO es Apache-2.0: verificado el 2026-09-16 con `ollama show qwen2.5:3b-instruct --license` → «Qwen RESEARCH LICENSE AGREEMENT», uso no comercial. Ver §5 |
+| `PlanTL-GOB-ES/bsc-bio-ehr-es` | RoBERTa; corpus biomédico+clínico > 1 B tokens, del que la parte clínica real (EHR) son ~91–95 M tokens en 278 K documentos | Apache-2.0 | verificador enmascarado de pares en zona gris | evaluar | minusculizar antes; PLL para varios subtokens. Corregido el 2026-09-16: «1,1 B tokens clínicos» era el total del corpus, no el clínico |
 | `BSC-NLP4BIA/bsc-bio-ehr-es-carmen-symptemist` | bsc-bio-ehr-es | CC-BY-4.0 | NER de síntomas en notas largas | evaluar | pre-tokenizar en palabras; F1 0,753 sobre EHR reales |
-| `lcampillos/roberta-es-clinical-trials-ner` | bsc-bio-ehr-es | consultar | NER ANAT/CHEM/DISO/PROC; F1 0,865 | evaluar | registro formal (ensayos clínicos) |
-| `medspaner/roberta-es-clinical-trials-neg-spec-ner`, `-temporal-ner` | bsc-bio-ehr-es | AGPL-3.0 (medspaner) | negación, especulación, temporalidad | evaluar | AGPL contagia si se distribuye |
-| `ICB-UMA/ClinLinker-KB-GP` | roberta-base-biomedical-clinical-es | consultar | enlace de menciones a conceptos (zero-shot) | evaluar (prioridad) | top-25 0,871 DisTEMIST |
-| `BSC-NLP4BIA/SapBERT-from-roberta-base-biomedical-clinical-es` | RoBERTa | Apache-2.0 | embedding de menciones cortas (usar [CLS], max_length 25) | evaluar (prioridad) | |
+| `lcampillos/roberta-es-clinical-trials-ner` | bsc-bio-ehr-es | **CC-BY-NC-4.0** | NER ANAT/CHEM/DISO/PROC; F1 0,8647 (P 0,8495 / R 0,8806) | evaluar, **no comercial** | registro formal (ensayos clínicos). Licencia verificada en la tarjeta el 2026-09-16 |
+| `medspaner/roberta-es-clinical-trials-neg-spec-ner`, `-temporal-ner` | bsc-bio-ehr-es | **CC-BY-NC-4.0** (los pesos) | negación, especulación, temporalidad | evaluar, **no comercial** | Corregido el 2026-09-16: la AGPL-3.0 es la del **código** del repositorio `lcampillos/medspaner`, no la de los pesos, que son CC-BY-NC-4.0 en ambas tarjetas. F1 0,859 (neg-spec) y 0,900 (temporal) |
+| `ICB-UMA/ClinLinker-KB-GP` | roberta-base-biomedical-clinical-es | Apache-2.0 | enlace de menciones a conceptos (zero-shot) | evaluar (prioridad) | top-25 según la tarjeta: DisTEMIST **0,864**, MedProcNER 0,901, SympTEMIST 0,922 (el 0,871 anterior no figura en la tarjeta). Pooling CLS. Sin `safetensors`: solo `pytorch_model.bin` |
+| `BSC-NLP4BIA/SapBERT-from-roberta-base-biomedical-clinical-es` | RoBERTa | Apache-2.0 | embedding de menciones cortas (usar [CLS], max_length 25) | evaluar (prioridad) | UMLS 2023AA. Sin `safetensors`: solo `pytorch_model.bin` (pickle) → §6.4 del plan exige dejar constancia al cargarlo |
 | `intfloat/multilingual-e5-small` | — | MIT | alternativa ligera de embedding | evaluar | requiere prefijos `query:`/`passage:` |
-| `IIC/RigoBERTa-Clinical` / RigoBERTa 2 | — | consultar | comparación | evaluar | mejor F1 medio en JAMIA 2024 |
+| `IIC/RigoBERTa-Clinical` / `IIC/RigoBERTa-2.0` | XLM-R large | **licencia propia no comercial** (`rigoclinical-nc` / `rigoberta-nc`) | comparación | evaluar, **no comercial** | mejor F1 medio en JAMIA 2024. El identificador `IIC/RigoBERTa-2` no existe; el correcto es `IIC/RigoBERTa-2.0`. La licencia prohíbe uso en producción y ofrecerlo a terceros por API |
 | `HUMADEX/spanish_medical_ner` | **`bert-base-cased` (inglés)**, vocabulario 28.996 | Apache-2.0 | — | **descartado** | tokenizador inglés sobre español; entrenado con traducciones automáticas; F1 0,776 sobre su propio test |
 | `ixa-ehu/ixambert-base-cased` | multilingüe Wikipedia | — | — | descartado | no clínico |
 
@@ -277,18 +277,21 @@ Formato: Autores (año). Título. Publicación. Identificador. — Idea que se t
 
 ## 4. Software y bibliotecas
 
-En uso (ver `requirements.txt`): spaCy, medspacy, language-tool-python (Java 21 +
-LanguageTool 6.8), symspellpy, rapidfuzz, flashtext, sentence-transformers, torch (+cpu),
-transformers, scikit-learn, statsmodels, kmodes, pandas, pyarrow, SQLAlchemy, pyodbc.
+En uso (ver `requirements.txt`): spaCy (MIT; **el modelo `es_core_news_md` es GPL-3.0**,
+ver §3 y §5), medspacy (MIT), **`language-tool-python` (GPL-3.0-only)** con LanguageTool
+6.8 (núcleo LGPL-2.1+; requiere **Java 17**, soportado hasta Java 21), symspellpy (MIT),
+rapidfuzz (MIT), flashtext (MIT; última versión de 2018), sentence-transformers, torch
+(+cpu), transformers, scikit-learn, statsmodels, kmodes, pandas, pyarrow, SQLAlchemy,
+pyodbc.
 
 Candidatos (pendiente de evaluación y de la política de seguridad de `PLAN.md`):
 
 | Paquete | Uso | Licencia | Nota |
 |---|---|---|---|
-| `fasttext` (o `gensim` FastText) | embeddings de n-gramas de caracteres sobre las 94 k notas | MIT / LGPL | receta clinspell y Lee 2021 |
-| `kenlm` | modelo de n-gramas de dominio | LGPL | binarios en Windows requieren compilación; alternativa: conteos propios |
+| `fasttext` (o `gensim` FastText) | embeddings de n-gramas de caracteres sobre las 94 k notas | MIT / LGPL-2.1 | receta clinspell y Lee 2021. **El repositorio `facebookresearch/fastText` está archivado desde 2024-03-19** y PyPI no publica rueda para Windows: preferir `gensim` |
+| `kenlm` | modelo de n-gramas de dominio | LGPL-2.1 (PyPI no declara licencia) | PyPI publica **solo el código fuente**, sin ruedas para ninguna plataforma; el README oficial no soporta Windows nativo. Alternativa recomendada: conteos propios |
 | `optimum[onnxruntime]` | exportar y cuantizar modelos para CPU (modo `avx2`) | Apache-2.0 | el equipo no tiene AVX-512 VNNI |
-| `xmen` | normalización de entidades (TF-IDF char + SapBERT) | consultar | |
+| `xmen` | normalización de entidades (TF-IDF char + SapBERT) | Apache-2.0 | v1.0.8 (hpi-dhc) |
 | `bertopic`, `umap-learn`, `hdbscan` | agrupamiento y nombres de clusters | BSD / BSD / BSD | paquete `clustering/` |
 | `pytest` | pruebas de regresión | MIT | |
 | `pyflakes` | análisis estático | MIT | instalado 2026-09-15 |
@@ -303,8 +306,21 @@ Candidatos (pendiente de evaluación y de la política de seguridad de `PLAN.md`
   Si se publica un derivado, citar el recurso y la licencia.
 - **CC-BY-SA-3.0** (hermitdave/FrequencyWords): copyleft; un léxico derivado debería
   compartirse bajo la misma licencia. Preferir fuentes CC-BY o propias.
-- **AGPL-3.0** (medspaner y sus modelos): si se incorpora y se distribuye el software,
-  contagia la licencia. Solo uso interno o evaluación.
+- **GPL-3.0** (modelo `es_core_news_md` de spaCy, **hoy en uso**): el modelo se distribuye
+  bajo GPL-3.0 por su corpus AnCora. Usarlo dentro del proceso no obliga a nada mientras no
+  se distribuya el producto; distribuir un derivado que lo incluya sí. Verificado el
+  2026-09-16 en el `meta.json` del paquete instalado.
+- **Qwen Research License** (`qwen2.5:3b-instruct`, **hoy disponible para la fase 5**): uso
+  exclusivamente no comercial; el uso comercial exige licencia de Alibaba. Verificado el
+  2026-09-16 con `ollama show --license`. Requiere decisión del propietario (§6.9 del plan)
+  antes de que la fase 5 lo use en producción.
+- **CC-BY-NC-4.0** (modelos de `medspaner` y `lcampillos`, `IIC/RigoBERTa-*` con licencia
+  propia no comercial): evaluación e investigación sí; producción no, sin acuerdo con el
+  autor. La AGPL-3.0 de `medspaner` corresponde al **código** del repositorio, no a los
+  pesos.
+- **GPL-3.0-only** (`language-tool-python`, **hoy en uso**): es la envoltura de Python; el
+  núcleo de LanguageTool es LGPL-2.1+. Mismo criterio que arriba: afecta a la
+  distribución, no al uso interno.
 - **MedLexSp**: uso de investigación/educación previa firma; la versión libre excluye
   términos con copyright. Uso comercial o publicación de derivados requiere acuerdo con el
   autor.
@@ -328,3 +344,4 @@ Candidatos (pendiente de evaluación y de la política de seguridad de `PLAN.md`
 |---|---|---|
 | 2026-09-15 | previo al plan | Primera versión: 60 citas, 30 recursos, 14 modelos, software, licencias |
 | 2026-09-15 | revisión v2 | Enlaces añadidos a todas las citas con identificador; sección Historial |
+| 2026-09-16 | E3.1 (verificación) | §3, §4 y §5 corregidos tras verificar las fuentes una a una: `es_core_news_md` es GPL-3.0 (no MIT) y `qwen2.5:3b` es Qwen Research License no comercial (no Apache-2.0), ambos comprobados en el artefacto instalado; `medspaner` y `lcampillos` son CC-BY-NC-4.0 (la AGPL es del código); `ClinLinker-KB-GP` es Apache-2.0 y su top-25 DisTEMIST es 0,864; corpus EHR de `bsc-bio-ehr-es` ~91–95 M tokens; `language-tool-python` es GPL-3.0-only; `fasttext` archivado y `kenlm` sin ruedas. Ver `decisiones/2026-09-16-licencias-modelos-en-uso.md` |
