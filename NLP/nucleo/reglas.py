@@ -1,29 +1,9 @@
 """
-Criterios de protección: qué tokens no deben corregirse nunca.
-
-Es el guardián ortográfico del pipeline y lo consultan tanto el corrector de
-LanguageTool como el de SymSpell y la fase de normalización. Está separado de
-esos motores a propósito: una regla que solo se aplicara en uno de ellos dejaría
-un hueco por el que pasaría el mismo error.
-
-Capas de protección, en el orden en que actúan:
-
-  1. Números y medidas    nada que contenga un dígito se toca.
-  2. Diccionario          siglas, fármacos, epónimos, marcas y términos.
-  3. Patrones             vértebras (l5), dosis (5mg), tokens de una letra.
-  4. Entidades            personas, lugares e instituciones de la nota.
-  5. Vocabulario          palabras reales que LanguageTool marca por error.
-  6. Forma                longitud mínima, distancia de edición y diferencia
-                          de longitud entre original y candidato.
-
-Lo que se decide mirando únicamente la forma de la palabra (morfemas médicos,
-truncamientos, sufijos de fármaco) vive en `morfologia.py`. Este módulo lo
-reexporta para que el resto del paquete pueda seguir invocándolo como
-`reglas.morfemas` o `reglas.sin_tildes`.
-
-Las verificaciones que dependen del SIGNIFICADO clínico tampoco están aquí:
-las concentra `fase2_ortografia/terminologia.py`, que es el único punto donde se
-veta un cambio por motivo clínico y donde queda registrado.
+Criterios de proteccion: que tokens no deben corregirse nunca. Guardian
+ortografico compartido por LanguageTool, SymSpell y la fase de
+normalizacion. Reexporta `morfologia.py` (forma) como `reglas.X`; lo que
+depende del SIGNIFICADO clinico vive en `terminologia.py`. Ver
+ARQUITECTURA.md §2.2 (`reglas.py`) para las capas de proteccion.
 """
 
 import json
@@ -134,20 +114,10 @@ def tokens_protegidos_por_contexto(texto):
 
 def cargar(ruta=RUTA_SIGLAS):
     """
-    Lee el diccionario de siglas y llena las estructuras del módulo. Devuelve el
-    conjunto de siglas cargadas.
-
-    El archivo agrupa las entradas por tema (siglas, fármacos, epónimos...) y
-    admite además cuatro claves de control:
-
-        _siglas_inequivocas    las únicas que pueden expandirse sin contexto
-        _siglas_ambiguas       bloqueadas aunque superen las comprobaciones
-        _grupos_expandibles    qué grupos temáticos pueden expandirse
-        patrones_protegidos    expresiones regulares que nunca se corrigen
-
-    y dos claves de datos: `no_restaurar_mayuscula` y `correcciones_directas`.
-    Puede llamarse varias veces: cada llamada vacía las estructuras antes de
-    volver a llenarlas.
+    Lee el diccionario de siglas y llena las estructuras del modulo (formato
+    del archivo: ver ARQUITECTURA.md §2.2, `reglas.py`). Puede llamarse
+    varias veces: cada llamada vacia antes de volver a llenar. Devuelve el
+    conjunto de siglas.
     """
     datos = json.loads(Path(ruta).read_text(encoding="utf-8"))
 
@@ -190,9 +160,9 @@ def cargar(ruta=RUTA_SIGLAS):
 
 def cargar_siglas_protegidas(ruta=RUTA_SIGLAS_PROTEGIDAS):
     """
-    Lee `datos/lexicos/siglas_protegidas.txt` (E3.2): una forma por línea,
-    comentarios con `#`. Deja el resultado en `SIGLAS_PROTEGIDAS_MANUAL` y lo
-    devuelve. Si el archivo no existe, deja el conjunto vacío sin fallar.
+    Lee `datos/lexicos/siglas_protegidas.txt` (una forma por linea, `#`
+    comenta) en `SIGLAS_PROTEGIDAS_MANUAL` y lo devuelve. Sin archivo, deja
+    el conjunto vacio sin fallar.
     """
     SIGLAS_PROTEGIDAS_MANUAL.clear()
     ruta = Path(ruta)
@@ -228,13 +198,9 @@ def texto_gritado(texto):
 
 def detectar_protegidos(texto_original):
     """
-    Nombres propios y siglas leídos del texto tal como se escribió, antes de
-    limpiarlo.
-
-    Reconoce dos señales: mayúscula inicial que no se explica por el comienzo de
-    una frase, y palabras cortas escritas enteras en mayúscula. Solo sirve en
-    notas con capitalización mixta; en una nota gritada devuelve un conjunto
-    vacío y la protección recae en el diccionario y el reconocedor de entidades.
+    Nombres propios y siglas leidos del texto tal como se escribio (mayuscula
+    inicial no explicada por posicion, o palabra corta toda en mayuscula).
+    En nota gritada devuelve vacio: la proteccion recae en el diccionario.
     """
     protegidos = set()
     texto_original = str(texto_original or "")
@@ -255,27 +221,26 @@ def detectar_protegidos(texto_original):
 
 def entidades(texto_limpio, texto_original=None):
     """
-    Personas, lugares e instituciones presentes en la nota.
-
-    Se consultan las dos versiones del texto porque se complementan: sobre el
-    texto en minúsculas el reconocedor identifica topónimos frecuentes, y sobre
-    el original conserva los epónimos que solo se distinguen por la mayúscula.
-
-    El reconocedor se equivoca en frases cortas y en minúsculas, llegando a
-    marcar como nombre propio palabras mal escritas, lo que bloquearía su
-    corrección. Por eso una entidad solo protege si además se confirma por otra
-    vía: venía con mayúscula informativa en el original, el corpus la conoce como
-    nombre propio o sigla, o spaCy la tiene en su vocabulario.
+    Personas, lugares e instituciones presentes en la nota, confirmadas por
+    una segunda via (spaCy solo se equivoca menos con ayuda). Ver
+    ARQUITECTURA.md §2.2 (`reglas.py`) para el porque de cada fuente.
     """
     if not (USAR_SPACY and PROTEGER_ENTIDADES):
         return set()
 
+    # se consultan las dos versiones del texto porque se complementan: en
+    # minusculas el reconocedor identifica toponimos frecuentes, y sobre el
+    # original conserva los eponimos que solo se distinguen por la mayuscula
     encontradas = linguistica.entidades(texto_limpio)
     if texto_original and not texto_gritado(texto_original):
         encontradas = encontradas | linguistica.entidades(texto_original)
 
     if not encontradas:
         return encontradas
+
+    # el reconocedor tambien marca como nombre propio palabras mal escritas
+    # en frases cortas o en minusculas, asi que una entidad solo protege si
+    # se confirma por otra via
 
     # Solo cuenta la mayuscula que no se explica por la posicion: si se
     # aceptara cualquier mayuscula, un texto ya recapitalizado (donde toda
@@ -311,13 +276,9 @@ def esta_protegido(token, protegidos=()):
 
 def es_palabra_conocida(token):
     """
-    True si spaCy reconoce el token, que entonces se considera una palabra real
-    y queda protegido. Cubre fármacos y terminología que LanguageTool marca como
-    error.
-
-    Debe evaluarse solo sobre la palabra original y nunca sobre los candidatos:
-    casi toda corrección correcta está en el vocabulario, de modo que aplicarlo
-    a los candidatos anularía el corrector entero.
+    True si spaCy reconoce el token (se protege). Evaluar solo sobre la
+    palabra original, nunca sobre candidatos: aplicarlo a un candidato
+    anularia el corrector, porque casi toda correccion ya esta en el vocabulario.
     """
     if not (USAR_SPACY and PROTEGER_POR_VOCABULARIO):
         return False
@@ -326,11 +287,9 @@ def es_palabra_conocida(token):
 
 def forma_aceptable(original, candidato):
     """
-    True si el par (original, candidato) supera el criterio puramente
-    ortográfico: longitud mínima, misma cantidad de palabras, ausencia de
-    dígitos y distancia de edición dentro del máximo permitido.
-
-    No evalúa el significado: de eso se ocupa `terminologia.py`.
+    True si el par supera el criterio ortografico: longitud minima, mismo
+    numero de palabras, sin digitos, distancia de edicion dentro del maximo.
+    No evalua el significado (ver `terminologia.py`).
     """
     if len(original) < LONGITUD_MINIMA:
         return False

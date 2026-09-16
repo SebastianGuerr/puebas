@@ -1,46 +1,8 @@
 """
-Recuperación de la capitalización, aprendida del propio corpus.
-
-EL PROBLEMA
-    La gran mayoría de las notas de triage está escrita íntegramente en
-    mayúsculas. En ellas, la detección de nombres propios por contraste de
-    capitalización no tiene nada que leer, de modo que la defensa principal
-    contra corromper nombres, siglas y fármacos queda desactivada justo en el
-    caso más frecuente.
-
-    La respuesta anterior era un diccionario escrito a mano. No escala, y además
-    obliga a dar una única respuesta global a un token cuyo sentido depende del
-    contexto: 'ir' es sigla cuando significa insulinorrequiriente y verbo cuando
-    no, y la lista negra solo permitía perder uno de los dos usos.
-
-LA IDEA
-    El hospital ya escribió la respuesta. Una parte del corpus está redactada
-    con capitalización normal, y en ella se ve cómo se escribe realmente cada
-    palabra. Contando esas apariciones se obtiene, por token, si se comporta
-    como sigla, como nombre propio o como palabra común:
-
-        ir          casi siempre en mayúsculas        -> sigla
-        manizales   casi siempre con inicial          -> nombre propio
-        dolor       casi siempre en minúsculas        -> palabra común
-
-    Ese recuento es el léxico, se regenera cuando cambia el corpus y sustituye
-    al mantenimiento manual en lugar de complementarlo.
-
-QUÉ NO RESUELVE
-    Un término que nunca apareció en una nota bien escrita no tiene evidencia, y
-    entonces este módulo se abstiene. Esos casos quedan en manos del guardián
-    clínico y de los umbrales del corrector.
-
-USO
-    construir(textos)   cuenta las formas sobre las notas con contraste
-    guardar() / cargar()  persisten el léxico
-    restaurar(nota)     devuelve una nota gritada con su capitalización
-    clase(token)        qué aprendió el corpus sobre un token
-
-El texto que se corrige sigue siendo el de la fase de limpieza, en minúsculas,
-porque es la forma con la que mejor rinde el análisis gramatical. Lo que se
-recupera aquí es la señal para proteger, que es la que de verdad se pierde al
-pasar todo a minúsculas.
+Recuperacion de la capitalizacion (sigla, nombre propio, comun), aprendida
+contando el contraste de mayusculas/minusculas en el propio corpus en vez de
+mantener un diccionario a mano. Responsabilidad completa y ejemplo (`ir` como
+sigla vs. verbo) en docs/ARQUITECTURA.md, ficha `recursos/casing.py` (S2.8).
 """
 
 import json
@@ -110,23 +72,14 @@ def texto_gritado(texto):
 
 def _contar(textos):
     """
-    Cuenta cómo se escribe cada palabra en las notas que sí tienen contraste
-    de capitalización. Devuelve, por token en minúscula, un contador con las
-    apariciones en mayúsculas, con inicial y en minúsculas.
-
-    Solo cuenta la mayúscula que no se explica por la posición, porque de las
-    tres razones por las que una palabra puede llevarla, dos no dicen nada sobre
-    la palabra en sí:
-
-        abrir oración     es la ortografía normal del español.
-        etiquetar campo   'Ocupacion:', 'Alergicos:' encabezan un apartado de la
-                          plantilla de la historia clínica.
-        ser un nombre     esta es la única que aporta información.
-
-    De ahí las dos exclusiones del bucle: el primer token de cada fragmento y
-    todo token seguido de dos puntos. Sin la segunda, el léxico aprendía como
-    nombres propios los rótulos de la plantilla.
+    Cuenta como se escribe cada palabra en las notas con contraste de
+    capitalizacion. Devuelve, por token en minuscula, un contador con las
+    apariciones en mayusculas, con inicial y en minusculas.
     """
+    # Solo cuenta la mayuscula que no se explica por la posicion: abrir
+    # oracion y etiquetar un campo de plantilla ('Ocupacion:') no dicen nada
+    # del token en si, a diferencia de ser un nombre propio. De ahi las dos
+    # exclusiones de mas abajo (primer token del fragmento, y token con ':').
     formas = defaultdict(Counter)
 
     for texto in textos:
@@ -152,12 +105,8 @@ def _contar(textos):
 
 def _clasificar(conteo):
     """
-    Clasifica un token a partir de su contador de formas: SIGLA, NOMBRE o COMUN.
-
-    Devuelve None cuando no hay evidencia suficiente, sea porque el token se vio
-    pocas veces o porque se usa de varias formas sin que ninguna alcance la
-    dominancia exigida. En ese caso no existe una respuesta global correcta y el
-    módulo se abstiene.
+    Clasifica un token por su contador de formas: SIGLA, NOMBRE o COMUN, o
+    None si se vio pocas veces o ninguna forma alcanza la dominancia exigida.
     """
     total = sum(conteo.values())
     if total < MINIMO_OBSERVACIONES:
@@ -178,11 +127,9 @@ def _clasificar(conteo):
 
 def construir(textos):
     """
-    Construye el léxico a partir de un corpus y devuelve cuántas entradas
-    quedaron.
-
-    `textos` es un iterable de notas SIN limpiar: las mayúsculas del original
-    son toda la materia prima de este módulo.
+    Construye el léxico y devuelve cuántas entradas quedaron. `textos` es un
+    iterable de notas SIN limpiar: las mayúsculas del original son la materia
+    prima de este módulo.
     """
     _LEXICO.clear()
     _OBSERVACIONES.clear()
@@ -263,19 +210,9 @@ def es_sigla(token):
 
 def siglas(dominancia=None):
     """
-    Conjunto de siglas aprendidas del corpus. Complementa al diccionario de
-    siglas escrito a mano.
-
-    Con `dominancia` se exige además que superen esa fracción de apariciones en
-    mayúscula. El parámetro existe porque las siglas se usan para dos cosas de
-    exigencia distinta:
-
-        proteger un token       basta la mayoría simple; proteger de más no
-                                corrompe nada, solo deja una palabra sin
-                                corregir.
-        escribirlo en mayúscula hace falta más certeza, porque equivocarse sí
-                                altera el texto: convertir en sigla todos los
-                                usos de una palabra frecuente estropea la nota.
+    Conjunto de siglas aprendidas del corpus (complementa al diccionario
+    escrito a mano). Con `dominancia`, exige ademas superar esa fraccion de
+    apariciones en mayuscula (para reescribir, no solo para proteger).
     """
     if dominancia is None:
         return {t for t, c in _LEXICO.items() if c == SIGLA}
@@ -302,14 +239,9 @@ def nombres_propios():
 
 def restaurar(texto):
     """
-    Devuelve la nota con la capitalización que el corpus indica.
-
-    Una nota que ya viene con mayúsculas y minúsculas se devuelve sin tocar: lo
-    que escribió su autor es mejor evidencia que cualquier promedio. Solo se
-    reescriben las notas gritadas.
-
-    Los tokens sin evidencia pasan a minúscula, que es la opción segura: el
-    análisis gramatical se degrada mucho menos en minúsculas que en mayúsculas.
+    Devuelve la nota con la capitalizacion que el corpus indica. Una nota que
+    ya viene con mayusculas y minusculas se devuelve sin tocar; solo se
+    reescriben las notas gritadas, y los tokens sin evidencia pasan a minuscula.
     """
     texto = str(texto or "")
     if not texto or not texto_gritado(texto):
@@ -354,17 +286,9 @@ def _recapitalizar(palabra, inicio_oracion):
 
 def mayusculas_informativas(texto):
     """
-    Tokens de una nota cuya mayúscula aporta información sobre la palabra.
-
-    Aplica a una nota concreta el mismo criterio con el que se construye el
-    léxico: se descartan las mayúsculas de inicio de oración y las de rótulo de
-    campo, y queda solo la que no tiene otra explicación que ser un nombre
-    propio o una sigla.
-
-    Lo usa la protección por entidades para confirmar lo que propone el
-    reconocedor. Aceptar cualquier mayúscula no sirve, porque sobre un texto ya
-    recapitalizado toda oración abre en mayúscula y hasta una palabra mal
-    escrita pasaría por nombre propio.
+    Tokens de una nota cuya mayúscula no se explica por abrir oración ni por
+    rotular un campo: solo queda la que aporta información (nombre propio o
+    sigla). La usa la protección por entidades para confirmar al reconocedor.
     """
     encontrados = set()
     for fragmento in RE_ORACION.split(str(texto or "")):

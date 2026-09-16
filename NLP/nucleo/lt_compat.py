@@ -1,20 +1,9 @@
 """
-Lectura de los resultados de LanguageTool con independencia de la versión.
-
-La librería language_tool_python renombró los atributos de sus objetos `Match`
-entre versiones: 'errorLength' y 'ruleId' en las antiguas, 'error_length' y
-'rule_id' en las nuevas. Leer el nombre equivocado lanza AttributeError en cada
-nota y, como el corrector captura la excepción y devuelve el texto sin tocar, la
-fase ortográfica quedaría anulada sin ningún mensaje de error.
-
-Este módulo concentra ese acceso: cada función devuelve un dato del `Match`
-probando los nombres de ambas versiones, de modo que el resto del paquete nunca
-accede a un atributo directamente.
-
-    offset, largo, span   dónde empieza y termina el error en el texto
-    regla, categoria      qué regla lo produjo y de qué tipo es
-    reemplazos            las sugerencias de corrección
-    verificar             diagnóstico de que la lectura funciona
+Lectura de los `Match` de LanguageTool con independencia de la version: la
+libreria language_tool_python renombro sus atributos entre versiones
+('errorLength'/'ruleId' vs 'error_length'/'rule_id'). Cada funcion prueba
+ambos nombres; el resto del paquete nunca accede a un atributo directamente.
+Ver ARQUITECTURA.md §2.2 (`lt_compat.py`) para el riesgo si esto falla.
 """
 
 
@@ -74,8 +63,8 @@ def span(match):
 
 def verificar(lt):
     """
-    Comprueba contra una frase de prueba que los atributos se leen bien en la
-    versión instalada. Devuelve un texto de diagnóstico legible, nunca lanza.
+    Comprueba, contra una frase de prueba, que los atributos se leen bien en
+    la version instalada. Devuelve un texto de diagnostico, nunca lanza.
     """
     try:
         matches = lt.check("tengo dolro de cabeza")

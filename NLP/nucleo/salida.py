@@ -1,27 +1,9 @@
 """
-Escritura de resultados: rotar la version anterior y llenar un CSV a medida
-que la corrida avanza.
-
-POR QUE ESTA AQUI Y NO EN procesar.py
-    Todo lo de este modulo lo necesita cualquier proceso largo del proyecto,
-    no solo el pipeline de texto: la fase de embeddings y la de clustering
-    escriben tablas grandes que tardan horas y que conviene poder mirar
-    mientras se generan.
-
-    Nada de aqui sabe de triage, de notas ni de la base de datos. Se le pasan
-    rutas y columnas.
-
-LAS TRES IDEAS QUE HAY DETRAS
-
-    rotar()          un artefacto generado nunca se sobrescribe en silencio:
-                     la version anterior se aparta con la fecha en el nombre.
-
-    EscritorCSV      el archivo se llena por bloques y se vacia el buffer en
-                     cada uno, de modo que otro proceso puede leer lo que va
-                     saliendo sin esperar al final.
-
-    llaves_escritas  relanzar continua en vez de repetir: se leen las llaves
-                     que ya estan en el archivo y quien llama las salta.
+Escritura de resultados: rotar la version anterior y llenar un CSV por
+bloques a medida que la corrida avanza. No sabe de triage, notas ni base de
+datos (rutas y columnas por parametro); lo usa cualquier proceso largo del
+proyecto, no solo el pipeline de texto. Ver ARQUITECTURA.md §2.2
+(`salida.py`).
 """
 
 import csv
@@ -37,31 +19,18 @@ import pandas as pd
 
 def rotar(ruta, conservar=3):
     """
-    Aparta la version anterior de un archivo antes de escribir la nueva, y
-    devuelve a donde se movio (o None si no habia nada que apartar).
-
-    POR QUE EXISTE
-        Antes se sobrescribia. Una corrida nueva borraba la anterior sin dejar
-        rastro, de modo que comparar dos versiones del pipeline obligaba a
-        acordarse de copiar el CSV a mano ANTES de lanzar, y quien no se
-        acordaba perdia la referencia.
-
-        Y al reves: si alguien renombraba el archivo para guardarlo, cualquier
-        script que lo diera por existente fallaba. Un artefacto generado no
-        puede ser una precondicion; si no esta, se crea.
-
-    Se guardan las ultimas `conservar` versiones con la fecha en el nombre y se
-    borran las mas viejas, para que salidas/ no crezca sin limite.
+    Aparta la version anterior de un archivo (con la fecha en el nombre)
+    antes de escribir la nueva, y devuelve a donde se movio (None si no
+    habia nada que apartar). Conserva las ultimas `conservar` versiones.
     """
     ruta = Path(ruta)
     if not ruta.exists():
         return None
 
     # La marca tiene resolucion de segundo, asi que dos rotaciones seguidas
-    # chocan. En Windows renombrar sobre un archivo existente lanza
-    # FileExistsError en vez de sobrescribir, de modo que sin el contador la
-    # segunda rotacion aborta la corrida entera. Lo destapo la prueba de la
-    # propia funcion, no el corpus.
+    # chocan: en Windows renombrar sobre un archivo existente lanza
+    # FileExistsError en vez de sobrescribir. El contador evita que la
+    # segunda rotacion aborte la corrida.
     marca = time.strftime("%Y%m%d-%H%M%S")
     destino = ruta.with_name(f"{ruta.stem}_{marca}{ruta.suffix}")
     n = 2
@@ -85,14 +54,9 @@ def rotar(ruta, conservar=3):
 
 def cabecera_compatible(ruta, columnas):
     """
-    Dice si un CSV existente se puede seguir llenando con estas columnas.
-
-    Se compara la cabecera y no solo la existencia del archivo porque la lista
-    de columnas depende de la configuracion de quien escribe: en el pipeline de
-    texto, apagar la reduccion quita texto_embedding y apagar la normalizacion
-    quita texto_normalizado. Apendar filas de cinco campos a un archivo de
-    cuatro produce un CSV que no puede leer nadie, asi que ante cualquier
-    diferencia se prefiere rotar y empezar limpio.
+    Dice si un CSV existente se puede seguir llenando con estas columnas. Se
+    compara la cabecera, no solo la existencia del archivo, porque la lista
+    de columnas depende de la configuracion de quien escribe.
     """
     ruta = Path(ruta)
     if not ruta.exists():
@@ -113,12 +77,9 @@ def contar_filas(ruta):
 
 def llaves_escritas(*rutas, llave="OID"):
     """
-    Las llaves que ya estan en los archivos indicados.
-
-    Es lo que permite que relanzar continue en vez de repetir: quien llama
-    filtra su entrada con esto y solo procesa lo que falta. Un archivo que no
-    existe o que no tiene la columna se ignora en silencio, porque la primera
-    corrida es justo ese caso.
+    Las llaves que ya estan en los archivos indicados (para que relanzar
+    continue en vez de repetir). Un archivo que no existe o no tiene la
+    columna se ignora en silencio: es el caso normal de la primera corrida.
     """
     hechas = set()
     for ruta in rutas:
@@ -139,15 +100,9 @@ def llaves_escritas(*rutas, llave="OID"):
 
 class EscritorCSV:
     """
-    Un CSV que se va llenando mientras la corrida avanza.
-
-    Abre el archivo en la primera escritura, pone la cabecera y desde ahi solo
-    anade filas, vaciando el buffer despues de cada bloque para que otro proceso
-    pueda leer lo que va saliendo sin esperar a que la corrida termine.
-
-    Usa utf-8-sig y comillas en todos los campos, que es lo mismo que produce
-    df.to_csv(..., encoding="utf-8-sig", quoting=csv.QUOTE_ALL): el archivo sale
-    byte a byte identico al que saldria escribiendolo de una sola vez.
+    Un CSV que se va llenando mientras la corrida avanza: pone la cabecera al
+    abrir, luego solo anade filas y vacia el buffer tras cada bloque. Usa
+    utf-8-sig y QUOTE_ALL (igual que df.to_csv con esas opciones).
     """
 
     def __init__(self, ruta, columnas, reanudar=False):

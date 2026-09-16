@@ -1,28 +1,9 @@
 """
-Análisis morfológico de terminología clínica.
-
-Reúne todo lo que puede decidirse mirando únicamente la FORMA de una palabra:
-sus prefijos y sufijos, si parece un principio activo, y si una corrección
-propuesta conserva o altera su significado. No consulta diccionarios, corpus ni
-modelos de lenguaje, y por eso no importa nada del resto del paquete: es la capa
-más baja, sobre la que se apoyan `nucleo/reglas.py` (qué se protege) y
-`fase2_ortografia/terminologia.py` (qué se veta).
-
-El criterio de fondo es que en el vocabulario médico la forma codifica el
-significado. 'hipo-' e 'hiper-' se separan por dos letras y son opuestos;
-'-ectomía' e '-itis' distinguen un procedimiento de una inflamación. Un corrector
-que solo mide distancia de edición no puede ver esa diferencia, y estas funciones
-se la aportan.
-
-Contenido del módulo:
-
-    Utilidades de forma      normalizar, sin_tildes, tiene_numero,
-                             es_restauracion_tilde
-    Morfemas médicos         morfemas, es_termino_medico, prefijos
-    Cambios de significado   invierte_significado, cambia_familia,
-                             cambia_categoria, es_truncamiento,
-                             solo_cambia_terminacion, conserva_morfemas
-    Fármacos                 parece_farmaco
+Analisis morfologico de terminologia clinica: todo lo que se decide mirando
+solo la FORMA de una palabra (prefijos, sufijos, cambios de significado,
+apariencia de farmaco). Sin dependencias internas; capa base de
+`nucleo/reglas.py` (que protege) y `fase2_ortografia/terminologia.py` (que
+veta). Ver ARQUITECTURA.md §2.2 (`morfologia.py`).
 """
 
 import re
@@ -76,11 +57,8 @@ def sin_tildes(palabra):
 
 def tiene_numero(token):
     """
-    True si el token contiene algún dígito.
-
-    Todo lo que lleva un número queda fuera del corrector: dosis, tensiones,
-    vértebras, edades y fechas. Alterar '500 mcg' o 'l5' modifica un dato
-    clínico, y ninguna mejora ortográfica compensa ese riesgo.
+    True si el token contiene algun digito. Protege dosis, tensiones,
+    vertebras, edades y fechas: alterarlas modifica un dato clinico.
     """
     return bool(RE_DIGITO.search(str(token)))
 
@@ -239,11 +217,9 @@ def es_adjetivo_por_forma(palabra):
 
 def cambia_categoria(original, candidato):
     """
-    True si uno de los dos es adjetivo por su forma y el otro no.
-
-    Solo se evalúa cuando alguna de las dos palabras es terminología médica. Sin
-    ese filtro la regla vetaría correcciones corrientes: 'hospitl' -> 'hospital'
-    se rechazaría solo porque el candidato termina en -al.
+    True si uno es adjetivo por su forma y el otro no. Solo se evalua cuando
+    alguna de las dos es terminologia medica (si no, 'hospitl' -> 'hospital'
+    se rechazaria solo por terminar en -al).
     """
     if not (es_termino_medico(original) or es_termino_medico(candidato)):
         return False
@@ -252,12 +228,9 @@ def cambia_categoria(original, candidato):
 
 def es_truncamiento(original, candidato):
     """
-    True si una palabra es la otra con un trozo añadido o quitado en un extremo.
-
-    Quitar un prefijo no es una corrección ortográfica: altera o invierte el
-    significado ('presincope' -> 'sincope', 'defocalizacion' ->
-    'focalizacion'). Un error de digitación no produce este patrón, de modo que
-    la regla no bloquea correcciones legítimas.
+    True si una palabra es la otra con un trozo anadido o quitado en un
+    extremo (tipico al perder/ganar un prefijo, que altera el significado
+    -'presincope' -> 'sincope'-, no un error de digitacion).
     """
     o, c = sin_tildes(original.lower()), sin_tildes(candidato.lower())
     if o == c or not o or not c:
@@ -270,9 +243,8 @@ def es_truncamiento(original, candidato):
 
 def solo_cambia_terminacion(original, candidato):
     """
-    True si la diferencia está únicamente en la última letra de una palabra
-    larga. Es un cambio de género o número, no una corrección:
-    'hipoactiva' -> 'hipoactivo' altera la concordancia sin arreglar nada.
+    True si la diferencia esta solo en la ultima letra de una palabra larga:
+    cambio de genero o numero, no una correccion ortografica.
     """
     o, c = sin_tildes(original.lower()), sin_tildes(candidato.lower())
     return len(o) >= 7 and len(o) == len(c) and o[:-1] == c[:-1] and o != c
@@ -280,38 +252,29 @@ def solo_cambia_terminacion(original, candidato):
 
 def conserva_morfemas(original, candidato):
     """
-    True si el candidato es una corrección admisible del original.
-
-    Cuando el original no es terminología médica no hay restricción. Cuando lo
-    es, se exigen dos condiciones:
-
-      a) que el candidato conserve todos sus morfemas. La comparación es por
-         inclusión y no por igualdad, para que un typo al que le falta un sufijo
-         pueda corregirse: 'hipotiroidimo' {hipo} -> 'hipotiroidismo'
-         {hipo, ismo} se acepta, mientras 'presincope' {pre, sincope} ->
-         'sincope' {sincope} se rechaza.
-
-      b) que conserve la raíz. 'onicectomia' y 'cistectomia' comparten el sufijo
-         -ectomia y son procedimientos distintos; lo que los separa es el inicio
-         de la palabra.
+    True si el candidato es una correccion admisible: sin restriccion cuando
+    el original no es terminologia medica; si lo es, exige conservar todos
+    sus morfemas (por inclusion) y la misma raiz.
     """
     propios = morfemas(original)
     if not propios:
         return True
+    # inclusion y no igualdad: un typo al que le falta un sufijo se puede
+    # corregir ('hipotiroidimo' {hipo} -> 'hipotiroidismo' {hipo, ismo}),
+    # pero perder un prefijo no ('presincope' {pre, sincope} -> 'sincope' se
+    # rechaza)
     if not propios <= morfemas(candidato):
         return False
+    # ademas del sufijo, exige la misma raiz: dos sufijos iguales pueden ser
+    # procedimientos distintos ('onicectomia' vs 'cistectomia')
     return _misma_raiz(sin_tildes(original), sin_tildes(candidato))
 
 
 def _misma_raiz(original, candidato):
     """
-    True si las raíces coinciden, admitiendo una transposición de letras.
-
-    Exigir que los primeros LETRAS_RAIZ caracteres sean idénticos rechazaría el
-    typo más frecuente de la terminología médica, que es el intercambio de dos
-    letras contiguas dentro de la raíz ('dilispidemia' -> 'dislipidemia'). Se
-    admite distancia de edición 1, que cubre la transposición y la letra
-    sobrante sin dar paso a raíces distintas.
+    True si las raices coinciden, admitiendo distancia de edicion 1: cubre
+    el typo mas frecuente en terminologia medica, la transposicion de dos
+    letras contiguas ('dilispidemia' -> 'dislipidemia').
     """
     a, b = original[:LETRAS_RAIZ], candidato[:LETRAS_RAIZ]
     if a == b:
@@ -354,8 +317,8 @@ LONGITUD_MINIMA_FARMACO = 6
 def parece_farmaco(palabra):
     """
     True si la palabra termina como un principio activo de la nomenclatura
-    internacional. Protege por forma y sin lista de nombres, de modo que
-    cualquier -pril, -sartan, -azepam, -micina o -prazol queda cubierto.
+    internacional (-pril, -sartan, -azepam, -micina, -prazol...). Protege
+    por forma, sin lista de nombres.
     """
     palabra = sin_tildes(normalizar(palabra))
     if len(palabra) < LONGITUD_MINIMA_FARMACO:

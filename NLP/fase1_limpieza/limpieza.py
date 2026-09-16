@@ -1,37 +1,8 @@
 """
-Fase 1. Limpieza de formato.
-
-Normaliza la forma del texto y nada más: no corrige palabras, no separa
-términos y no interpreta contenido. Lo que entra sale con las mismas palabras y
-en el mismo orden; solo cambian mayúsculas, espacios, saltos de línea y
-símbolos.
-
-Interfaz del módulo:
-
-    limpiar(texto)                      texto normalizado en minúsculas
-    limpiar_conservando_original(texto) además, el original con sus mayúsculas
-    tokenizar                           utilidad de token
-    es_vacio, analizar                  control de calidad del lote
-
-CRITERIOS QUE NO SON EVIDENTES
-
-  Se conserva la puntuación de frase (. , ; :)
-      LanguageTool segmenta por oraciones; sin puntuación pierde el contexto
-      que necesita para decidir una corrección.
-
-  Se conservan la barra, el porcentaje, el grado y los decimales
-      '120/80', '39.5' y '95%' son datos clínicos. Al eliminar la barra,
-      '120/80' pasa a '120 80' y la tensión arterial deja de ser un dato.
-
-  Se conserva la separación entre apartados
-      'AP: HTA' y 'AA: NIEGA' fundidos en una sola línea pierden la frontera
-      entre antecedentes patológicos y alérgicos, que las fases siguientes
-      necesitan para acotar el alcance de la negación.
-
-  Se devuelve aparte el original con sus mayúsculas
-      Son la única señal de que un término es un nombre propio y no un error de
-      digitación. Como limpiar() las destruye, quien las necesite debe usar
-      limpiar_conservando_original().
+Fase 1. Limpieza de formato: normaliza mayusculas, espacios, saltos de linea y
+simbolos sin corregir palabras ni cambiar su orden. Interfaz: limpiar(),
+limpiar_conservando_original(), tokenizar(), es_vacio(), analizar(). Que se
+conserva y por que, e interfaz completa, en docs/FLUJO.md #2.
 """
 
 import re
@@ -145,13 +116,9 @@ def _normalizar_estructura(texto):
 
 def limpiar(texto):
     """
-    Devuelve el texto normalizado en minúsculas, con las mismas palabras del
-    original y en el mismo orden.
-
-        'MC: DOLOR!!!\\n\\nAP: HTA'  ->  'mc: dolor; ap: hta'
-
-    Acepta None y valores vacíos, para los que devuelve cadena vacía. Las notas
-    que superan LARGO_MAXIMO se truncan.
+    Devuelve el texto normalizado en minúsculas, en el mismo orden del
+    original. Acepta None y cadenas vacías (devuelve ""); trunca a
+    LARGO_MAXIMO. Ejemplo en docs/FLUJO.md §2.
     """
     if texto is None:
         return ""

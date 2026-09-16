@@ -307,6 +307,13 @@ def vecinos(palabra, distancia=2, maximo=5):
     return salida
 
 
+# Ninguna sugerencia puede cambiar las CIFRAS de la palabra. Mismo criterio y
+# mismo motivo que en ortografia.py: ver decisiones/2026-09-16-cifras.md.
+PROTEGER_CIFRAS = True
+
+RE_CIFRAS = re.compile(r"\d+")
+
+
 def corregir_texto(texto, es_corregible, senalados=None):
     """
     Aplica las sugerencias palabra por palabra sobre el texto.
@@ -333,7 +340,13 @@ def corregir_texto(texto, es_corregible, senalados=None):
             return palabra
         if not es_corregible(palabra):
             return palabra
-        return sugerir(palabra) or palabra
+        propuesta = sugerir(palabra)
+        if not propuesta:
+            return palabra
+        # las cifras no se tocan; ver decisiones/2026-09-16-cifras.md
+        if PROTEGER_CIFRAS and RE_CIFRAS.findall(palabra) != RE_CIFRAS.findall(propuesta):
+            return palabra
+        return propuesta
 
     return RE_PALABRA.sub(_sub, texto)
 

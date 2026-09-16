@@ -83,6 +83,21 @@ inicio de línea; aquí lo fuerza igual porque el patrón no exige inicio de lí
 solo lo antepone con `\n` — en una nota de una sola línea el efecto visible es
 solo la conservación del `:`).
 
+**Por qué se conserva cada símbolo** (trasladado del docstring de `limpieza.py`,
+E1.5):
+
+- Puntuación de frase (`. , ; :`): LanguageTool segmenta por oraciones; sin
+  puntuación pierde el contexto que necesita para decidir una corrección.
+- Barra, porcentaje, grado y decimales (`/ % ° .`): `'120/80'`, `'39.5'` y
+  `'95%'` son datos clínicos; al eliminar la barra, `'120/80'` pasa a
+  `'120 80'` y deja de leerse como tensión arterial.
+- Separación entre apartados: `'AP: HTA'` y `'AA: NIEGA'` fundidos en una sola
+  línea pierden la frontera entre antecedentes patológicos y alérgicos, que
+  las fases siguientes necesitan para acotar el alcance de la negación.
+- `texto_norm` (segundo valor de `limpiar_conservando_original`) conserva las
+  mayúsculas del original porque son la única señal de que un término es un
+  nombre propio y no un error de digitación.
+
 ## 3. Fase 2 — Corrección ortográfica
 
 **Entrada**: `texto_limpio` (con `texto_norm` como fuente auxiliar de mayúsculas).
@@ -271,10 +286,13 @@ tiene comando de regeneración) y, vía `nucleo/reglas.EXPANDIBLES`,
 
 **Subpasos**, en el orden de `normalizar()`: (1) `expandir_encabezados` — anota el
 significado del rótulo de apartado (`"ap:"` → `"ap (antecedentes personales):"`);
-(2) `_aplicar_con_contexto` — entradas del diccionario que solo se activan si
-alguna palabra de contexto aparece cerca (`recursos/ambiguedad.py`); (3) el resto
-del diccionario, con el autómata de `flashtext` o, si no está instalado, una
-expresión regular de respaldo.
+conserva la sigla original (forma en que el personal escribe y busca) y omite
+significados genéricos (`"medicamento"`, `"termino clinico"`, `"nombre propio"`,
+`"apellido"`), que no aportarían nada al lector; (2) `_aplicar_con_contexto` —
+entradas del diccionario que solo se activan si alguna palabra de contexto
+aparece cerca (`recursos/ambiguedad.py`); (3) el resto del diccionario, con el
+autómata de `flashtext` o, si no está instalado, una expresión regular de
+respaldo.
 
 **Decisión enlazada**: ninguna en `decisiones/` sobre el control de ambigüedad.
 **Sin medición** — `recursos/ambiguedad.py`, que decide si una entrada se aplica
@@ -284,6 +302,37 @@ registrada. Sí hay decisión sobre la glosa que esta fase añade:
 asociación con la asignación de cluster, y dice por qué la bandera
 `SEPARAR_CONCEPTO` está apagada por defecto pendiente de revectorizar y de
 adaptar `clustering/etiquetas.py`.
+
+**Por qué es una fase aparte** (trasladado del docstring de `normalizacion.py`,
+E1.5): mezclar normalización y corrección ortográfica arruina la auditoría — en
+el informe de cambios dejarían de distinguirse un error de digitación de una
+expansión intencionada. Por eso corre sobre la columna ya corregida y conserva
+ambas.
+
+**Por qué se anota y no se reemplaza**: el reemplazo literal rompe la sintaxis en
+expresiones verbales (`"me pita el oido"` → `"me tinnitus"`), y una nota
+agramatical le cuesta más a un modelo que la expresión popular original.
+Anotando se conserva la frase del paciente y se añade el término clínico.
+
+**Qué entradas se aplican**: no todas. Cada entrada del diccionario pasa por el
+control de ambigüedad (`recursos/ambiguedad.py`), que decide si se aplica
+siempre, solo con contexto cercano, o queda inactiva. No hay listas negras: lo
+que no se puede demostrar inequívoco no se aplica y queda en `desactivadas()`
+como lista de decisiones pendientes de revisar. Ejemplo de entrada condicionada
+al contexto: `"le salio un nacido en la pierna"` se normaliza (contexto de
+erupción) y `"recien nacido de 6 dias"` no (contexto de edad).
+
+**Las dos clases de ambigüedad que distingue `recursos/ambiguedad.py`**
+(trasladado de su docstring, E1.5): (a) la forma coincide con una palabra
+corriente del español (`"nacido"`, `"fuego"`, `"brote"`, `"masa"`), detectable
+consultando el diccionario de LanguageTool y el vocabulario de spaCy — si
+alguno la reconoce, la entrada queda inactiva salvo que declare contexto; (b)
+una sigla que significa cosas distintas según el servicio (`"iva"` puede ser
+un impuesto, un segmento hepático o una infección de vías aéreas), no
+detectable por máquina — exige que el diccionario declare de forma explícita
+qué entradas son seguras o ambiguas; lo no declarado no se expande. Formato de
+una entrada condicionada a contexto: `{"significado": "furunculo", "contexto":
+["salio", "grano", "piel", "pierna", "espalda"]}`.
 
 **Ejemplo (nota A)**, salida real:
 
@@ -302,20 +351,20 @@ no cambia.
 **Entrada**: `texto_normalizado` si la fase 3 corrió, si no `texto_corregido`
 (`columna_juicio`, decidido en `procesar.py:564`). **Salida**: `util` (interno) y
 `motivo_descarte`. No modifica el texto de ninguna columna. Módulo:
-`depuracion/depuracion.py` (627 líneas), función `evaluar(texto)`
-(`depuracion.py:529-591`).
+`depuracion/depuracion.py` (435 líneas), función `evaluar(texto)`
+(`depuracion.py:356-408`).
 
 **Artefactos que consume**: `salidas/lexico_clinico.json` (solo fuentes curadas:
 diccionario, catálogo, externo — el vocabulario biomédico queda fuera a propósito,
-`depuracion.py:53-57`), `embedding/datos/catalogo_sintomas.json` (vía
+`depuracion.py:20-23`), `embedding/datos/catalogo_sintomas.json` (vía
 `rutas.CATALOGO_SINTOMAS`) y `datos/diccionario_siglas.json` (grupo `geografia`,
 para restar topónimos del índice de evidencia clínica).
 
 | Constante | Valor | Archivo:línea |
 |---|---|---|
-| `PALABRAS_PARA_SALVAR` | `8` | `depuracion.py:160` — válvula de escape: una nota larga sin terminología reconocida se conserva igual |
-| `LONGITUD_MINIMA_RAIZ` | `3` | `depuracion.py:349` — por debajo, truncar deja de discriminar |
-| `LONGITUD_ROTULO_SIN_DOSPUNTOS` | `8` | `depuracion.py:246` — a partir de esta longitud, un rótulo de apartado se reconoce sin los dos puntos |
+| `PALABRAS_PARA_SALVAR` | `8` | `depuracion.py:108` — válvula de escape: una nota larga sin terminología reconocida se conserva igual |
+| `LONGITUD_MINIMA_RAIZ` | `3` | `depuracion.py:226` — por debajo, truncar deja de discriminar |
+| `LONGITUD_ROTULO_SIN_DOSPUNTOS` | `8` | `depuracion.py:158` — a partir de esta longitud, un rótulo de apartado se reconoce sin los dos puntos |
 
 **Subpasos**, en el orden de `evaluar()`: (1) nota vacía → `VACIA`; (2) todas las
 palabras son "respuesta vacía" (`"niega"`, `"normal"`...) → `PLANTILLA`; (3) quitar
@@ -327,8 +376,60 @@ instalado) → conservar; (6) la nota es larga (≥ 8 palabras con contenido) �
 conservar igual, por la válvula de escape; (7) menciona trámite → `TRAMITE`; en
 otro caso → `SIN_TERMINOLOGIA`.
 
-**Decisión enlazada**: ninguna en `decisiones/` con este formato, aunque el propio
-módulo documenta en comentarios cifras medidas — ver "Discrepancias" más abajo.
+**Por qué esta fase existe y por qué corre última** (trasladado del docstring de
+`depuracion.py`, E1.5): no todas las notas de triage hablan del paciente — una
+parte del corpus son plantillas contestadas en blanco, trámite puro o un
+fragmento suelto que no dice a qué vino nadie. Para el agrupamiento posterior eso
+no es solo peso muerto: son notas casi idénticas entre sí y ajenas a cualquier
+cuadro clínico, que forman grupos propios sin significado y ensucian los que sí
+lo tienen. El criterio — no queda en la nota ni un término del léxico clínico
+curado — se aplica **después** de corregir, normalizar y recortar a propósito:
+aplicado antes de la normalización, este mismo criterio descartaba miles de
+notas que sí tenían contenido (una caída descrita en lenguaje corriente, una
+sigla que el diccionario ya sabe traducir). Ninguna de ellas estaba vacía: eran
+huecos de vocabulario, y descartarlas habría borrado la evidencia del problema
+en vez de resolverlo. De ahí la regla: este módulo solo se ejecuta cuando ya se
+aplicó todo lo que el proyecto sabe traducir.
+
+**Qué se descarta y qué no**: ante la duda se conserva. Una nota descartada no
+vuelve, y el coste de arrastrar algo de ruido es mucho menor que el de perder un
+motivo de consulta real. Por eso el trámite solo descarta cuando además no hay
+nada clínico: una nota que solo dice cómo llegó el paciente se va, pero la que
+dice cómo llegó y por qué se conserva entera. Nada se descarta en silencio:
+`evaluar()` devuelve siempre el motivo, y el orquestador escribe todas las notas
+descartadas con su motivo en `notas_descartadas.csv`; una expresión clínica
+repetida ahí no es ruido, es una entrada que falta en el léxico.
+
+**Por qué hay listas cerradas además del léxico** (`PALABRAS_TRAMITE`,
+`PALABRAS_ANATOMIA`, `PALABRAS_TIEMPO`): coincidir con el léxico no basta como
+evidencia clínica, porque el CIE-10 no distingue el nombre de un síntoma del de
+una región anatómica ni del español corriente que arrastra en sus rúbricas.
+Frases como "consulta externa" o una parte del cuerpo suelta pasan el filtro con
+terminología reconocida y son ruido. Las tres listas son cortas y cerradas a
+propósito: enumeran los tres casos en que coincidir con el léxico no es
+evidencia de contenido clínico, y no pretenden cubrir el vocabulario
+administrativo del hospital. Nombrar una parte del cuerpo (`PALABRAS_ANATOMIA`)
+solo descarta cuando es lo único clínico de la nota; acompañada de un síntoma,
+la nota se conserva entera. `PALABRAS_TIEMPO` existe porque el CIE-10 contiene
+"semana", "pasada" y "pasado" en sus rúbricas: sin la lista,
+`'la semana pasada me hospitalizar y el viernes pasado sali'` daba tres
+"términos clínicos" — semana, pasada, pasado — y salía del pipeline como si
+fuera un motivo de consulta, cuando no dice ni un síntoma: cuenta un ingreso
+anterior.
+
+**Por qué no basta con quitar el rótulo del apartado**: hay que quitar también
+lo que contiene. `'ap (antecedentes personales): hta (hipertension arterial); aa: niega'`
+sin los rótulos queda `'hta (hipertension arterial); niega'`, que es
+terminología clínica legítima, así que la nota se conservaba — y no dice a qué
+vino el paciente, dice que es hipertenso. Los antecedentes son terminología
+clínica de verdad y aun así no dicen a qué vino nadie; para agrupar motivos de
+consulta eso es ruido, y ruido convincente porque pasa cualquier filtro que solo
+pregunte si hay terminología.
+
+**Decisión enlazada**: `decisiones/2026-09-16-depuracion-indice-clinico.md` (por
+qué comparar por raíz y no por igualdad exacta contra el léxico; por qué
+reconocer un rótulo sin los dos puntos a partir de cierta longitud; por qué
+quitar la expansión del rótulo antes de juzgar la nota).
 
 **Ejemplo (notas A y C)**, salida real:
 
@@ -497,11 +598,12 @@ aceptación y la dependencia de E4-E5.
 3. **Cifras medidas en comentarios de código, no en `decisiones/`.** La guía de
    estilo (`ARQUITECTURA.md` §6.3) exige que las cifras medidas vayan a
    `decisiones/` y no a los comentarios. Ejemplos con cifra propia sin
-   correspondencia en `decisiones/`: `depuracion.py:168-181` (296 notas),
-   `depuracion.py:231-246` (287 notas), `reduccion.py:258-268` (1.301 y 1.107
+   correspondencia en `decisiones/`: `reduccion.py:258-268` (1.301 y 1.107
    notas), `reduccion.py:300-321` (15,9 % del corpus, 369 notas, 60 de 153
    palabras en un caso), `reduccion.py:715-736` (189 notas, 70 % de los fallos,
-   13 de 17 costuras).
+   13 de 17 costuras). Las cifras que tenía `depuracion.py` (296 y 287 notas, y
+   los conteos 136/23/17/8 del índice por raíz) se trasladaron en E1.5 a
+   `decisiones/2026-09-16-depuracion-indice-clinico.md`.
 4. **`evaluacion/perturbar.py` no tiene ficha en `ARQUITECTURA.md`.** Confirmado
    con `python -m NLP.evaluacion.paridad_docs` el 2026-09-16: `"Faltantes
    (archivo sin ficha): 1 — evaluacion/perturbar.py"`. El archivo ya existe en

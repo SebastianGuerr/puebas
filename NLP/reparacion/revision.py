@@ -1,7 +1,7 @@
 """
-Revisión del informe de reparación, término a término (ítem E0.2 del plan).
+Revision del informe de reparacion, termino a termino (item E0.2 del plan).
 
-Ver NLP/docs/PLAN.md §8 (E0.2) y la bitácora del ítem. Uso:
+Ver docs/ARQUITECTURA.md, ficha `reparacion/revision.py` (S2.10). Uso:
 
     python -m NLP.reparacion.revision
     python -m NLP.reparacion.revision --termino cefalea
@@ -41,11 +41,8 @@ def terminos(detalle, prefijo):
 
 def por_termino(df, categoria, prefijo):
     """
-    {término: [OIDs]} para una categoría del informe.
-
-    Se indexa por término y no por nota porque un término basta para juzgar si
-    la pérdida importa, y los términos distintos son decenas donde las notas
-    son cientos.
+    {termino: [OIDs]} para una categoria del informe. Se indexa por termino y
+    no por nota: un termino basta para juzgar si la perdida importa.
     """
     indice = defaultdict(list)
     for _, fila in df[df["categoria"] == categoria].iterrows():

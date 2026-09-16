@@ -1,22 +1,8 @@
 """
-Barra de progreso para corridas largas.
-
-POR QUE ESTA AQUI Y NO EN procesar.py
-    Vivia dentro del orquestador, y cualquier otro script que tardara horas
-    -- vectorizar el corpus, agrupar embeddings, reconstruir un lexico --
-    tenia que elegir entre importar procesar.py entero (que abre la base de
-    datos y carga media docena de modelos) o escribirse otra barra distinta.
-
-    Aqui no depende de nada del proyecto: solo de time y sys.
-
-    from NLP.nucleo.progreso import barra, fin_barra
-
-    inicio = time.time()
-    for n, cosa in enumerate(cosas, 1):
-        ...
-        if n % 25 == 0 or n == total:
-            barra(n, total, inicio, "corrigiendo")
-    fin_barra()
+Barra de progreso para corridas largas, sin depender de nada del proyecto
+(solo `time`/`sys`), para que cualquier script largo la use sin tener que
+importar procesar.py entero. Ver ARQUITECTURA.md §2.2 (`progreso.py`) para
+un ejemplo de uso.
 """
 
 import sys
@@ -27,12 +13,9 @@ ANCHO_BARRA = 34
 
 def barra(hechos, total, inicio, etiqueta=""):
     """
-    Escribe una barra de progreso en la misma linea, con porcentaje, ritmo y
-    tiempo restante estimado.
-
-    Se reescribe la misma linea con un retorno de carro, en vez de saltar de
-    linea, para no llenar la terminal de miles de lineas en una corrida larga.
-    Al terminar, quien llama la cierra con fin_barra().
+    Escribe/reescribe una barra de progreso en la misma linea (retorno de
+    carro, no salto), con porcentaje, ritmo y tiempo restante. Quien llama
+    la cierra con fin_barra() al terminar.
     """
     total = max(total, 1)
     fraccion = hechos / total

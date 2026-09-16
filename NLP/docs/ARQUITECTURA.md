@@ -58,25 +58,57 @@ escribe `TRIAGE_LIMPIO`, `REPORTE_CAMBIOS`, `NOTAS_DESCARTADAS`, `CACHE_CORRECCI
 
 ### 2.2 `nucleo/`
 
-**`morfologia.py`** (363) — Capa más baja: todo lo que se decide por la forma de la
-palabra. `normalizar`, `sin_tildes` (conserva la ñ), `morfemas`, `es_termino_medico`,
+**`morfologia.py`** (326) — Capa más baja: todo lo que se decide por la forma de la
+palabra ('hipo-'/'hiper-' son opuestos por dos letras; '-ectomía'/'-itis' distinguen un
+procedimiento de una inflamación). `normalizar`, `sin_tildes` (conserva la ñ), `morfemas`, `es_termino_medico`,
 `prefijos`, `invierte_significado`, `cambia_familia`, `cambia_categoria`,
 `es_truncamiento`, `solo_cambia_terminacion`, `conserva_morfemas`, `parece_farmaco`,
 `es_restauracion_tilde`, `tiene_numero`. Sin dependencias internas. Importado por 14
 módulos y por `clustering/etiquetas.py`.
 
-**`linguistica.py`** (197) — spaCy `es_core_news_md`: `en_vocabulario` (con caché;
+**`linguistica.py`** (160) — spaCy `es_core_news_md`: `en_vocabulario` (con caché;
 ignora palabras de menos de 4 letras), `entidades` (PER/LOC/ORG/MISC), `disponible`,
-`iniciar`. Siempre para proteger, nunca para corregir. Sin el modelo devuelve False y
-conjunto vacío (por eso `requisitos.py` lo exige).
+`iniciar`. Siempre para proteger, nunca para corregir: sin esta señal, en una nota
+escrita toda en minúscula "pereira" se corrige a "perdida" y "hakim" (de válvula de
+Hakim) a "hacia". Sin el modelo devuelve False y conjunto vacío (por eso
+`requisitos.py` lo exige). Limitación conocida: el vocabulario procede de texto web y
+contiene ruido, de modo que alguna forma incorrecta figura como válida y queda
+protegida; esos casos se resuelven uno a uno en las correcciones directas del
+diccionario.
 
-**`clinico.py`** (256) — spaCy + medspaCy compartidos y la tabla `SECCIONES` (15
+**`clinico.py`** (226) — spaCy + medspaCy compartidos y la tabla `SECCIONES` (15
 categorías) / `SECCIONES_NO_CLINICAS` (8). Solo las tablas se usan (`depuracion.py`);
-`analizar`, `secciones`, `seccionador`, `nlp`, `disponible` no tienen llamadas.
+`analizar`, `secciones`, `seccionador`, `nlp`, `disponible` no tienen llamadas. Las
+secciones importan porque en una historia clínica la negación de un tramo no alcanza
+al siguiente (un "aa: niega" —antecedentes alérgicos— no puede propagarse al motivo de
+consulta) y permiten descartar tramos no clínicos sin enumerar frases una por una. Se
+analiza en minúsculas, como entrega la fase de limpieza: en una comparación no
+cuantificada (sin muestra ni cifra registradas) el texto en minúsculas rindió casi
+igual al original para etiquetas y dependencias, y bastante peor en mayúsculas; para
+reconocimiento de entidades ocurrió lo contrario, por lo que la recuperación de
+nombres propios se resuelve aparte en `recursos/casing.py`.
 
-**`reglas.py`** (344) — Qué tokens no se corrigen nunca. `cargar` (lee
-`diccionario_siglas.json` y llena `SIGLAS`, `EXPANDIBLES`, `DIRECTAS`, `PATRONES`, y
-también `SIGLAS_PROTEGIDAS_MANUAL` vía `cargar_siglas_protegidas`),
+**`negacion.py`** (E3.7) — Alcance de la negación clínica: disparadores previos,
+posteriores, pseudo-negación y terminadores desde `datos/lexicos/negacion.txt`
+(NegEx-MES más lista propia). `cargar`, `alcance` (tramos negados: disparador `pre`
+abre hacia adelante, `post` hacia atrás; se recortan en el primer terminador, la
+puntuación — incluida la coma — o `VENTANA_TOKENS = 8` tokens de contenido, lo que
+llegue antes; los disparadores dentro de un tramo `pseudo` se descartan), `marcar`
+(prefijo `NEG_`, para el consumo futuro de E5.2), `negado`, `diagnosticar`. Algoritmo
+propio de ventana con terminadores, no medspaCy ConText (razón en la bitácora). Motor
+flashtext con respaldo por expresión regular, como `fase3_normalizacion/normalizacion.py`.
+Todavía no lo llama ninguna fase del pipeline (pendiente de E5.2). Evaluado con 30 casos
+sintéticos: 29/30 alcances correctos. Decisión y evidencia:
+`bitacora/2026-09-16-E3.7.md`.
+
+**`reglas.py`** (302) — Qué tokens no se corrigen nunca, en capas: números y medidas,
+diccionario (siglas, fármacos, epónimos, marcas, términos), patrones (vértebras `l5`,
+dosis `5mg`, tokens de una letra), entidades, vocabulario, forma (longitud mínima,
+distancia de edición, diferencia de longitud). `cargar` (lee `diccionario_siglas.json`
+—agrupa por tema y admite las claves de control `_siglas_inequivocas`,
+`_siglas_ambiguas`, `_grupos_expandibles`, `patrones_protegidos`, más las de datos
+`no_restaurar_mayuscula` y `correcciones_directas`— y llena `SIGLAS`, `EXPANDIBLES`,
+`DIRECTAS`, `PATRONES`, y también `SIGLAS_PROTEGIDAS_MANUAL` vía `cargar_siglas_protegidas`),
 `esta_protegido`, `detectar_protegidos` (mayúsculas informativas del original),
 `entidades` (spaCy confirmado por corpus o vocabulario), `es_palabra_conocida`,
 `forma_aceptable`, `texto_gritado`. Reexporta de `morfologia` (`sin_tildes`, `morfemas`,
@@ -86,28 +118,59 @@ también `SIGLAS_PROTEGIDAS_MANUAL` vía `cargar_siglas_protegidas`),
 también bloquea las formas de `datos/lexicos/siglas_protegidas.txt`, independientes del
 diccionario). Decisión: `bitacora/2026-09-16-E3.2.md`.
 
-**`requisitos.py`** (194) — Comprueba artefactos y modelo antes de arrancar. `exigir`
+**`requisitos.py`** (149) — Comprueba artefactos y modelo antes de arrancar. `exigir`
 (detiene si falta un exigido), `revisar`, `main`. Tabla `ARTEFACTOS` con exigidos
 (léxico clínico, léxico externo, catálogo de síntomas, diccionario de siglas, modelo
-spaCy) y opcionales (casing, clasificador).
+spaCy) y opcionales (casing, clasificador). Nace de un incidente real: cuatro
+artefactos ausentes degradaban la corrida en silencio (CSV completo pero equivocado)
+en vez de fallar visiblemente. Medición y el criterio para separar exigido de opcional:
+`decisiones/2026-09-15-artefactos-y-version-corrector.md`.
 
-**`cache.py`** (89) — Caché `{clave: texto}` en disco; la clave incluye
-`version\x00texto\x00protegidos`. `clave`, `leer`, `guardar` (relee antes de añadir).
+**`cache.py`** (65) — Caché `{clave: texto}` en disco; la clave incluye
+`version\x00texto\x00protegidos`, para que cambiar de corrector invalide sola la caché
+anterior en vez de mezclar resultados de dos versiones. `clave`, `leer`, `guardar`
+(relee antes de añadir, para que corridas o bloques distintos sumen sin pisarse). Vive
+en `nucleo/` y no en la fase ortográfica porque no sabe nada de ortografía: sirve para
+cualquier paso caro y determinista sobre texto.
 
-**`datos.py`** (93) — Consultas a la BD parametrizadas: `muestra` (muestreo repetible
-con `HASHBYTES`, exclusión por tabla temporal), `columna_suelta`.
+**`datos.py`** (69) — Consultas a la BD parametrizadas: `muestra` (muestreo repetible
+con `HASHBYTES` sobre la llave, no `ORDER BY NEWID()` — un orden que cambia entre
+corridas cruzado con la caché de textos corregidos reaprovecharía casi nada al
+relanzar; exclusión de llaves ya procesadas filtrada en el `WHERE` vía tabla temporal,
+no en pandas después de descargar, para que `limite` cuente notas nuevas y no filas
+leídas), `columna_suelta`.
 
-**`conexion_bd.py`** (40) — `obtener_engine()`: `mssql+pyodbc`, host `ls-cobra`, base
-`DWSES`, autenticación integrada. Importado también por `clustering/fechas.py`.
+**`conexion_bd.py`** (34) — `obtener_engine()`: `mssql+pyodbc`, host `ls-cobra`, base
+`DWSES`, autenticación integrada de Windows (sin credenciales en el código ni en el
+repositorio; si se pasa a usuario/contraseña, deben leerse de variables de entorno).
+Importado también por `clustering/fechas.py`.
 
-**`salida.py`** (197) — `rotar` (conserva 3 versiones con fecha), `cabecera_compatible`,
+**`salida.py`** (152) — `rotar` (conserva 3 versiones con fecha; antes de existir,
+una corrida nueva sobrescribía la anterior en silencio y comparar dos versiones del
+pipeline exigía acordarse de copiar el CSV a mano), `cabecera_compatible`,
 `llaves_escritas`, `contar_filas`, `EscritorCSV` (utf-8-sig, CRLF, QUOTE_ALL; en modo
 reanudar abre en utf-8 sin BOM).
 
-**`progreso.py`** (53) — `barra`, `fin_barra`.
+**`progreso.py`** (36) — `barra`, `fin_barra`. Sin dependencias del proyecto (solo
+`time`/`sys`), para que cualquier script largo de horas (vectorizar el corpus, agrupar
+embeddings) la use sin tener que importar `procesar.py` entero:
 
-**`lt_compat.py`** (92) — Acceso a los `Match` de LanguageTool independiente de la
-versión: `offset`, `largo`, `span`, `regla`, `categoria`, `reemplazos`, `verificar`.
+```python
+from NLP.nucleo.progreso import barra, fin_barra
+inicio = time.time()
+for n, cosa in enumerate(cosas, 1):
+    if n % 25 == 0 or n == total:
+        barra(n, total, inicio, "corrigiendo")
+fin_barra()
+```
+
+**`lt_compat.py`** (81) — Acceso a los `Match` de LanguageTool independiente de la
+versión: la librería `language_tool_python` renombró los atributos de sus objetos
+`Match` entre versiones ('errorLength'/'ruleId' en las antiguas, 'error_length'/
+'rule_id' en las nuevas); leer el nombre equivocado lanza `AttributeError` en cada
+nota y, como el corrector captura la excepción y devuelve el texto sin tocar, la fase
+ortográfica quedaría anulada sin ningún mensaje de error. `offset`, `largo`, `span`,
+`regla`, `categoria`, `reemplazos`, `verificar`.
 
 ### 2.3 `fase1_limpieza/`
 
@@ -144,14 +207,19 @@ consulta `peso()`, no `esta_protegido()`) respete la misma lista.
 contra el léxico médico. `enmascarar(texto, corregir)` → `Nota`, `admisible`.
 `LONGITUD_MINIMA_CORRECCION = 6`.
 
-**`candidatos.py`** (169) — Elige entre las sugerencias de LanguageTool o se abstiene.
+**`candidatos.py`** (200) — Elige entre las sugerencias de LanguageTool o se abstiene.
 `elegir`, `construir_lexico`, `frecuencia`. `FRECUENCIA_CANDIDATO = 3`,
-`FRECUENCIA_DESEMPATE = 10`, `RATIO_DESEMPATE = 3`, `UMBRAL_TERMINO = 10`.
+`FRECUENCIA_DESEMPATE = 10`, `RATIO_DESEMPATE = 3`, `UMBRAL_TERMINO = 10`. E4.2
+(apagadas por defecto, `docs/decisiones/2026-09-16-E4.2.md`): `DISTANCIA_POR_TRAMOS =
+False`, `TRAMO_CORTO_MAXIMO = 5`, `TRAMO_MEDIO_MAXIMO = 9`, `DISTANCIA_TRAMO_CORTO = 1`,
+`DISTANCIA_TRAMO_MEDIO = 2`, `DISTANCIA_TRAMO_LARGO = 3`.
 
-**`vocabulario.py`** (326) — SymSpell sobre el vocabulario del corpus (solo formas que
+**`vocabulario.py`** (362) — SymSpell sobre el vocabulario del corpus (solo formas que
 spaCy reconoce). `construir`, `sugerir`, `corregir_texto`, `vecinos`, `disponible`.
 `DISTANCIA_MAXIMA = 3`, `LONGITUD_MINIMA = 5`, `LONGITUD_DISTANCIA_3 = 10`,
-`FRECUENCIA_TYPO = 2`, `RATIO_MINIMO = 10`.
+`FRECUENCIA_TYPO = 2`, `RATIO_MINIMO = 10`. E4.2 (apagadas por defecto,
+`docs/decisiones/2026-09-16-E4.2.md`): `DISTANCIA_POR_TRAMOS = False` (mismos tramos que
+en `candidatos.py`), `FRECUENCIA_MINIMA_CANDIDATO = 0`.
 
 **`sugerencias.py`** (234) — Candidatos para la capa de contexto desde cuatro fuentes
 (léxico, corpus, divisiones, expansiones por subsecuencia). `generar`,
@@ -192,7 +260,7 @@ concepto_normalizado)` en vez de anotar inline; apagada por defecto. Ver
 
 ### 2.6 `depuracion/`
 
-**`depuracion.py`** (627) `[G]` — Fase 4: señala (no elimina) notas sin contenido
+**`depuracion.py`** (435) `[G]` — Fase 4: señala (no elimina) notas sin contenido
 clínico, comparando por raíz contra el léxico curado. `evaluar` → (útil, motivo),
 `cargar` (índice de raíces; 10.402 con el léxico completo), `es_clinica` (por raíz),
 `terminos_clinicos`, `sin_apartados_no_clinicos`, `solo_tramite`, `resumen`. Motivos:
@@ -203,7 +271,7 @@ clínico, comparando por raíz contra el léxico curado. `evaluar` → (útil, m
 
 ### 2.7 `reduccion/`
 
-**`reduccion.py`** (877) `[G]` — Fase 5 por reglas: quita bloques que no son motivo de
+**`reduccion.py`** (884) `[G]` — Fase 5 por reglas: quita bloques que no son motivo de
 consulta (institucional, trámite, examen físico, conducta, antecedentes, acompañante,
 lugares, preámbulo temporal, demografía). `recortar(texto, agresivo)` (pasada agresiva
 y suave; acepta la que no deja costuras), `cargar_lexico`, `cargar_lugares`,
@@ -215,6 +283,9 @@ Freno por densidad al clasificador: `decisiones/2026-09-15-clasificador-freno-cl
 `QUITAR_GLOSA = False` (E5.1) — si `True`, `recortar()` quita también la anotación entre
 paréntesis que dejó la fase 3 (`RE_PARENTESIS`); apagada por defecto, no interfiere con
 `normalizacion.SEPARAR_CONCEPTO`. Ver `decisiones/2026-09-16-E5.1-glosas.md`.
+`USAR_CLASIFICADOR = True` (E5.5) — si `False`, `_quitar_clasificador()` no toca el
+texto aunque haya clasificador entrenado; sirve para medir con y sin el freno de
+`frases.py` sobre las mismas notas. Ver `decisiones/2026-09-16-E5.5.md`.
 
 **`extractor.py`** (593) `[G]` — Fase 5b: pide a Ollama (`qwen2.5:3b-instruct`) que
 copie los fragmentos que son motivo y verifica que existan literalmente en la nota.
@@ -232,27 +303,60 @@ curación). `MAX_LONGITUD = 64`, `UMBRAL_BUROCRATICO = 0.85`. Escribe
 
 ### 2.8 `recursos/`
 
-**`lexico.py`** (458) `[G]` — Léxico clínico de cuatro fuentes (diccionario, catálogo,
-externo CIE-10, modelo biomédico) más un grupo no clínico. `construir`, `guardar`,
-`cargar`, `contiene`, `fuente`, `cercano`, `vecinos`. Escribe `LEXICO_CLINICO` (32.315
-formas el 2026-09-15). La fuente biomédica no cuenta como curada en depuración ni
-reducción.
+**`lexico.py`** (458) `[G]` — Léxico clínico de cuatro fuentes, de más a menos fiable:
+`diccionario_siglas.json` (a mano), `catalogo_sintomas.json`, `lexico_externo.txt`
+(CIE-10 y otras fuentes) y el vocabulario del tokenizador biomédico
+(`PlanTL-GOB-ES/roberta-base-biomedical-clinical-es`, la fuente que aporta el volumen
+pero no decide sola: acierta casi siempre que dispara pero se le escapa cerca de la
+mitad de los términos reales). Al revisar las correcciones que el pipeline no supo
+hacer, en la mayoría de los casos la forma correcta no figuraba ni en el diccionario a
+mano ni en el vocabulario de spaCy — de ahí las otras fuentes. El vocabulario se
+congela en `LEXICO_CLINICO` (JSON) porque cargar el tokenizador cuesta segundos y exige
+`transformers`/`torch`; en producción solo se lee el archivo. `construir`, `guardar`,
+`cargar`, `contiene`, `fuente`, `cercano` (`abodominal`→`abdominal`,
+`esplectomia`→`esplenectomia`, `dilispidemia`→`dislipidemia`; empate → `None`, para no
+inventar un diagnóstico; candidatos deben compartir el arranque de la palabra),
+`vecinos`. Un grupo `NO_CLINICO` (municipios, instituciones, administrativo) se protege
+del corrector igual que el resto pero no cuenta como evidencia clínica en
+`depuracion.py` ni `reduccion.py` (dos preguntas distintas sobre la misma palabra: ver
+ejemplo `'dorada'`→`'morada'` sin la protección; o `'EMI servicio de emergencia
+medica'`, que sin este grupo aportaba `'servicio'` y `'hospital'` como si fueran
+terminología clínica). Escribe `LEXICO_CLINICO` (32.315 formas el 2026-09-15). La fuente
+biomédica no cuenta como curada en depuración ni reducción.
 
 **`casing.py`** (442) `[G]` — Aprende del corpus la capitalización de cada token (sigla,
 nombre propio, común). `construir`, `guardar`, `cargar`, `restaurar`, `clase`,
 `es_sigla`, `siglas`, `nombres_propios`, `mayusculas_informativas`, `disponible`.
 `MINIMO_OBSERVACIONES = 3`, `DOMINANCIA = 0.6`. Lee la BD en `main`; escribe
-`LEXICO_CASING` (4.843 entradas: 145 siglas, 164 nombres propios).
+`LEXICO_CASING` (4.843 entradas: 145 siglas, 164 nombres propios). La mayoría de
+las notas está toda en mayúsculas (`texto_gritado`), donde el contraste no existe;
+sustituye a un diccionario a mano porque un token como `ir` es sigla o verbo según
+el caso, y una lista negra solo podía proteger uno de los dos usos. Sobre el resto
+del corpus cuenta mayúscula/inicial/minúscula por token y clasifica por mayoría;
+sin evidencia suficiente (pocas observaciones o ningún uso dominante) se abstiene.
+`siglas(dominancia=...)` distingue dos exigencias: proteger un token basta con la
+mayoría simple, pero reescribirlo en mayúscula exige superar el umbral que se pase.
 
 **`ambiguedad.py`** (180) — Una entrada de diccionario no se aplica salvo que sea
 inequívoca o tenga su contexto cerca. `evaluar` → (libre | contexto | inactiva, contexto,
 motivo), `hay_contexto`, `es_palabra_corriente`. `VENTANA_CONTEXTO = 6`.
 
 **`detectar_siglas.py`** (169) — Script: tokens frecuentes que ningún diccionario
-reconoce, para revisión humana. Escribe `SIGLAS_DETECTADAS` (no existe en disco hoy).
+reconoce, para revisión humana. Perseguir siglas una a una no escala; la señal que sí
+está acotada es "token que nadie reconoce y que el personal repite". Un error de
+digitación cumple eso también, así que `candidatos()` distingue por frecuencia: si la
+corrección es `RATIO_TYPO = 10` veces más frecuente que el token, veredicto
+`typo_probable`; si no, `revisar` (candidato a sigla o término, exige criterio médico
+que el módulo no toma). `FRECUENCIA_MINIMA = 5`, `LONGITUD_MAXIMA = 8`. Escribe
+`SIGLAS_DETECTADAS` (no existe en disco hoy).
 
-**`extraer_cie10.py`** (178) — Script: vocabulario del PDF del CIE-10 →
-`LEXICO_EXTERNO`. `LONGITUD_MINIMA = 4`, `FRECUENCIA_MINIMA = 2`.
+**`extraer_cie10.py`** (178) — Script: vocabulario (no la jerarquía de códigos, difícil
+de reconstruir del PDF) del CIE-10-ES 3.ª edición (2020, Ministerio de Sanidad de
+España, Tomo I Diagnósticos) → `LEXICO_EXTERNO`. Descarta el aparato editorial
+("véase", "excluye", "ncoc"...) y lo que aparece una sola vez en el documento (artefacto
+de extracción). `--anexar` conserva lo que ya hubiera, para sumar otras fuentes (p. ej.
+nomenclátor de medicamentos del INVIMA) sin perder lo anterior. `LONGITUD_MINIMA = 4`,
+`FRECUENCIA_MINIMA = 2`.
 
 **`corpus_lexico.py`** (E3.3) — CLI `python -m NLP.recursos.corpus_lexico`: cuenta la
 frecuencia de cada forma sobre `DIM_TRIAGE.HCTMOTCON` completa (94.226 notas el
@@ -275,6 +379,20 @@ escribirlo en el manifiesto), `main` (`--listar`, `--solo`, `--verificar`). Nunc
 escribe en `recursos_manifiesto.json`: lo fija una persona (ver bitácora). Define
 `RECURSOS_EXTERNOS` y `MANIFIESTO` en el propio módulo, no en `rutas.py` (pendiente de
 mover; ver bitácora del ítem).
+
+**`abreviaturas.py`** (E3.8) — CLI `python -m NLP.recursos.abreviaturas`: mina el
+corpus con la técnica AbreMES, patrones `SIGLA (definición)` y `definición (SIGLA)`
+(`candidatos_sigla_definicion`, `candidatos_definicion_sigla`, con límites de palabra
+para no cortar una racha de mayúsculas), agrega ocurrencias por sigla (`minar`),
+descarta las que son palabra corriente del español vía
+`nucleo.linguistica.en_vocabulario` (`candidatos`; el corpus está en mayúsculas y sin
+ese filtro la mayoría de los candidatos eran incidentales, no siglas) y marca si ya
+está en `diccionario_siglas.json` (`siglas_conocidas`, sin escribir en él). Lee la BD
+completa (`DIM_TRIAGE.HCTMOTCON`, 94.238 notas el 2026-09-16), con respaldo en
+`TRIAGE_LIMPIO` columna `texto_original` si no responde. `FRECUENCIA_MINIMA = 1`
+(medido: con 2 el filtro deja 0 candidatos nuevos no ambiguos; ver bitácora). Escribe
+con `nucleo/salida.EscritorCSV` en `salidas/e3_7_8/abreviaturas_candidatas.csv`.
+Bitácora: `bitacora/2026-09-16-E3.8.md`.
 
 ### 2.9 `evaluacion/`
 
@@ -325,20 +443,45 @@ spaCy/LanguageTool/sklearn). `main` (`--gold`, `--csv` con `TRIAGE_LIMPIO` por d
 `salidas/metricas/<fecha>-<item>.json` y una fila en `salidas/metricas/historico.csv`
 (vía `nucleo/salida.EscritorCSV`).
 
+**`calidad.py`** (E0.5) — Informe agregado de la calidad de un CSV de triage, sin exponer
+texto de notas: retención de terminología clínica en `texto_embedding` frente a
+`texto_original`, recorte, notas vacías o muy cortas, proporción con glosa, longitud frente
+a la ventana de `bge-m3` e intervención del corrector (separando los cambios que solo
+restauran una tilde). `medir(df)` devuelve el diccionario; `--comparar <csv>` cruza dos
+versiones por `OID`; `--guardar` escribe `salidas/metricas/<fecha>-<item>.json`. Las filas
+de retención van sobre las notas que tienen terminología en el original, no sobre el total,
+y el informe lo imprime al pie.
+
+**`perturbar.py`** (E2.3) — Construye el corpus de errores autoinducidos y el conjunto
+limpio a partir de `triage_limpio.csv`: aplica reglas de perturbación (transposición,
+omisión, duplicación, homófonos, dígrafos, tildes, teclado adyacente) con semilla fija
+sobre notas cuyos tokens son todos frecuentes. Escribe `salidas/evaluacion/autoinducido.csv`
+y `salidas/evaluacion/limpio.csv`, deterministas: la misma semilla da el mismo sha256.
+
 ### 2.10 `reparacion/`
 
 **`reparar.py`** (329) — Reprocesa `triage_limpio.csv` usando `texto_original` como
-entrada y las funciones de `procesar.py` (sin duplicar fases). `reparar`,
-`cargar_recursos` (mismo orden de carga que una corrida normal), `cargar_frecuencias`
-(BD; el CSV como respaldo), `comparar`, `escribir_informe`, `main` (`--limite`,
-`--aplicar`, `--con-llm`, `--csv`). Escribe `triage_reparado.csv` e
-`informe_reparacion.csv` (rutas definidas aquí, no en `rutas.py`; ver §5) y, con
-`--aplicar`, una copia `triage_limpio.previo-<sello>.csv`.
+entrada y las funciones de `procesar.py` (sin duplicar fases: las notas entran por la
+misma puerta que las de la base de datos, renombrando la columna; reescribir las fases
+aquí produciría dos pipelines que se separan con el tiempo). `reparar`,
+`cargar_recursos` (mismo orden de carga que una corrida normal — el orden importa
+porque `normalizacion.disponible()` solo responde tras llamar a `cargar()`),
+`cargar_frecuencias` (BD, para contar sobre un corpus grande y distinguir mejor una
+palabra rara de una errata; el CSV como respaldo si la BD no responde), `comparar`,
+`escribir_informe`, `informar` (agrupa las pérdidas por término distinto, no por nota:
+sobre miles de notas los términos que se repiten son unas pocas decenas y un término
+basta para juzgar si la pérdida importa), `main` (`--limite`, `--aplicar`, `--con-llm`,
+`--csv`). Por defecto no pisa nada: escribe `triage_reparado.csv` e
+`informe_reparacion.csv` (rutas definidas aquí, no en `rutas.py`; ver §5) y solo
+`--aplicar` sustituye `triage_limpio.csv`, apartando antes la versión anterior con
+`salida.rotar()`; si el informe trae `perdio_motivo`, `--aplicar` se niega
+(`SystemExit`).
 
 **`comparacion.py`** (141) — `clasificar(vieja, nueva)` → categoría en orden de
 gravedad (`perdio_motivo`, `recupero_motivo`, `ortografia`, `normalizacion`, `intacta`)
 y detalle; `resumir`. La terminología se cuenta solo si los léxicos de `depuracion` y
-`reduccion` coinciden.
+`reduccion` coinciden (menos falsas alarmas que exigir uno solo; medición y motivo en
+`decisiones/2026-09-16-reparacion-doble-lexico-terminologia.md`).
 
 **`revision.py`** (E0.2) — Lee `informe_reparacion.csv` y lo deja revisable: recuento
 por categoría, comprobación de `recupero_motivo > perdio_motivo` y la lista **completa**
@@ -440,6 +583,8 @@ detectar_siglas -> rutas; dif.: ambiguedad, ortografia, vocabulario, candidatos,
                    conexion_bd, procesar
 extraer_cie10   -> rutas
 descargar       -> rutas
+negacion        -> nucleo.morfologia
+abreviaturas    -> rutas, nucleo.salida; dif.: nucleo.{conexion_bd, linguistica}, procesar
 ```
 
 Módulos hoja: `rutas`, `morfologia`, `linguistica`, `clinico`, `cache`, `datos`,
@@ -455,16 +600,20 @@ Ciclos, todos rotos con importaciones diferidas: `terminologia ↔ candidatos`,
 LTRIM(RTRIM(...)) <> ''`. Leen la tabla: `procesar.py`, `recursos/casing.py` (completa),
 `evaluacion/escaneo.py --bd`, `recursos/detectar_siglas.py`, `reparacion/reparar.py`
 (frecuencias), `recursos/corpus_lexico.py` (completa; E3.3, con respaldo en
-`TRIAGE_LIMPIO` si la base no responde).
+`TRIAGE_LIMPIO` si la base no responde), `recursos/abreviaturas.py` (completa; E3.8,
+mismo respaldo).
 
 **`datos/`** (versionado): `Clasif_Inter_Enfer_CIE_10_rev_3_ed.diag.pdf` (7,2 MB),
 `diccionario_coloquial.json`, `diccionario_siglas.json`, `frases_etiquetadas.csv`
 (1,4 MB, curado a mano), `lexico_externo.txt`, `referencia_correcciones.json`,
 `recursos_manifiesto.json` (14 recursos registrados el 2026-09-16: url, fuente_oficial,
 licencia, sha256, tamaño, fechas, `archivos_extraer`, `estado`; ver `recursos/descargar.py`
-y REFERENCIAS.md §2). `datos/lexicos/` (E3.2, E3.3): `siglas_protegidas.txt` (40 formas
-a mano, cabecera con fuente y criterio; la lee `nucleo/reglas.cargar_siglas_protegidas`),
-`corpus_frecuencia.tsv` (`forma\tfrecuencia`; la lee `recursos/corpus_lexico.py`).
+y REFERENCIAS.md §2). `datos/lexicos/` (E3.2, E3.3, E3.7): `siglas_protegidas.txt` (40
+formas a mano, cabecera con fuente y criterio; la lee `nucleo/reglas.cargar_siglas_protegidas`),
+`corpus_frecuencia.tsv` (`forma\tfrecuencia`; la lee `recursos/corpus_lexico.py`),
+`negacion.txt` (243 disparadores en 4 categorías — `pre`, `post`, `pseudo`,
+`terminador` —, NegEx-MES licencia MIT más lista propia; cabecera con fuente, licencia
+y sha256; la lee `nucleo/negacion.cargar`).
 
 **`recursos_externos/`** (generado por `recursos/descargar.py`, ignorado por git): un
 subdirectorio por recurso del manifiesto; solo el archivo descargado (y, si el
@@ -486,6 +635,7 @@ NLP.recursos.descargar --solo <nombre>`.
 | `pares_correccion.csv` | `evaluacion/pares.py` | `original, correccion, ocurrencias, freq_original, freq_correccion, distancia, fonetica_igual, cubo, decision_humana` |
 | `metricas/<fecha>-<item>.json`, `metricas/historico.csv` | `evaluacion/metricas.py` | JSON: doce claves de `PLAN.md` §4.5 más `cer`, `wer`; CSV: `fecha, item, version_corrector, F0.5, precision_deteccion, cobertura_deteccion, precision_correccion, cobertura_correccion, tasa_intervencion, acuerdo_motivo, notas, comentario` |
 | `siglas_detectadas.csv`, `muestra_revision.csv`, `referencia.csv` | scripts de `recursos/` y `evaluacion/` | no existen en disco hoy |
+| `e3_7_8/abreviaturas_candidatas.csv` | `recursos/abreviaturas.py` | `sigla, definicion, ocurrencias, ocurrencias_totales, ambigua, ya_en_diccionario, definiciones_alternativas` |
 
 Formato de escritura: `nucleo/salida.py` produce utf-8-sig, CRLF, QUOTE_ALL;
 `reparar.py` usa pandas (QUOTE_MINIMAL) — se unifica en E0.4.
@@ -632,3 +782,7 @@ las etapas (`PLAN.md` §4.2).
 | 2026-09-16 | E3.2 | Nuevo `datos/lexicos/siglas_protegidas.txt` (40 formas); `nucleo/reglas.py` (§2.2): `cargar_siglas_protegidas`, `SIGLAS_PROTEGIDAS_MANUAL`, bandera `PROTEGER_SIGLAS_LISTA_MANUAL`; `fase2_ortografia/pesos.py` (§2.4): `peso()` reconoce la misma lista (motivo `sigla_protegida_manual`). Fila en §4 (`datos/lexicos/`). Bitácora `bitacora/2026-09-16-E3.2.md` |
 | 2026-09-16 | E6.3 | §5 reverificada por grep (inventario de código sin llamadas corregido: dos entradas obsoletas retiradas, cinco funciones y sus imports huérfanos eliminados, dos reclasificadas como herramienta de inspección); nuevo hallazgo de parámetro muerto (`reduccion.recortar`) y de docstring corregido (`fase2_ortografia/sugerencias.py`). Bitácora `bitacora/2026-09-16-E6.3.md` |
 | 2026-09-16 | E3.3 | Nuevo `recursos/corpus_lexico.py` (ficha en §2.8, línea en §3) y `datos/lexicos/corpus_frecuencia.tsv` (34.602 formas, contado sobre la BD completa; fila en §4). Umbral `coherencia.FRECUENCIA_RESPALDO_CORPUS` medido con las frecuencias del corpus completo; recomendación en `bitacora/2026-09-16-E3.3.md` (no se edita `coherencia.py` en este ítem) |
+| 2026-09-16 | E4.2 | `fase2_ortografia/vocabulario.py` y `candidatos.py` (§2.9): banderas nuevas `DISTANCIA_POR_TRAMOS` y `FRECUENCIA_MINIMA_CANDIDATO`, apagadas por defecto; comportamiento por defecto sin cambios (descarte medido). Decisión en `decisiones/2026-09-16-E4.2.md`, bitácora `bitacora/2026-09-16-E4.2.md` |
+| 2026-09-16 | E5.5 | `USAR_CLASIFICADOR = True` nueva en `reduccion/reduccion.py` (§2.7), sin cambio de comportamiento por defecto; permite medir `_quitar_clasificador()` activado/desactivado. Decisión en `decisiones/2026-09-16-E5.5.md`, bitácora `bitacora/2026-09-16-E5.5.md` |
+| 2026-09-16 | E3.7 | Nuevo `nucleo/negacion.py` (ficha en §2.2, línea en §3) y `datos/lexicos/negacion.txt` (243 disparadores; fila en §4). NegEx-MES descargado (Zenodo había caído en E3.1; reintentado con éxito, `datos/recursos_manifiesto.json` actualizado a `verificado`). Evaluado con 30 casos sintéticos: 29/30. Bitácora `bitacora/2026-09-16-E3.7.md` |
+| 2026-09-16 | E3.8 | Nuevo `recursos/abreviaturas.py` (ficha en §2.8, línea en §3) y `salidas/e3_7_8/abreviaturas_candidatas.csv` (fila en §4). Técnica AbreMES sobre la BD completa (94.238 notas); filtro de palabra corriente del español necesario porque el corpus está en mayúsculas. Bitácora `bitacora/2026-09-16-E3.8.md` |

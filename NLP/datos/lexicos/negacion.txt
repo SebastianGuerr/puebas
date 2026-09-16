@@ -170,6 +170,9 @@ descarta
 no presenta
 no evidencia de
 no manifiesta
+nunca
+niegan
+ausente
 
 # categoria: post (negex-mes)
 debe descartarse para

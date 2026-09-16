@@ -1,32 +1,9 @@
 """
-Pipeline clínico compartido: spaCy con el tokenizador y el seccionador de
-medspaCy, cargado una sola vez para todo el proceso.
-
-Cargar el modelo cuesta varios segundos, así que este módulo lo levanta bajo
-demanda y lo reutiliza. Sobre esa base ofrece dos servicios:
-
-    analizar(texto)     un Doc de spaCy sobre la nota
-    secciones(texto)    los tramos de la nota con su categoría
-
-No sustituye a `linguistica.py`, que sigue siendo la interfaz estrecha de
-vocabulario y entidades que consume el resto del paquete.
-
-POR QUÉ IMPORTAN LAS SECCIONES
-    En una historia clínica, la negación de un tramo no alcanza al siguiente. Un
-    'aa: niega' (antecedentes alérgicos) no puede propagarse al motivo de
-    consulta y marcar como ausente un dolor que el paciente sí refiere. Los
-    encabezados son la frontera que lo impide, y además permiten descartar
-    tramos que no son motivo de consulta sin enumerar frases una por una.
-
-POR QUÉ SE ANALIZA EN MINÚSCULAS
-    Se comparó el análisis de notas con capitalización normal contra el de esas
-    mismas notas en mayúsculas y en minúsculas. Para etiquetas morfológicas y
-    dependencias, el texto en minúsculas rinde casi como el original y el texto
-    en mayúsculas se degrada mucho. Para el reconocimiento de entidades ocurre
-    lo contrario: en minúsculas se pierde la mayor parte. Por eso aquí se
-    analiza en minúsculas, que es como entrega el texto la fase de limpieza, y
-    la recuperación de nombres propios se resuelve aparte en
-    `recursos/casing.py`.
+Pipeline clinico compartido: spaCy + medspaCy (tokenizador y seccionador),
+cargado una sola vez. `analizar(texto)` da el Doc; `secciones(texto)` da los
+tramos con su categoria. No sustituye a `linguistica.py` (vocabulario y
+entidades). Ver ARQUITECTURA.md §2.2 (`clinico.py`) para el porque de las
+secciones y del analisis en minusculas.
 """
 
 import threading
@@ -207,18 +184,9 @@ def seccionador():
 
 def secciones(texto):
     """
-    Tramos de la nota con su categoría, como lista de tuplas
-    (categoria, inicio, fin, texto), con los desplazamientos en CARACTERES
-    referidos al texto recibido.
-
-    Devuelve una lista vacía si medspaCy no está instalado. El tramo anterior al
-    primer encabezado se etiqueta como SIN_ENCABEZADO en lugar de dejarlo sin
-    categoría, porque en triage es el caso más frecuente.
-
-    Los límites se calculan recortando los tokens del Doc a mano: en la versión
-    de medspaCy usada, `Section.body_span` no es un Span de spaCy sino un par de
-    índices de token, y además así se obtienen directamente los
-    desplazamientos en caracteres que espera quien llama.
+    Tramos de la nota con su categoria: lista de (categoria, inicio, fin,
+    texto), desplazamientos en caracteres. Lista vacia si medspaCy no esta
+    instalado; el tramo antes del primer encabezado va como SIN_ENCABEZADO.
     """
     if seccionador() is None:
         return []
@@ -228,6 +196,8 @@ def secciones(texto):
 
     salida = []
     for seccion in doc._.sections:
+        # en la version de medspaCy usada, body_start/body_end son indices de
+        # token (no un Span de spaCy); se recorta el Doc a mano con ellos
         inicio, fin = seccion.body_start, seccion.body_end
         if inicio is None or fin is None or fin <= inicio:
             continue

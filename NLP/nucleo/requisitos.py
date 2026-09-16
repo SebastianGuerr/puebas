@@ -1,51 +1,9 @@
 """
-Comprueba que estén los artefactos que el pipeline da por hechos.
-
-    python -m NLP.nucleo.requisitos        # informe, no cambia nada
-
-POR QUE EXISTE ESTE ARCHIVO
-    El 15 de septiembre se auditó una corrida entera y el resultado era malo:
-    notas mal agrupadas, motivos de consulta perdidos y correcciones que
-    cambiaban el sentido. La causa no estaba en ningún algoritmo. Faltaban
-    cuatro artefactos que nadie había construido, y cada módulo que los
-    necesitaba reaccionaba igual: seguir adelante como si no pasara nada.
-
-        lexico_clinico.json     cargar_lexico() devuelve 0 -> _LEXICO = set()
-                                -> _es_clinica() False para TODA palabra
-                                -> densidad_clinica() 0.0 para TODA oración
-                                -> en _quitar_institucional(), la condición
-                                   'larga y poco clínica' se cumple SIEMPRE y
-                                   se descarta toda oración de 8 palabras o más.
-                                Medido: el 25,1% de las notas perdía contenido
-                                clínico, y el 18,1% perdía más de la mitad.
-
-        es_core_news_md         linguistica.disponible() False
-                                -> en_vocabulario() False para TODA palabra, o
-                                   sea que ninguna está protegida por el
-                                   diccionario, y entidades() conjunto vacío, o
-                                   sea cero protección para nombres propios.
-                                Es la fase 2 corrigiendo a ciegas.
-
-        lexico_casing.json      cargar() devuelve 0 y no se restaura ninguna
-                                sigla a mayúscula.
-
-        clasificador_frases     la capa que cubre lo que los patrones no ven
-                                queda fuera y nadie lo dice.
-
-    Ninguno de los cuatro fallaba. Los cuatro DEGRADABAN EN SILENCIO, que es
-    peor: una corrida que falla se repite, y una corrida que se degrada se
-    publica.
-
-EL CRITERIO PARA SEPARAR exigido DE opcional
-    No es lo importante que sea el artefacto, sino si su ausencia se nota.
-
-    Es `exigido` cuando sin él el pipeline produce un resultado COMPLETO Y
-    EQUIVOCADO, porque entonces nada aguas abajo puede detectarlo: el CSV tiene
-    todas sus filas y todas sus columnas llenas.
-
-    Es `opcional` cuando su ausencia deja una señal visible -- una columna
-    vacía, un aviso, menos filas -- y por tanto se puede descubrir mirando la
-    salida.
+Comprueba que esten los artefactos que el pipeline da por hechos antes de
+arrancar (`python -m NLP.nucleo.requisitos`: informe, no cambia nada). El
+incidente que motivo este modulo y el criterio para separar `exigido` de
+`opcional` estan en `decisiones/2026-09-15-artefactos-y-version-corrector.md`
+y en ARQUITECTURA.md §2.2 (`requisitos.py`).
 """
 
 import sys
@@ -141,11 +99,8 @@ def revisar():
 def exigir(estricto=True):
     """
     Interrumpe la corrida si falta algo cuya ausencia no se notaria despues.
-
-    Con estricto=False solo avisa. Esa puerta existe para poder reconstruir un
-    artefacto usando el propio pipeline -- recursos/lexico.py necesita importar
-    el paquete y todavia no hay lexico --, no para saltarse la comprobacion en
-    una corrida normal.
+    Con estricto=False solo avisa (para reconstruir un artefacto usando el
+    propio pipeline, no para saltarse la comprobacion en una corrida normal).
     """
     exigidos, opcionales = revisar()
 

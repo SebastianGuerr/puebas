@@ -1,14 +1,8 @@
 """
-Conexión a la base de datos DWSES.
-
-Único punto del paquete que construye el engine de SQLAlchemy. La autenticación
-es integrada de Windows, de modo que no hay credenciales en el código ni en el
-repositorio; si en algún momento se pasa a usuario y contraseña, deben leerse de
-variables de entorno.
-
-Ejecutado directamente comprueba que la conexión se establece:
-
-    python -m NLP.nucleo.conexion_bd
+Conexion a la base de datos DWSES: unico punto del paquete que construye el
+engine de SQLAlchemy (autenticacion integrada de Windows). Ejecutado
+directamente (`python -m NLP.nucleo.conexion_bd`) comprueba la conexion. Ver
+ARQUITECTURA.md §2.2 (`conexion_bd.py`).
 """
 
 from sqlalchemy import create_engine

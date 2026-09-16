@@ -1,54 +1,10 @@
 """
-Clasificador de tramos: decidir si una frase habla del paciente o del servicio.
-
-QUÉ PROBLEMA RESUELVE, Y POR QUÉ NO LO RESUELVE UN PATRÓN MÁS
-    reduccion.py quita lo que sobra de la nota con una lista de expresiones
-    regulares: el bloque institucional, el examen físico, la conducta, el
-    acompañante, el modo de llegada, el preámbulo temporal, los topónimos. Cada
-    una tapa los casos que alguien enumeró, y se escapa el siguiente. Es el
-    mismo techo que tienen las listas negras de siglas, y por la misma razón:
-    enumerar no generaliza.
-
-    Y hay mucho que enumerar. Lo que sobra son frases estereotipadas que se
-    repiten casi iguales en miles de notas, pero 'casi iguales' no es 'iguales':
-    en cuanto una sede cambia la redacción de su aviso, el patrón deja de
-    encajar y el bloque vuelve al texto del embedding.
-
-LA IDEA
-    Una frase administrativa y una frase de paciente no se distinguen por sus
-    palabras exactas sino por de qué hablan, y eso es justo lo que mide un
-    codificador de frases. Se representa cada tramo como un vector y se entrena
-    un clasificador pequeño encima. Lo que aprende no es la lista de frases:
-    es la diferencia entre las dos poblaciones.
-
-DE DÓNDE SALEN LAS ETIQUETAS
-    De las propias reglas que ya existen. Los patrones de reduccion.py tienen
-    mala cobertura pero buena precisión: cuando encajan, aciertan. Sirven
-    entonces como etiquetador débil para construir el conjunto de entrenamiento
-    sin etiquetar nada a mano, y el clasificador generaliza más allá de ellos.
-
-    Los tramos en los que ninguna regla se moja quedan SIN etiqueta y no entran
-    a entrenar. Entrenar sobre una etiqueta dudosa enseña la duda.
-
-    El conjunto se escribe en datos/frases_etiquetadas.csv, que se versiona y se
-    corrige a mano: es la forma de mejorar el clasificador sin tocar el código.
-
-POR QUÉ ESTE CODIFICADOR Y NO bge-m3
-    El proyecto ya tiene descargado 'roberta-base-biomedical-clinical-es', que
-    usa la capa de contexto. Medido en esta máquina, sobre CPU:
-
-        roberta-clinico   76 frases/s   ->  8,9 min para los 40.602 tramos
-        bge-m3            15 frases/s   -> 46,0 min
-
-    Cinco veces más rápido, ya está en disco, y está entrenado sobre historias
-    clínicas en español, que es exactamente este dominio. bge-m3 se reserva para
-    la fase de embeddings, donde hace falta un espacio multilingüe.
-
-QUÉ HACE Y QUÉ NO
-    Marca tramos, no los borra. Quien decide qué se quita es reduccion.py, y
-    solo quita un tramo cuando el clasificador está seguro. Ante la duda se
-    conserva, que es la asimetría de coste de todo el proyecto: arrastrar una
-    frase administrativa es barato, perder el motivo de consulta no lo es.
+Clasificador de tramos: decidir si una frase habla del paciente o del servicio
+(RoBERTa clinico congelado + regresion logistica), para cubrir el tramite que
+los patrones de reduccion.py no enumeran. Marca, no borra: decide reduccion.py.
+Ver NLP/docs/FLUJO.md seccion 7,
+NLP/docs/decisiones/2026-09-16-frases-codificador.md y
+NLP/docs/decisiones/2026-09-16-reduccion-clasificador-cobertura.md.
 """
 
 import csv
@@ -96,13 +52,9 @@ def segmentos(texto):
 
 def etiquetar_debil(tramo):
     """
-    La etiqueta que dan las reglas actuales, o None si ninguna se moja.
-
-    Las reglas de reduccion.py deciden 'burocratico' y el léxico clínico curado
-    de la depuracion decide 'clinico'. Cuando ambas cosas ocurren a la vez el
-    tramo es ambiguo -- una frase de conducta que menciona un síntoma -- y se
-    devuelve None: es justo el caso que el clasificador tiene que aprender a
-    resolver, y no se le puede enseñar con una etiqueta inventada.
+    La etiqueta que dan las reglas actuales, o None si ninguna se moja o si
+    las dos se mojan a la vez (tramo ambiguo, no se le puede enseñar al
+    clasificador con una etiqueta inventada).
     """
     from NLP.depuracion import depuracion
     from NLP.reduccion import reduccion
@@ -126,14 +78,10 @@ def etiquetar_debil(tramo):
 
 def construir_datos(csv_entrada=None, salida=None, columna="texto_normalizado"):
     """
-    Escribe el conjunto de entrenamiento a partir del corpus ya procesado.
-
-    Recorre las notas, parte en tramos, etiqueta con las reglas y guarda un
-    tramo distinto por fila. Devuelve (n_burocraticos, n_clinicos, n_sin_etiqueta).
-
-    El archivo va a datos/ y no a salidas/ a propósito: en cuanto alguien
-    corrige una etiqueta a mano, deja de ser regenerable y pasa a ser trabajo
-    humano que no se puede perder.
+    Escribe el conjunto de entrenamiento a datos/frases_etiquetadas.csv,
+    etiquetando cada tramo con las reglas existentes (curado a mano despues,
+    NO se regenera desde salidas/). Devuelve
+    (n_burocraticos, n_clinicos, n_sin_etiqueta).
     """
     import pandas as pd
 
@@ -293,11 +241,8 @@ def probabilidades(tramos):
     """
     Probabilidad de ser administrativo, una por tramo, o None si no hay modelo.
 
-    Se cachea por tramo. En el corpus hay 62.557 tramos pero solo 40.602
-    distintos, y las frases estereotipadas -- que son justo las que interesa
-    clasificar -- se repiten cientos de veces: 'paciente en el momento
-    clinicamente estable' aparece 367 veces. Sin cache se vectorizaria cada una
-    de esas 367 veces para obtener el mismo numero.
+    Se cachea por tramo (las frases estereotipadas se repiten cientos de veces
+    en el corpus). Ver docs/decisiones/2026-09-16-frases-codificador.md.
     """
     if not disponible() or not tramos:
         return None

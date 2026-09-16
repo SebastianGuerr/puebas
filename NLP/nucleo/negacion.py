@@ -1,11 +1,9 @@
 """
-Alcance de la negacion clinica (E3.7, NLP/docs/PLAN.md §8; NLP/docs/bitacora/
-2026-09-16-E3.7.md). Disparadores en NLP/datos/lexicos/negacion.txt.
-
-Algoritmo propio de ventana con terminadores (no medspaCy: ConText liga un
-modificador a una entidad ya reconocida por un NER clinico, que este proyecto
-todavia no tiene -ver bitacora, seccion Decision). Este modulo solo calcula el
-alcance; prefijar los tokens con NEG_ antes de vectorizar es tarea de E5.2.
+Alcance de la negacion clinica (E3.7, NLP/docs/PLAN.md §8). Disparadores en
+NLP/datos/lexicos/negacion.txt; algoritmo y decisiones en
+NLP/docs/bitacora/2026-09-16-E3.7.md. Ventana con terminadores, no medspaCy
+(ver bitacora, seccion Decision). Prefijar con NEG_ antes de vectorizar es
+tarea de E5.2; este modulo solo calcula el alcance.
 """
 
 import re
@@ -19,13 +17,26 @@ RUTA_NEGACION = Path(__file__).resolve().parent.parent / "datos" / "lexicos" / "
 # puntuacion: 'niega dolor,' no debe gastar ventana en la coma.
 RE_TOKEN = re.compile(r"[a-záéíóúüñA-ZÁÉÍÓÚÜÑ]+")
 
-# Puntuacion que cierra una oracion y, con ella, cualquier alcance abierto.
-RE_FIN_ORACION = re.compile(r"[.;:!?\n]")
+# Puntuacion que cierra el alcance (PLAN.md §8, ficha E3.7: "terminadores de
+# alcance: pero, aunque, salvo, excepto, puntuacion"). La coma se incluye
+# porque en la nota de triage separa clausulas de polaridad distinta
+# ('niega dolor, refiere cefalea'): sin ella el alcance se comia la clausula
+# siguiente. Los dos puntos se excluyen a proposito: en la nota de triage
+# introducen un resultado o un rotulo ('prueba de embarazo: negativo',
+# 'ta: 120/80'), no separan clausulas, y cortar ahi vaciaba el alcance hacia
+# atras de un disparador 'post' (ver bitacora, casos de la evaluacion
+# sintetica).
+RE_FIN_ORACION = re.compile(r"[.,;!?\n]")
 
-# Tokens de contenido que abarca el alcance a cada lado del disparador
-# (INVESTIGACION.md §6.2: NegEx usa 3-4; aqui se mide con el conjunto
-# sintetico de la bitacora y se deja en 5 -ver Decision).
-VENTANA_TOKENS = 5
+# Tokens de contenido que abarca el alcance a cada lado del disparador.
+# INVESTIGACION.md §6.2 cita 3-4 (NegEx sobre informes de radiologia en
+# ingles, un hallazgo por disparador). La nota de triage suele enumerar
+# varios sintomas tras un 'niega' ('niega fiebre, escalofrios, sudoracion
+# nocturna'): con 4 se truncaban listas reales del conjunto sintetico de la
+# bitacora sin que hubiera terminador ni puntuacion de por medio. Se sube a 8
+# como respaldo; el limite real en el texto corrido de triage lo pone casi
+# siempre la coma o el punto, no la ventana (ver Decision en la bitacora).
+VENTANA_TOKENS = 8
 
 _CATEGORIAS = ("pre", "post", "pseudo", "terminador")
 _RE_CATEGORIA = re.compile(r"^#\s*categoria:\s*(\w+)")
@@ -176,14 +187,9 @@ def _limite_atras(texto, hasta, terminadores, ventana):
 
 def alcance(texto, ventana=VENTANA_TOKENS):
     """
-    Tramos de `texto` (lista de (inicio, fin), fusionados y ordenados) que
-    quedan bajo el efecto de una negacion.
-
-    Un disparador 'pre' abre el alcance hacia adelante; uno 'post' lo abre
-    hacia atras. Ambos se recortan en el primer terminador, la primera
-    puntuacion de fin de oracion o `ventana` tokens de contenido, lo que
-    llegue antes. Los disparadores que caen dentro de un tramo 'pseudo' se
-    descartan antes de calcular nada.
+    Tramos (inicio, fin) de `texto` bajo el efecto de una negacion, fusionados
+    y ordenados. Ver NLP/docs/bitacora/2026-09-16-E3.7.md para el algoritmo
+    (ventana, terminadores, exclusion de 'pseudo').
     """
     if not texto:
         return []

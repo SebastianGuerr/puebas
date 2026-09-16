@@ -1,44 +1,11 @@
 """
-Vuelve a procesar un triage_limpio.csv viejo y dice, nota a nota, qué cambió.
+Vuelve a procesar un triage_limpio.csv viejo y dice, nota a nota, que cambio,
+reusando las funciones de procesar.py (sin reimplementar fases). No pisa nada
+hasta --aplicar, y se niega si el informe trae perdio_motivo. Responsabilidad
+completa: docs/ARQUITECTURA.md, ficha `reparacion/reparar.py` (S2.10).
 
     python -m NLP.reparacion.reparar --limite 200    # prueba, no toca nada
-    python -m NLP.reparacion.reparar                 # todas, no toca nada
     python -m NLP.reparacion.reparar --aplicar       # sustituye el CSV
-
-QUE PROBLEMA RESUELVE
-    El CSV que hay en salidas/ se produjo con cuatro artefactos ausentes, y por
-    eso arrastra tres defectos mezclados: notas a las que la fase 5 les quitó el
-    motivo de consulta, notas cuya corrección ortográfica les cambió una palabra
-    y con ella el sentido, y notas que no recibieron corrección ninguna porque
-    el corrector trabajaba sin vocabulario.
-
-    Volver a bajarlo todo de la base de datos costaría días y tiraría las notas
-    que SÍ están bien. Este módulo aprovecha que la columna `texto_original` del
-    propio CSV es la nota tal como la escribieron: es la misma materia prima que
-    daría la base de datos, ya descargada.
-
-NO SE VUELVE A IMPLEMENTAR NINGUNA FASE, Y ESO ES DELIBERADO
-    Las notas se le pasan a `procesar.py` por la misma puerta por la que entran
-    las de la base de datos: se renombra `texto_original` a la columna que ese
-    módulo espera y se llaman sus propias funciones. Reescribir aquí las fases
-    daría dos pipelines que se irían separando, y entonces reparar el CSV
-    produciría un archivo que la corrida normal ya no sabría continuar.
-
-    La consecuencia buena es que lo reparado y lo que se procese mañana salen
-    del mismo código, que es justo lo que hace falta para poder seguir
-    acumulando notas sobre lo ya limpio.
-
-NO PISA NADA HASTA QUE SE LE DICE
-    Por defecto escribe a `triage_reparado.csv` y a un informe, y deja el
-    original intacto. `--aplicar` es el único modo que sustituye, y antes
-    aparta la versión anterior con `salida.rotar()` (mismo nombre y misma purga
-    que una corrida normal con `--rehacer`). El informe existe para mirarlo
-    ANTES de aplicar: si trae notas en la categoría `perdio_motivo`, la
-    reparación no está lista.
-
-    Los CSV se escriben con `nucleo/salida.py`, igual que `triage_limpio.csv`,
-    para que una corrida normal posterior pueda continuar el archivo reparado.
-    Ver NLP/docs/PLAN.md §4.5 y la bitácora de E0.4.
 """
 
 import argparse
@@ -74,26 +41,9 @@ BLOQUE = 250
 
 def cargar_frecuencias(textos):
     """
-    Construye el léxico de frecuencias del corpus, que es lo que desempata
-    entre candidatos de corrección.
-
-    SIN ESTO EL CORRECTOR DEJA DE CORREGIR, Y NO LO DICE
-        `pesos.frecuencia()` devuelve 0 para toda palabra mientras nadie haya
-        contado el corpus, y entonces ningun candidato gana por ser el
-        frecuente. Medido sobre 100 notas reparadas sin este paso: 'DOLRO' se
-        quedaba en 'dolro' y 'ANUSEAS' en 'anuseas', dos erratas que la corrida
-        anterior SI habia arreglado. El CSV salia completo y con dos notas
-        peores que antes.
-
-    SE PREFIERE LA BASE DE DATOS AUNQUE EL CSV BASTARIA
-        `procesar.py` cuenta sobre una muestra mucho mayor que la que va a
-        corregir, a proposito: cuanto mas grande es el corpus observado, mejor
-        distingue una palabra rara de una errata. Reparar contando solo las
-        9.311 notas del CSV daria frecuencias distintas y, por tanto,
-        correcciones distintas a las que dara la proxima corrida normal.
-
-        Si la base de datos no responde se cuenta sobre el propio CSV y se
-        avisa: es peor, pero sigue siendo mucho mejor que no contar nada.
+    Construye el lexico de frecuencias del corpus (desempata candidatos de
+    correccion; sin el, `pesos.frecuencia()` no distingue ninguna palabra).
+    Prefiere la base de datos (corpus mas grande) al propio CSV como respaldo.
     """
     try:
         from NLP.nucleo.conexion_bd import obtener_engine
@@ -114,26 +64,12 @@ def cargar_frecuencias(textos):
 
 def cargar_recursos(reducir, textos):
     """
-    Carga los mismos diccionarios y léxicos que carga una corrida normal, y
-    devuelve si la fase 3 quedó operativa.
-
-    EL ORDEN IMPORTA Y SE PAGO POR APRENDERLO
-        `normalizacion.disponible()` responde que NO hasta que se llama a
-        `normalizacion.cargar()`. La primera version de este modulo preguntaba
-        antes de cargar, se quedaba con normalizar=False, y el CSV reparado
-        salia sin la columna texto_normalizado y sin las anotaciones de la
-        fase 3 -- pero con todas sus filas, asi que no fallaba nada.
-
-        El informe lo delato: 4 notas figuraban perdiendo terminologia clinica
-        y lo que habian perdido era la anotacion que la fase 3 no llego a
-        poner. Por eso cargar y preguntar viven ahora en la misma funcion, en
-        el orden correcto, y quien llama recibe la respuesta ya calculada.
-
-    Es la parte de `procesar.main()` que no depende de la base de datos. Llama
-    a las mismas funciones y en el mismo orden: si una corrida normal y una
-    reparacion cargaran cosas distintas, producirian textos distintos a partir
-    de la misma nota.
+    Carga los mismos diccionarios y lexicos que una corrida normal (mismas
+    funciones, mismo orden que `procesar.main()`) y devuelve si la fase 3
+    quedo operativa.
     """
+    # el orden importa: normalizacion.disponible() solo responde True despues
+    # de llamar a normalizacion.cargar() (ver bitacora historica del item)
     print("Cargando diccionarios...")
     ortografia.cargar_siglas()
     ortografia.cargar_lexico_clinico()
@@ -164,10 +100,8 @@ def cargar_recursos(reducir, textos):
 
 def reparar(df_viejo, normalizar=True, reducir=True, usar_llm=False):
     """
-    Reprocesa las notas y devuelve (df_nuevo, clasificaciones).
-
-    `df_viejo` tiene que traer OID y texto_original. El resto de columnas se usa
-    solo para comparar.
+    Reprocesa las notas y devuelve (df_nuevo, clasificaciones). `df_viejo`
+    debe traer OID y texto_original; el resto de columnas es solo para comparar.
     """
     # La columna se renombra para entrar por la misma puerta que usan las notas
     # que vienen de la base de datos. Ver el docstring del modulo.
@@ -262,15 +196,8 @@ def informar(clasificaciones):
     if peores:
         print(f"\n  ATENCION: {len(peores):,} notas PIERDEN terminologia clinica.")
 
-        # SE RESUME POR TERMINO, NO POR NOTA, Y ESO ES LO QUE HACE REVISABLE
-        # UNA CORRIDA GRANDE.
-        #
-        # Sobre 9.311 notas, un 4% son ~370 avisos: leerlos de uno en uno no
-        # lo hace nadie. Pero los terminos distintos que se pierden son unas
-        # pocas decenas, y un termino basta para juzgar si la perdida importa:
-        # 'signos' viene siempre de 'signos de alarma' y 'dada' de 'dada
-        # estabilidad', que son texto administrativo en todas las notas donde
-        # aparecen. Mirar la lista de terminos cuesta un minuto y decide.
+        # se resume por termino, no por nota: es lo que hace revisable una
+        # corrida grande (ver docs/ARQUITECTURA.md, ficha reparacion/reparar.py)
         conteo = {}
         for _, _, detalle, _, _ in peores:
             for termino in detalle.replace("pierde:", "").split(","):

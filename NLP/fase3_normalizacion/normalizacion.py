@@ -1,44 +1,8 @@
 """
-Fase 3. Normalización clínica: coloquialismos y siglas.
-
-Traduce la forma en que habla el paciente a la forma en que se escribe en una
-historia clínica, sin cambiar lo que dice:
-
-    daño de estomago  -> dispepsia          pita el oido  -> tinnitus
-    culebrilla        -> herpes zoster      hta           -> hipertension arterial
-
-POR QUÉ ES UNA FASE APARTE
-    Mezclar normalización y corrección ortográfica arruina la auditoría: en el
-    informe de cambios dejarían de distinguirse un error de digitación y una
-    expansión intencionada. Se aplica sobre la columna ya corregida y se
-    conservan ambas.
-
-QUÉ SE ANOTA Y QUÉ SE REEMPLAZA
-    El modo por defecto es anotar: 'me pita el oido' pasa a 'me pita el oido
-    (tinnitus)'. El reemplazo literal rompe la sintaxis en las expresiones
-    verbales, y una nota agramatical le cuesta más a un modelo que la expresión
-    popular original. Anotando se conserva la frase del paciente y se añade el
-    término clínico, de modo que el texto sirve tanto para leerlo como para
-    buscar el término estandarizado.
-
-QUÉ ENTRADAS SE APLICAN
-    No todas. Cada entrada del diccionario pasa por el control de ambigüedad,
-    que decide si puede aplicarse siempre, solo cuando su contexto aparece
-    cerca, o si queda inactiva. No hay listas negras: lo que no se puede
-    demostrar inequívoco no se aplica y se reporta en desactivadas(), que es la
-    lista de decisiones pendientes de revisar.
-
-ORDEN INTERNO
-    1. Encabezados de apartado, que son siglas sin ambigüedad posible.
-    2. Entradas condicionadas al contexto.
-    3. Expresiones de varias palabras y siglas, prefiriendo siempre la
-       coincidencia más larga.
-
-MOTOR
-    Con flashtext se construye un único autómata que recorre el texto una sola
-    vez, de modo que el coste no crece con el tamaño del diccionario, y respeta
-    los límites de palabra. Si no está instalado se recurre a una
-    implementación con expresiones regulares, más lenta pero equivalente.
+Fase 3. Normalización clínica: traduce coloquialismos y siglas a la forma en
+que se escribe en una historia clínica, sin cambiar lo que dice el paciente
+('pita el oido' -> 'pita el oido (tinnitus)'). Por que es una fase aparte, que
+se anota vs. que se reemplaza, orden interno y motor: docs/FLUJO.md #5.
 """
 
 import json
@@ -97,17 +61,9 @@ def _sin_tildes(texto):
 
 def cargar(ruta=RUTA_COLOQUIAL, lt=None):
     """
-    Lee los dos diccionarios, decide entrada por entrada si puede aplicarse y
-    construye el motor de búsqueda. Devuelve cuántas entradas quedaron activas
-    sin condiciones.
-
-    `lt` es una instancia de LanguageTool ya creada, que el control de
-    ambigüedad usa para saber si una clave coincide con una palabra corriente
-    del español. Sin ella la comprobación se apoya solo en el vocabulario de
-    spaCy.
-
-    Las entradas condicionadas quedan en con_contexto() y las descartadas en
-    desactivadas(), con su motivo.
+    Lee los diccionarios, evalua la ambiguedad de cada entrada y construye el
+    motor de busqueda. Devuelve cuantas entradas quedaron activas sin
+    condiciones. `lt` (opcional): instancia de LanguageTool para esa evaluacion.
     """
     global _PROCESADOR, _RESPALDO
 
@@ -242,14 +198,8 @@ RE_ENCABEZADO = re.compile(r"\b([a-záéíóúüñ]{2,6})\s*:")
 def expandir_encabezados(texto):
     """
     Anota el significado de las siglas que encabezan un apartado:
-    'aa: niega' pasa a 'aa (antecedentes alergicos): niega'.
-
-    Conserva la sigla original, que es la forma en que el personal escribe y
-    busca, y añade el significado para que el texto se entienda por sí solo.
-
-    Solo actúa sobre las siglas seguidas de dos puntos, porque ahí la sigla es
-    un rótulo de apartado y no hay ambigüedad posible. Se saltan los
-    significados genéricos, que no aportarían nada al lector.
+    'aa: niega' -> 'aa (antecedentes alergicos): niega'. Solo actua si van
+    seguidas de dos puntos (ahi no hay ambiguedad). Detalle en docs/FLUJO.md #5.
     """
     def _sub(m):
         sigla = m.group(1).lower()
@@ -328,13 +278,9 @@ RE_GLOSA_INLINE = re.compile(r"\s*\(([^)]{3,80})\)")
 
 def normalizar_separado(texto):
     """
-    Como normalizar(), pero con la anotacion aparte del texto en vez de
-    inline. Devuelve (texto_sin_glosa, concepto_normalizado).
-
-    Si SEPARAR_CONCEPTO es False (por defecto) no separa nada y devuelve
-    (normalizar(texto), ""), para no cambiar el comportamiento por defecto.
-    Ver decisiones/2026-09-16-E5.1-glosas.md y PLAN.md §7 (clustering/etiquetas.py
-    necesita esta segunda fuente si se le deja de dar el parentesis).
+    Como normalizar(), con la anotacion aparte en vez de inline: devuelve
+    (texto_sin_glosa, concepto). Si SEPARAR_CONCEPTO es False, devuelve
+    (normalizar(texto), "") — ver decisiones/2026-09-16-E5.1-glosas.md.
     """
     anotado = normalizar(texto)
     if not SEPARAR_CONCEPTO or not anotado:

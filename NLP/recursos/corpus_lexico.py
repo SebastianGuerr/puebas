@@ -1,10 +1,8 @@
 """
-Frecuencia de cada forma en el corpus propio (E3.3, `docs/PLAN.md` §8).
+Frecuencia de cada forma en el corpus propio (E3.3).
 
-Cuenta palabras sobre `DIM_TRIAGE.HCTMOTCON` (la misma columna que usa
-`procesar.py`); si la base de datos no responde, cuenta sobre
-`texto_original` de `salidas/triage_limpio.csv`. Escribe
-`datos/lexicos/corpus_frecuencia.tsv` con la fuente usada en la cabecera.
+Cuenta `DIM_TRIAGE.HCTMOTCON`; si la BD no responde, cuenta `texto_original`
+de `salidas/triage_limpio.csv`. Escribe `datos/lexicos/corpus_frecuencia.tsv`.
 Uso: `python -m NLP.recursos.corpus_lexico`. Ver `docs/bitacora/2026-09-16-E3.3.md`.
 """
 

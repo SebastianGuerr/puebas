@@ -1,56 +1,8 @@
 """
-Léxico clínico: el vocabulario médico contra el que se decide qué NO se corrige.
-
-QUÉ PROBLEMA RESUELVE
-    Antes de existir este módulo el pipeline reconocía terminología con dos
-    fuentes, y ambas fallaban por el mismo lado. El diccionario escrito a mano
-    no escala, porque el conjunto de siglas y términos del castellano médico no
-    está acotado y siempre falta la siguiente. El vocabulario de spaCy procede
-    de texto web: desconoce buena parte de los principios activos y de los
-    términos quirúrgicos y, en cambio, acepta faltas de ortografía frecuentes.
-    Es decir, protege lo que habría que corregir y deja expuesto lo que habría
-    que proteger.
-
-    Al revisar las correcciones que el pipeline no supo hacer, en la mayoría de
-    los casos la forma correcta no figuraba en ninguna de las dos fuentes, de
-    modo que ningún ajuste de umbrales las habría resuelto.
-
-LAS FUENTES, DE MÁS A MENOS FIABLE
-    diccionario_siglas.json   escrito a mano; cada entrada es una decisión
-                              deliberada del proyecto.
-    catalogo_sintomas.json    variantes de los conceptos clínicos de la fase 4.
-    lexico_externo.txt        vocabulario del CIE-10-ES y de cualquier otra
-                              fuente externa; un término por línea.
-    vocabulario biomédico     palabras enteras del tokenizador de un modelo
-                              entrenado sobre historias clínicas en español;
-                              es la fuente que aporta el volumen.
-
-    El orden importa: cuando una palabra aparece en varias fuentes se conserva
-    la más fiable, y el peso clínico que se le asigna después depende de cuál
-    sea.
-
-    El vocabulario biomédico, tomado como detector aislado de terminología,
-    acierta casi siempre que dispara pero se le escapa cerca de la mitad de los
-    términos reales. Por eso no decide por sí solo: entra como una evidencia más
-    en el cálculo de peso clínico.
-
-POR QUÉ SE CONGELA EN UN ARCHIVO
-    Cargar el tokenizador del modelo biomédico cuesta segundos y exige tener
-    instalados transformers y torch. Como el vocabulario no cambia entre
-    corridas, se extrae una sola vez y se guarda en JSON; durante el proceso
-    solo se lee ese archivo.
-
-USO
-
-    python -m NLP.recursos.lexico   construye el léxico (la primera vez
-                                    necesita red, para descargar el tokenizador)
-
-    cargar()             lo lee, sin modelo ni red
-    contiene(palabra)    ¿es terminología?
-    forma(palabra)       escritura canónica, con sus tildes
-    cercano(palabra)     corrige un término mal escrito contra el léxico, sin
-                         pasar por un corrector de español
-    vecinos(palabra)     todos los candidatos a esa distancia
+Léxico clínico: el vocabulario médico contra el que se decide qué NO se corrige,
+reunido de cuatro fuentes (diccionario a mano, catálogo, CIE-10, modelo
+biomédico). Detalle de las fuentes y del porqué: docs/ARQUITECTURA.md, ficha
+`recursos/lexico.py` (S2.8). Uso: `python -m NLP.recursos.lexico`.
 """
 
 import json
@@ -85,22 +37,15 @@ EXTERNO = "externo"             # CIE-10, SNOMED, INVIMA
 BIOMEDICO = "biomedico"         # vocabulario del modelo clinico
 
 # Palabras del diccionario propio que NO son evidencia clinica: municipios,
-# nombres de instituciones y vocabulario administrativo.
-#
-# POR QUE TIENEN FUENTE PROPIA EN VEZ DE QUEDARSE FUERA
-#     Hay que PROTEGERLAS del corrector -- sin la declaracion, 'dorada' se
-#     convirtio en 'morada' -- y a la vez NO pueden contar como motivo de
-#     consulta: 'remitido de assbsaluda san cayetano' no dice a que vino nadie.
-#
-#     Son dos preguntas distintas sobre la misma palabra, y con una sola fuente
-#     no se podian responder distinto. Con esta, pesos.py les da la proteccion
-#     del diccionario y depuracion.py las deja fuera de FUENTES_CURADAS.
+# nombres de instituciones y vocabulario administrativo. Fuente propia porque
+# hay que protegerlas del corrector (pesos.py) sin que cuenten como motivo de
+# consulta (depuracion.py las deja fuera de FUENTES_CURADAS): dos preguntas
+# distintas sobre la misma palabra. Ver docs/ARQUITECTURA.md ficha
+# `recursos/lexico.py` (S2.8) para el ejemplo completo.
 NO_CLINICO = "no_clinico"
 
 # Grupos del diccionario de siglas cuyo contenido y cuyas expansiones son
-# nombres propios o tramite. 'EMI servicio de emergencia medica' aportaba
-# 'servicio' y 'hospital' al lexico clinico, y 'consulta externa' aportaba las
-# dos palabras que hacian pasar por clinica una derivacion.
+# nombres propios o tramite (geografia, instituciones, administrativo).
 GRUPOS_NO_CLINICOS = ("geografia", "instituciones_marcas", "administrativo")
 
 _TERMINOS = {}      # forma plegada -> (forma real, fuente)
@@ -187,15 +132,9 @@ def _del_externo():
 
 def _del_modelo_biomedico(modelo=MODELO_BIOMEDICO):
     """
-    Palabras enteras del vocabulario del tokenizador biomédico.
-
-    El vocabulario BPE mezcla palabras completas con fragmentos, y solo sirven
-    las primeras: se reconocen porque el token arranca con el marcador de inicio
-    de palabra de los tokenizadores tipo RoBERTa. Un fragmento como 'car' o
-    'ectomia' se descarta, porque no es un término sino un trozo.
-
-    Si falta transformers o el modelo no se puede descargar, avisa y devuelve un
-    conjunto vacío: el léxico se construye con las demás fuentes.
+    Palabras enteras del vocabulario BPE del tokenizador biomédico (se
+    descartan los fragmentos, como 'car' o 'ectomia'). Sin transformers o sin
+    poder descargar el modelo, avisa y devuelve un conjunto vacío.
     """
     try:
         from transformers import AutoTokenizer
@@ -348,19 +287,8 @@ def _indice():
 def cercano(palabra, distancia=DISTANCIA_MAXIMA):
     """
     Forma del léxico más cercana a la palabra, o None si no hay una sola
-    candidata clara. Corrige un término médico mal escrito sin recurrir a un
-    corrector de español:
-
-        abodominal   -> abdominal
-        esplectomia  -> esplenectomia
-        dilispidemia -> dislipidemia
-
-    Ante un empate devuelve None: si dos términos clínicos distintos están a la
-    misma distancia no hay manera de saber cuál se quiso escribir, y elegir uno
-    equivale a inventar un diagnóstico.
-
-    Los candidatos deben además compartir el arranque de la palabra, porque un
-    término mal digitado conserva sus primeras letras.
+    candidata clara (empate) o si no comparte el arranque de la palabra. Ver
+    ejemplos y motivo del empate en docs/ARQUITECTURA.md, ficha `recursos/lexico.py`.
     """
     sym = _indice()
     if sym is None or len(palabra) < LONGITUD_MINIMA:

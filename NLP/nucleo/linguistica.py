@@ -1,32 +1,9 @@
 """
-Capa lingüística sobre spaCy: vocabulario del español y entidades nombradas.
-
-Aporta dos señales que ni LanguageTool ni el diccionario del proyecto pueden
-dar, y ambas se usan siempre para PROTEGER una palabra, nunca para corregirla:
-
-  1. Vocabulario. El modelo conoce del orden de medio millón de formas del
-     español, muchas más que LanguageTool, e incluye buena parte de la
-     terminología clínica y de los principios activos habituales. Una palabra
-     que spaCy reconoce se considera real y queda fuera del corrector, sin
-     necesidad de enumerarla en el diccionario.
-
-  2. Entidades nombradas. El reconocedor identifica personas, lugares e
-     instituciones incluso en texto ya pasado a minúscula, que es justo donde la
-     detección por mayúsculas se queda ciega. Sin esta señal, en una nota
-     escrita toda en minúscula 'pereira' se corrige a 'perdida' y 'hakim'
-     (de válvula de Hakim) a 'hacia'.
-
-Limitación conocida: el vocabulario procede de texto web y contiene ruido, de
-modo que alguna forma incorrecta figura como válida y queda protegida. Esos
-casos se resuelven uno a uno en las correcciones directas del diccionario.
-
-Requiere el modelo `es_core_news_md`:
-
-    pip install spacy
-    python -m spacy download es_core_news_md
-
-Si spaCy o el modelo no están instalados, el módulo se desactiva por sí solo y
-el resto del pipeline sigue funcionando con sus demás defensas.
+Capa linguistica sobre spaCy: vocabulario del espanol y entidades nombradas,
+siempre para PROTEGER una palabra, nunca para corregirla. Requiere el modelo
+`es_core_news_md` (`python -m spacy download es_core_news_md`); sin el, el
+modulo se desactiva solo y el resto del pipeline sigue. Ver ARQUITECTURA.md
+§2.2 (`linguistica.py`) para el porque de cada senal y sus limitaciones.
 """
 
 import re
@@ -94,12 +71,9 @@ def _cargar():
 
 def en_vocabulario(palabra):
     """
-    True si spaCy reconoce la palabra.
-
-    Solo sirve para proteger: que una palabra falte del vocabulario no
-    demuestra que esté mal escrita. Las palabras de menos de cuatro letras se
-    descartan porque el vocabulario las acepta casi todas. El resultado se
-    guarda en caché, ya que la misma forma se consulta muchas veces por nota.
+    True si spaCy reconoce la palabra (solo protege: que falte del
+    vocabulario no prueba que este mal escrita). Descarta menores de 4
+    letras (el vocabulario las acepta casi todas). Cachea el resultado.
     """
     if not disponible():
         return False
@@ -123,11 +97,9 @@ def en_vocabulario(palabra):
 
 def entidades(texto):
     """
-    Palabras de la nota que forman parte de una persona, lugar u organización.
-
-    Devuelve un conjunto en minúscula, listo para cruzar con los tokens del
-    texto. Ante cualquier fallo del modelo devuelve un conjunto vacío: perder la
-    señal degrada la protección, pero no debe interrumpir el procesamiento.
+    Palabras de la nota que forman parte de una persona, lugar u organizacion,
+    en minuscula. Ante cualquier fallo del modelo devuelve un conjunto vacio
+    (perder la senal no debe interrumpir el procesamiento).
     """
     if not disponible() or not texto:
         return set()
@@ -150,9 +122,8 @@ def entidades(texto):
 
 def entidades_lote(textos, n_process=1, batch_size=200):
     """
-    Igual que entidades(), pero sobre una lista de notas y aprovechando el
-    procesamiento por lotes de spaCy. Devuelve un conjunto por nota, en el mismo
-    orden de entrada. Es la vía a usar cuando se procesan miles de registros.
+    Igual que entidades(), sobre una lista de notas, aprovechando el
+    procesamiento por lotes de spaCy. Un conjunto por nota, mismo orden.
     """
     if not disponible():
         return [set() for _ in textos]

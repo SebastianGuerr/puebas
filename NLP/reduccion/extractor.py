@@ -1,50 +1,10 @@
 """
-Extractor por modelo de lenguaje: quedarse con el motivo de consulta.
-
-QUÉ HACE, Y POR QUÉ NO LO HACÍA NADA ANTERIOR
-    Las fases previas corrigen palabras. Esta decide QUÉ PARTE de la nota dice
-    por qué vino el paciente, que es una pregunta de comprensión y no de
-    ortografía. Los patrones de reduccion.py la responden enumerando lo que
-    sobra, y el clasificador de frases.py la responde por tramos; ninguno de los
-    dos entiende la frase.
-
-    Aquí se le pasa la nota a un modelo local y se le pide que devuelva los
-    fragmentos que son motivo de consulta.
-
-EL RIESGO, Y POR QUÉ AQUÍ NO ES UN RIESGO
-    Un modelo pequeño inventa. En una nota clínica eso sería inaceptable si el
-    modelo escribiera el resultado, porque un dato falso es indistinguible de
-    uno real.
-
-    Por eso NO se le pide que reescriba: se le pide que COPIE. Cada fragmento
-    que devuelve tiene que aparecer literalmente en la nota, y eso se comprueba:
-
-        if fragmento not in nota:   # se lo invento
-            se descarta
-
-    Un modelo que alucina no mete un dato falso: falla de forma visible y esa
-    nota cae al método anterior. La alucinación pasa de ser un riesgo silencioso
-    a un error detectable, que es el mismo principio con el que funciona el
-    resto del proyecto: el modelo propone, las reglas verifican.
-
-DÓNDE SE APLICA, Y POR QUÉ NO A TODO
-    La mediana de las notas del corpus son 6 palabras ('dolor abdominal',
-    'tengo fiebre'). Ahí no hay nada que extraer y los patrones ya aciertan.
-    El problema está en la cola larga:
-
-        notas de mas de 30 palabras   1.959
-        notas de mas de 15 palabras  ~6.000
-
-    Medido en esta maquina (i7-8550U, 4 nucleos, sin GPU), un modelo de 3B en
-    Q4 tarda del orden de 3 s por nota. Pasar las 28.000 serian ~27 horas;
-    pasar solo las largas, entre 2 y 6. El umbral es LONGITUD_MINIMA y es la
-    decision de diseño mas importante del modulo: el modelo se usa donde el
-    metodo barato falla, no en todas partes.
-
-SI ALGO FALLA, NO PASA NADA
-    Sin servidor, sin modelo, con respuesta ilegible o con fragmentos
-    inventados, extraer() devuelve None y quien llama se queda con el recorte
-    anterior. Este modulo solo puede mejorar el resultado o dejarlo igual.
+Fase 5b: pide a un modelo de lenguaje local (Ollama) los fragmentos que son
+motivo de consulta y verifica que existan literalmente en la nota; lo que no
+se localiza se descarta (el modelo propone, las reglas verifican). Si algo
+falla, extraer() devuelve None y reduccion.py conserva su propio recorte. Ver
+NLP/docs/FLUJO.md seccion 7, NLP/docs/decisiones/2026-09-15-modelo-generativo.md
+y NLP/docs/decisiones/2026-09-16-reduccion-extractor-umbrales.md.
 """
 
 import json
@@ -61,22 +21,10 @@ import urllib.request
 SERVIDOR = "http://localhost:11434"
 MODELO = "qwen2.5:3b-instruct"
 
-# Longitud minima para consultar al modelo. En 1 significa que las ve TODAS.
-#
-# POR QUE YA NO SE FILTRA POR LONGITUD
-#     El umbral estaba en 15 palabras porque por debajo el recorte por reglas
-#     ya acierta y el modelo solo cuesta tiempo. Sigue siendo verdad para el
-#     recorte, pero el modelo dejo de usarse solo para recortar: ahora tambien
-#     DICTAMINA si la nota tiene un motivo de consulta o no, y ese dictamen es
-#     lo que separa 'quedo igual porque es corta' de 'quedo igual porque no
-#     habia nada que extraer'. Esa distincion hace falta en las cortas tanto
-#     como en las largas.
-#
-#     El precio esta medido y no es pequeno: el 71% del corpus baja de 15
-#     palabras, asi que mandarlas todas multiplica por algo mas de tres el
-#     tiempo de esta fase (de ~4 h a ~14 h por cada 5.000 notas sobre CPU).
-#     Subir este numero vuelve al comportamiento anterior y las notas por
-#     debajo del umbral dejan de recibir dictamen.
+# Longitud minima para consultar al modelo. En 1 significa que las ve TODAS,
+# a proposito: el modelo tambien dictamina si hay motivo de consulta o no, y
+# ese dictamen hace falta en las notas cortas tanto como en las largas. Ver
+# docs/decisiones/2026-09-16-reduccion-extractor-umbrales.md (medicion y costo).
 LONGITUD_MINIMA = 1
 
 # El modelo leyo la nota y concluyo que no hay motivo de consulta. Es una
@@ -98,23 +46,10 @@ TEMPERATURA = 0.0
 FRACCION_MAXIMA = 0.85
 
 # Fraccion de la evidencia clinica del recorte por reglas que la extraccion del
-# modelo tiene que conservar para darla por buena.
-#
-# POR QUE HACE FALTA UN SEGUNDO CRITERIO, DISTINTO DE LA VERIFICACION
-#     La verificacion comprueba que lo devuelto ESTE en la nota. No comprueba
-#     que este todo lo que deberia: un fragmento correcto pero incompleto la
-#     pasa sin problema. Medido, el modelo devolvio 'sangre mucho' de una nota
-#     cuyo motivo era una herida en la mano, y era texto legitimo de la nota.
-#
-#     Son dos preguntas distintas -- 'esto es de la nota?' y 'esto es todo?' --
-#     y solo la primera se puede responder mirando el fragmento. La segunda
-#     necesita algo con que comparar, y lo que hay es el recorte por reglas.
-#
-# LO QUE SE COMPARA ES TERMINOLOGIA, NO LONGITUD
-#     Comparar por numero de palabras castigaria al modelo por hacer bien su
-#     trabajo: quitar tramite ACORTA sin perder nada. Lo que no puede es perder
-#     terminos clinicos, y eso se mide con el mismo lexico curado que usa la
-#     depuracion.
+# modelo tiene que conservar para darla por buena. La verificacion solo
+# comprueba que el fragmento ESTE en la nota, no que este completo; este
+# segundo criterio compara terminologia (no longitud) contra el recorte por
+# reglas. Ver docs/decisiones/2026-09-16-reduccion-extractor-umbrales.md.
 FRACCION_CLINICA_MINIMA = 0.50
 
 
@@ -300,24 +235,11 @@ def localizar(nota, fragmento):
     """
     Donde empieza y acaba el fragmento dentro de la nota, o None si no esta.
 
-    Devuelve SIEMPRE posiciones, nunca texto. Quien llama recorta de la nota,
-    de modo que el modelo no puede alterar un solo caracter aunque su fragmento
-    venga con otra capitalizacion, otra tilde o una palabra cambiada.
-
-    DOS PASADAS, Y LA SEGUNDA ES LA QUE EVITA PERDER INFORMACION
-        1. exacta   el fragmento aparece tal cual, en limite de palabra. El
-                    limite hace falta porque sin el 'stenosis' se daba por
-                    bueno dentro de 'estenosis', partiendo un termino clinico.
-
-        2. tolerante  el fragmento no aparece igual, pero la mayoria de sus
-                    palabras si estan en la nota, seguidas y en orden. Es lo que
-                    ocurre cuando el modelo copia mal una palabra
-                    ('estreñosis' por 'estenosis', 'e' por 'y'): el fragmento
-                    apunta bien y solo la transcripcion falla. Se alinea con el
-                    texto de la nota y se devuelve el tramo que abarca.
-
-        Lo que no encaja en ninguna de las dos no esta en la nota, y eso si es
-        una invencion.
+    Devuelve SIEMPRE posiciones, nunca texto: el modelo no puede alterar un
+    caracter aunque su fragmento venga con otra capitalizacion o una palabra
+    cambiada. Dos pasadas: (1) coincidencia exacta en limite de palabra, (2)
+    alineacion tolerante por palabras cuando el modelo copio mal una palabra.
+    Lo que no encaja en ninguna de las dos no esta en la nota.
     """
     plano_nota, mapa = _plegar_con_mapa(nota)
     plano_frag = _plegar(fragmento)
@@ -343,10 +265,9 @@ def _localizar_alineando(nota, fragmento):
     Alinea las palabras del fragmento con las de la nota y devuelve el tramo que
     cubren, o None si coinciden demasiado pocas.
 
-    Se usa SequenceMatcher sobre listas de palabras y no distancia de edicion
-    sobre caracteres porque lo que hay que medir es cuantas PALABRAS del
-    fragmento estan de verdad en la nota. Una palabra mal copiada baja la
-    fraccion en una unidad; un fragmento inventado no alinea casi nada.
+    Usa SequenceMatcher sobre listas de palabras (no distancia de edicion sobre
+    caracteres) porque lo que hay que medir es cuantas PALABRAS del fragmento
+    estan de verdad en la nota, en orden.
     """
     from difflib import SequenceMatcher
 
@@ -366,18 +287,12 @@ def _localizar_alineando(nota, fragmento):
     if cubiertas / len(palabras_frag) < FRACCION_PALABRAS_MINIMA:
         return None
 
-    # EL TRAMO SE EXTIENDE HASTA CUBRIR TODO EL FRAGMENTO, NO SOLO LO ALINEADO.
-    #
-    # Tomar de la primera a la ultima palabra ALINEADA deja fuera precisamente
-    # la palabra que el modelo copio mal, que suele ser la que importa: con
-    # 'estreñosis de coledoco distal' se recuperaba 'de coledoco distal' y se
-    # perdia 'estenosis', que es el termino clinico.
-    #
-    # La alineacion dice donde cae cada palabra del fragmento en la nota, asi
-    # que la palabra i del fragmento corresponde a la palabra (a - b + i) de la
-    # nota. Con eso se recupera el tramo entero que el fragmento señalaba,
-    # incluidas sus palabras mal copiadas, y lo que se devuelve sigue siendo el
-    # texto de la nota.
+    # El tramo se extiende hasta cubrir TODO el fragmento, no solo lo alineado:
+    # tomar solo de la primera a la ultima palabra alineada dejaria fuera
+    # precisamente la palabra que el modelo copio mal, que suele ser la que
+    # importa. La alineacion dice donde cae cada palabra del fragmento en la
+    # nota (palabra i del fragmento -> palabra a-b+i de la nota), y con eso se
+    # recupera el tramo entero, incluidas sus palabras mal copiadas.
     desplazamiento = utiles[0].a - utiles[0].b
     primera = max(0, desplazamiento)
     ultima = min(len(palabras_nota) - 1, desplazamiento + len(palabras_frag) - 1)
@@ -415,14 +330,9 @@ def _unir(nota, tramos):
     """
     Recorta de la NOTA los tramos localizados, en orden y sin solaparse.
 
-    POR QUE SE RECORTA DE LA NOTA Y NO SE USA LO QUE DEVOLVIO EL MODELO
-        Porque el modelo no siempre copia. Medido sobre la muestra: devolvio
-        'lleve aprox 10 dias' donde la nota decia 'lleva', y 'stenosis' donde
-        decia 'estenosis'. Son cambios de una letra, y en una nota clinica una
-        letra distingue dos farmacos o dos diagnosticos.
-
-        El modelo señala DONDE esta lo importante; el texto lo pone la nota.
-        Asi es imposible que altere un solo caracter, aunque quiera.
+    Se recorta de la nota y no del texto que devolvio el modelo porque el
+    modelo no siempre copia letra por letra. El modelo señala DONDE esta lo
+    importante; el texto lo pone la nota, asi que no puede alterar un caracter.
     """
     tramos = sorted(tramos)
     salida, ultimo = [], -1
@@ -457,24 +367,13 @@ def _toca_el_motivo(nota, extraido):
 
 def conserva_lo_clinico(referencia, extraido):
     """
-    True si `extraido` conserva bastante de la terminologia clinica que
-    `referencia` traia Y QUE PODIA SER MOTIVO DE CONSULTA.
+    True si `extraido` conserva bastante terminologia clinica de `referencia`
+    que ademas podia ser motivo de consulta.
 
-    LA REFERENCIA SE LIMPIA ANTES DE COMPARAR, Y ESO ES LO ESENCIAL
-        La primera version comparaba contra el recorte por reglas tal cual, y
-        castigaba al modelo por acertar. El recorte por reglas conserva los
-        antecedentes -- 'trastorno de ansiedad generalizada', 'sertralina',
-        'colecistectomia' --, que son terminologia clinica de pleno derecho y
-        que NO son el motivo de hoy. El modelo los quitaba bien, la comparacion
-        lo leia como perdida, y la nota volvia a salir con toda la historia
-        clinica dentro.
-
-        Los apartados que no son motivo de consulta ya los sabe recortar la
-        depuracion, asi que la referencia se filtra con ella antes de contar.
-        Lo que queda es lo unico que el modelo no tiene derecho a perder.
-
-    Se mide en terminologia y no en palabras: quitar tramite acorta el texto sin
-    perder evidencia, que es justo lo que el modelo debe hacer.
+    La referencia se filtra primero con `depuracion.sin_apartados_no_clinicos`
+    para no contar como perdida un antecedente que el modelo quito bien (no es
+    el motivo de hoy). Se mide en terminologia y no en palabras: quitar
+    tramite acorta el texto sin perder evidencia.
     """
     from NLP.depuracion import depuracion
 
@@ -528,24 +427,16 @@ def extraer(nota, detalle=False, referencia=None):
     tramos, inventados = verificar(nota, fragmentos)
     info["inventados"] = inventados
 
-    # UNA LISTA VACIA ES UNA RESPUESTA, NO UN FALLO.
-    #     Si el modelo leyo la nota y no encontro nada que sea motivo de
-    #     consulta, eso ES la conclusion y hay que conservarla. Antes se
-    #     confundia con no haber podido responder, y la nota caia al recorte por
-    #     reglas como si el modelo no hubiera opinado.
-    #
-    #     Lo que si es un fallo es que devolviera algo y no sobreviviera nada:
-    #     ahi no sabemos que penso, solo que lo que dijo no estaba en la nota.
+    # Una lista vacia es una RESPUESTA (el modelo no vio motivo de consulta),
+    # no un fallo; se distingue de "devolvio algo y no sobrevivio nada", que
+    # si es un fallo del modelo.
     if not tramos:
         if inventados:
             info["estado"] = "todo inventado"
             return info if detalle else None
-        # El modelo no vio nada. Se devuelve None para que el recorte por
-        # reglas haga su trabajo, y es ese texto -- no la nota entera -- el que
-        # dejara tal cual reduccion.sin_reducir() si tampoco redujo nada.
-        #
-        # Devolver aqui la nota marcada fue un error medido: el texto de
-        # embedding pasaba de 128 palabras a 141, porque marcar no reduce.
+        # None, no la nota marcada: reduccion.sin_reducir() conserva el texto
+        # tal cual si tampoco redujo nada (ver decisiones/2026-09-16-
+        # reduccion-extractor-umbrales.md).
         info["estado"] = ESTADO_SIN_CONTEXTO
         return info if detalle else None
 
@@ -558,20 +449,10 @@ def extraer(nota, detalle=False, referencia=None):
         return info if detalle else None
 
     # el modelo puede quitar todo lo que no sea clinico, pero no puede perder
-    # lo que si lo es (ver FRACCION_CLINICA_MINIMA)
-    # LA EXTRACCION NO PUEDE SALIR ENTERA DE UN APARTADO DE ANTECEDENTES.
-    #
-    #     'ap: hta; aa: niega; motivo de consulta me mandaron por la presion alta'
-    #         -> 'hta (hipertension arterial), niega'
-    #
-    #     El modelo se quedo con los antecedentes y tiro el motivo. La
-    #     comprobacion de terminologia no lo frena, porque el motivo de esa nota
-    #     no tiene ni un termino reconocido: sin nada que comparar, aceptaba
-    #     cualquier cosa.
-    #
-    #     Esta condicion no compara, comprueba una PROCEDENCIA: si lo extraido
-    #     no toca ni una palabra del tramo que puede ser motivo de consulta,
-    #     viene entero de donde no debia.
+    # lo que si lo es (ver FRACCION_CLINICA_MINIMA). Este otro chequeo no
+    # compara terminologia, comprueba PROCEDENCIA: si lo extraido no toca ni
+    # una palabra del tramo que puede ser motivo de consulta, salio entero de
+    # un apartado que no lo es (p.ej. de los antecedentes).
     if not _toca_el_motivo(nota, motivo):
         info["estado"] = "salio entero de un apartado que no es motivo de consulta"
         return info if detalle else None

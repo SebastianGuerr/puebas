@@ -1,40 +1,10 @@
 """
-Extrae el vocabulario del CIE-10-ES y lo deja en lexico_externo.txt.
+Extrae el vocabulario (no la jerarquia de codigos) del CIE-10-ES 3.a edicion
+(2020, Tomo I Diagnosticos) y lo deja en lexico_externo.txt. Detalle de la
+fuente y de que se descarta: docs/ARQUITECTURA.md, ficha
+`recursos/extraer_cie10.py` (S2.8).
 
-LA FUENTE
-    Clasificación Internacional de Enfermedades, 10.ª revisión, Modificación
-    Clínica, 3.ª edición (2020). Tomo I: Diagnósticos. Ministerio de Sanidad de
-    España, publicado por el BOE. El PDF vive en NLP/datos/.
-
-POR QUÉ SOLO EL VOCABULARIO Y NO LA ESTRUCTURA
-    El PDF contiene una jerarquía de códigos, y reconstruirla desde el texto
-    extraído es un problema en sí mismo: la indentación por guiones, las
-    remisiones y las referencias cruzadas no sobreviven bien a la extracción.
-
-    Lo que este pipeline necesita del CIE-10 no es la jerarquía sino las
-    palabras: saber que 'esplenectomia', 'odinofagia' o 'corioamnionitis'
-    existen en español clínico basta para que el léxico pueda corregir hacia
-    ellas y protegerlas. Extraer vocabulario es robusto y no depende de que la
-    maquetación se lea correctamente.
-
-    Si en algún momento hace falta el árbol de códigos, esa es otra tarea y
-    probablemente otra fuente: el Ministerio publica las tablas en formato
-    tabular, aparte del PDF.
-
-QUÉ SE DESCARTA
-    El aparato editorial de la clasificación ('véase', 'excluye', 'ncoc',
-    'especificado'), que son instrucciones de uso y no terminología, y las
-    palabras que aparecen una sola vez en todo el documento, casi siempre
-    artefactos de la extracción.
-
-    El Tomo I es de diagnósticos, así que no aporta nombres de principios
-    activos. Para esos hace falta el nomenclátor de medicamentos, que puede
-    añadirse al mismo archivo de salida con la opción --anexar.
-
-USO
-    pip install pypdf
-    python -m NLP.recursos.extraer_cie10
-    python -m NLP.recursos.lexico   para incorporarlo al léxico clínico
+Uso: pip install pypdf && python -m NLP.recursos.extraer_cie10
 """
 
 import argparse
@@ -105,12 +75,9 @@ def extraer(ruta_pdf):
 
 def filtrar(conteo):
     """
-    Convierte el recuento en el conjunto de términos aprovechables.
-
-    Descarta lo que aparece menos de FRECUENCIA_MINIMA veces, lo más corto que
-    LONGITUD_MINIMA, el aparato editorial y las cadenas que no tienen forma de
-    palabra española (sin vocales, con guiones sueltos o con caracteres
-    extraños), que provienen de errores de extracción.
+    Convierte el recuento en el conjunto de terminos aprovechables: descarta
+    lo poco frecuente, lo muy corto, el aparato editorial y lo que no tiene
+    forma de palabra espanola (artefactos de extraccion).
     """
     salida = set()
     for palabra, veces in conteo.items():

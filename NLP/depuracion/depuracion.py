@@ -1,42 +1,9 @@
 """
-Depuración: separar las notas que dicen algo de las que no.
+Depuracion: separa (no elimina) las notas sin contenido clinico del corpus,
+comparando por raiz contra el lexico curado.
 
-QUÉ PROBLEMA RESUELVE
-    No todas las notas de triage hablan del paciente. Una parte del corpus son
-    plantillas contestadas en blanco, trámite puro o un fragmento suelto que no
-    dice a qué vino nadie.
-
-    Para el agrupamiento posterior eso no es solo peso muerto: son notas casi
-    idénticas entre sí y ajenas a cualquier cuadro clínico, de modo que forman
-    grupos propios que no significan nada y ensucian los que sí.
-
-EL CRITERIO, Y POR QUÉ ESTA FASE VA LA ÚLTIMA
-    Una nota se descarta cuando, después de corregir, normalizar y recortar, no
-    queda en ella ni un solo término del léxico clínico curado.
-
-    El orden no es un detalle de implementación: es la diferencia entre medir la
-    nota y medir el diccionario. Aplicado antes de la normalización, este mismo
-    criterio descartaba miles de notas que sí tenían contenido, como las que
-    describen una caída en lenguaje corriente o las que usan una sigla que el
-    diccionario ya sabe traducir. Ninguna de ellas estaba vacía: eran huecos de
-    vocabulario, y descartarlas habría sido borrar la evidencia del problema en
-    lugar de resolverlo.
-
-    De ahí la regla: este módulo solo puede ejecutarse cuando ya se aplicó todo
-    lo que el proyecto sabe traducir.
-
-QUÉ SE DESCARTA Y QUÉ NO
-    Ante la duda se conserva. Una nota descartada no vuelve, y el coste de
-    arrastrar algo de ruido es mucho menor que el de perder un motivo de
-    consulta real. Por eso el trámite solo descarta cuando además no hay nada
-    clínico: una nota que solo dice cómo llegó el paciente se va, pero la que
-    dice cómo llegó y por qué se conserva entera.
-
-NADA SE DESCARTA EN SILENCIO
-    evaluar() devuelve siempre el motivo, y el orquestador escribe todas las
-    notas descartadas con su motivo. Revisar ese archivo es la forma de
-    descubrir el siguiente hueco de diccionario: si ahí aparece una expresión
-    clínica repetida, no es ruido, es una entrada que falta.
+Documentacion: NLP/docs/FLUJO.md §6 y
+NLP/docs/decisiones/2026-09-16-depuracion-indice-clinico.md.
 """
 
 import json
@@ -50,10 +17,9 @@ from NLP.recursos import lexico
 # QUE CUENTA COMO TERMINO CLINICO
 # ==========================================================
 
-# Solo las fuentes curadas del lexico. El vocabulario del modelo biomedico
-# queda fuera a proposito: contiene el espanol corriente entero, y con el hasta
-# un aviso administrativo pareceria lleno de terminologia clinica. Es la misma
-# decision que toma embedding/recorte.py, y por la misma razon.
+# Solo las fuentes curadas del lexico; el vocabulario del modelo biomedico
+# queda fuera (contiene el espanol corriente entero). Misma decision que
+# embedding/recorte.py.
 FUENTES_CURADAS = (lexico.DICCIONARIO, lexico.CATALOGO, lexico.EXTERNO)
 
 RE_PALABRA = re.compile(r"[^\W\d_]+", re.UNICODE)
@@ -80,18 +46,10 @@ RESPUESTAS_VACIAS = {
 }
 
 # ==========================================================
-# LAS DOS LISTAS QUE EL LEXICO NO PUEDE DAR
+# LISTAS CERRADAS QUE EL LEXICO NO PUEDE DAR
 # ==========================================================
-#
-# Saber que una palabra es terminologia no basta, porque el CIE-10 no
-# distingue el nombre de un sintoma del de una region anatomica ni del espanol
-# corriente que arrastra en sus rubricas. Frases como 'consulta externa' o una
-# parte del cuerpo suelta pasan el filtro con terminologia reconocida y son
-# ruido, asi que esa distincion hay que ponerla aqui.
-#
-# Las dos listas son cortas y cerradas a proposito: enumeran los dos casos en
-# que coincidir con el lexico no es evidencia de contenido clinico, y no
-# pretenden cubrir el vocabulario administrativo del hospital.
+# Coincidir con el lexico no basta como evidencia clinica: ver
+# NLP/docs/FLUJO.md §6 ("por que hay listas cerradas ademas del lexico").
 
 # Palabras del recorrido por el sistema. No son motivo de consulta aunque el
 # CIE-10 las contenga.
@@ -111,10 +69,8 @@ PALABRAS_TRAMITE = {
     "aceptada", "aceptado", "aceptados",
 }
 
-# Regiones anatomicas. Nombrar una parte del cuerpo no dice a que vino nadie:
-# puede ser un golpe, una artrosis o una herida. Solo descartan cuando son lo
-# UNICO clinico de la nota; acompanadas de un sintoma, la nota se conserva
-# entera porque el contenido lo pone el sintoma.
+# Regiones anatomicas. Nombrar una parte del cuerpo no dice a que vino nadie;
+# solo descartan cuando son lo UNICO clinico de la nota.
 PALABRAS_ANATOMIA = {
     "cabeza", "cara", "frente", "ojo", "ojos", "oido", "oidos", "oreja",
     "nariz", "boca", "diente", "dientes", "muela", "lengua", "garganta",
@@ -129,16 +85,8 @@ PALABRAS_ANATOMIA = {
 }
 
 # Palabras de tiempo. CUANDO ocurrio algo no es POR QUE vino el paciente, y el
-# tiempo de evolucion ya viaja como dato estructurado.
-#
-# Es el tercer caso de lo mismo, y por eso hay tres listas y no una: el CIE-10
-# contiene 'semana', 'pasada' y 'pasado' en sus rubricas, de modo que
-#
-#     'la semana pasada me hospitalizar y el viernes pasado sali'
-#
-# daba tres 'terminos clinicos' -- semana, pasada, pasado -- y salia del
-# pipeline como si fuera un motivo de consulta. No dice ni un sintoma: cuenta un
-# ingreso anterior.
+# tiempo de evolucion ya viaja como dato estructurado. Ver FLUJO.md §6 para el
+# ejemplo que motiva esta tercera lista.
 PALABRAS_TIEMPO = {
     "dia", "dias", "semana", "semanas", "mes", "meses", "ano", "anos",
     "hora", "horas", "minuto", "minutos", "rato", "noche", "noches",
@@ -161,23 +109,15 @@ PALABRAS_PARA_SALVAR = 8
 
 
 def _plegar(palabra):
-    """Misma clave de comparación que usa el léxico: minúsculas y sin tildes."""
+    """Misma clave de comparacion que usa el lexico: minusculas y sin tildes."""
     return morfologia.sin_tildes(str(palabra).lower().strip())
 
 
 # Encabezado del formulario, con la expansion que le pone la fase 3:
-# 'ap:', 'mc (motivo de consulta):'. Se quita ANTES de juzgar la nota.
-#
-# POR QUE, CON EL NUMERO
-#     La fase 3 expande el rotulo del apartado, y esa expansion es terminologia
-#     clinica de pleno derecho: 'antecedentes', 'alergicos', 'patologicos'.
-#     Medido, eso hacia que las 296 notas que dicen exactamente
-#
-#         'ap (antecedentes personales): niega; aa (antecedentes alergicos): niega'
-#
-#     contaran como notas con contenido clinico. Y son justo lo contrario: una
-#     plantilla contestada en blanco, sin una sola palabra sobre el paciente.
-#     El rotulo del formulario lo escribio el formulario, no quien atendio.
+# 'ap:', 'mc (motivo de consulta):'. Se quita ANTES de juzgar la nota: la
+# expansion del rotulo ('antecedentes', 'alergicos'...) es terminologia
+# clinica valida y falsearia el juicio si no se quitara antes. Medicion en
+# decisiones/2026-09-16-depuracion-indice-clinico.md.
 RE_ENCABEZADO = re.compile(
     r"\b[a-z]{2,6}\s*(?:\([^)]{3,60}\))?\s*:", re.IGNORECASE)
 
@@ -190,29 +130,14 @@ def sin_encabezados(texto):
 # ==========================================================
 # LOS APARTADOS QUE NO SON MOTIVO DE CONSULTA
 # ==========================================================
-#
-# Quitar el rotulo no basta: hay que quitar tambien lo que el rotulo contiene.
-#
-#     'ap (antecedentes personales): hta (hipertension arterial); aa: niega'
-#
-# Sin los rotulos queda 'hta (hipertension arterial); niega', que es
-# terminologia clinica legitima, asi que la nota se conservaba. Y no dice a que
-# vino el paciente: dice que es hipertenso. Son cosas distintas. La
-# hipertension es un antecedente, y no se sabe ni por que consulto ni por que
-# se genero. Para agrupar motivos de consulta, eso es ruido.
-#
-# La lista de apartados no la inventa este modulo: la declara nucleo/clinico.py,
-# que ya la mantiene para cortar el alcance de la negacion. Se importa la tabla,
-# no el pipeline, de modo que esto no carga spaCy ni medspaCy.
+# Quitar el rotulo no basta: hay que quitar tambien lo que contiene (ver
+# NLP/docs/FLUJO.md §6). La lista de apartados la declara nucleo/clinico.py
+# (la misma que usa para acotar el alcance de la negacion).
 
 def _tabla_apartados():
-    """
-    Las formas escritas de cada apartado y si es o no motivo de consulta, segun
-    la tabla de nucleo/clinico.py. Devuelve {forma plegada: es_no_clinico}.
-
-    Se importa la tabla, no el pipeline: nucleo/clinico.py carga spaCy de forma
-    perezosa, asi que leer SECCIONES no arrastra el modelo.
-    """
+    """Formas escritas de cada apartado y si es o no motivo de consulta.
+    Devuelve {forma plegada: es_no_clinico}."""
+    # se importa la tabla, no el pipeline: no carga spaCy ni medspaCy
     from NLP.nucleo import clinico
 
     tabla = {}
@@ -226,32 +151,16 @@ def _tabla_apartados():
 _APARTADOS = None
 _RE_APARTADO = None
 
-# Longitud a partir de la cual un rotulo se reconoce SIN los dos puntos.
-#
-# EL FALLO QUE OBLIGA A DISTINGUIR, CON EL NUMERO
-#     Un apartado termina donde empieza el siguiente, y el siguiente se
-#     detectaba solo por los dos puntos. Pero el corpus escribe muchisimas veces
-#
-#         'ap: niega; aa: niega; motivo de consulta hace 10 dias me cai'
-#
-#     con el ultimo rotulo SIN dos puntos. Sin reconocerlo, el apartado de
-#     alergicos se extiende hasta el final y se traga el motivo de consulta.
-#     Medido: 287 notas con un motivo perfectamente legible se descartaban asi.
-#
-#     Lo contrario tampoco vale: aceptar cualquier rotulo sin dos puntos haria
-#     que 'af' o 'ax' cortaran dentro de una palabra corriente. Por eso los
-#     rotulos largos ('motivo de consulta') se reconocen sueltos y los cortos
-#     ('ap', 'aa', 'mc') siguen exigiendo los dos puntos: un rotulo de tres
-#     palabras no aparece por casualidad, uno de dos letras si.
+# Longitud a partir de la cual un rotulo se reconoce SIN los dos puntos (el
+# ultimo apartado de una nota a veces no los lleva). Por debajo de esta
+# longitud se exigen los dos puntos, para no cortar dentro de una palabra
+# corriente. Medicion en decisiones/2026-09-16-depuracion-indice-clinico.md.
 LONGITUD_ROTULO_SIN_DOSPUNTOS = 8
 
 
 def _re_apartado():
-    """
-    Patron que reconoce el arranque de cualquier apartado declarado. Se
-    construye desde la tabla, ordenando de mas largo a mas corto para que gane
-    la coincidencia mas especifica ('mc (motivo de consulta)' sobre 'mc').
-    """
+    """Patron que reconoce el arranque de cualquier apartado declarado,
+    ordenado de mas largo a mas corto para que gane la forma mas especifica."""
     global _APARTADOS, _RE_APARTADO
     if _RE_APARTADO is not None:
         return _RE_APARTADO
@@ -275,14 +184,9 @@ def _re_apartado():
 
 
 def sin_apartados_no_clinicos(texto):
-    """
-    La nota sin los apartados que no son motivo de consulta: antecedentes
-    personales, alergicos, familiares, quirurgicos y toxicos, medicamentos,
-    ocupacion y fuente de la historia.
-
-    Lo que va ANTES del primer rotulo se conserva siempre: en triage la nota
-    tipica es texto corrido sin estructura, y ese tramo es el motivo de consulta.
-    """
+    """La nota sin los apartados no clinicos (antecedentes, alergicos,
+    familiares, quirurgicos, toxicos, medicamentos, ocupacion, fuente).
+    Lo anterior al primer rotulo se conserva siempre."""
     patron = _re_apartado()
     texto = str(texto)
 
@@ -302,10 +206,8 @@ def sin_apartados_no_clinicos(texto):
 
 
 def con_contenido(texto):
-    """
-    Palabras del texto que aportan significado, ya plegadas y sin las vacías ni
-    las muy cortas. Es la base de todas las decisiones del módulo.
-    """
+    """Palabras del texto que aportan significado, ya plegadas y sin las
+    vacias ni las muy cortas. Es la base de todas las decisiones del modulo."""
     return [p for p in (_plegar(w) for w in RE_PALABRA.findall(sin_encabezados(texto)))
             if p not in VACIAS and len(p) >= 3]
 
@@ -313,38 +215,13 @@ def con_contenido(texto):
 # ==========================================================
 # EL INDICE DE EVIDENCIA CLINICA
 # ==========================================================
-#
-# POR QUE NO BASTA CON PREGUNTARLE AL LEXICO
-#     El lexico clinico se construye para el corrector ortografico: guarda
-#     formas base y descarta las palabras de menos de cuatro letras, porque a
-#     dos ediciones de una palabra de tres letras hay medio diccionario. Es la
-#     decision correcta ahi y la equivocada aqui. Medido, consultarlo por
-#     igualdad exacta descartaba
-#
-#         136 notas que dicen 'tos'      que no entra por tener 3 letras
-#          23 notas 'tengo colicos'      el lexico tiene 'colico', no el plural
-#          17 notas 'convulsiono'        tiene 'convulsion', no la forma verbal
-#           8 notas 'esta vomitando'     tiene 'vomito', no el gerundio
-#
-#     Las cuatro son motivos de consulta perfectamente claros. El problema no
-#     es el lexico: preguntarle por igualdad responde 'esta escrita asi en el
-#     CIE-10', y lo que hace falta saber aqui es 'habla de algo clinico'.
-#
-# COMO SE RESUELVE
-#     Se indexa la RAIZ morfologica de cada termino curado, con el mismo
-#     stemmer que ya usa embedding/extraccion.py para lo mismo. 'vomitando' y
-#     'vomito' comparten la raiz 'vomit', y una sola entrada cubre la familia
-#     entera sin enumerar conjugaciones.
-#
-#     El catalogo de sintomas se lee ademas por separado y sin minimo de
-#     longitud, porque es la fuente que declara que 'tos' es un sintoma.
-#
-# EL RIESGO DE LA RAIZ, Y COMO SE ACOTA
-#     Truncar aumenta las coincidencias, tambien las falsas: 'consulta' y
-#     'consultar' comparten raiz, y 'consulta' esta en el CIE-10. Por eso las
-#     raices de tramite y de anatomia se restan del indice al CONSTRUIRLO, no
-#     al consultarlo: si una raiz es ambigua entre las dos poblaciones, no
-#     cuenta como evidencia clinica.
+# Se indexa la RAIZ morfologica de cada termino curado (mismo stemmer que
+# embedding/extraccion.py), no la forma exacta: comparar por igualdad contra
+# el lexico deja fuera formas verbales y plurales legitimos. Las raices de
+# tramite y de anatomia se restan del indice al construirlo, no al
+# consultarlo, porque una raiz truncada puede ser ambigua entre las dos
+# poblaciones (p. ej. 'consulta'/'consultar'). Medicion y opciones
+# consideradas en decisiones/2026-09-16-depuracion-indice-clinico.md.
 
 LONGITUD_MINIMA_RAIZ = 3   # por debajo, truncar deja de discriminar
 
@@ -359,13 +236,9 @@ def _stem(palabra):
 
 
 def _del_catalogo():
-    """
-    Variantes declaradas en el catalogo de sintomas: la fuente que dice que
-    'tos' es un sintoma y que 'me falta el aire' es disnea. Se lee de aqui y no
-    del lexico porque el lexico les aplica el minimo de cuatro letras.
-
-    Devuelve la pareja (palabras sueltas, expresiones de varias palabras).
-    """
+    """Variantes del catalogo de sintomas (sin el minimo de cuatro letras que
+    aplica el lexico). Devuelve (palabras sueltas, expresiones de varias
+    palabras)."""
     ruta = rutas.CATALOGO_SINTOMAS
     if not ruta.exists():
         return set(), set()
@@ -381,11 +254,8 @@ def _del_catalogo():
 
 
 def _lugares():
-    """
-    Municipios declarados en el grupo 'geografia' del diccionario de siglas.
-    Se lee del mismo sitio que NLP/reduccion, para que ampliar una entrada
-    arregle las dos cosas a la vez.
-    """
+    """Municipios declarados en el grupo 'geografia' del diccionario de
+    siglas; mismo sitio que lee NLP/reduccion, para ampliar una sola vez."""
     ruta = rutas.DICCIONARIO_SIGLAS
     if not ruta.exists():
         return set()
@@ -394,12 +264,8 @@ def _lugares():
 
 
 def cargar():
-    """
-    Construye el indice de evidencia clinica y devuelve cuantas raices quedaron.
-
-    Es idempotente y perezoso: lo llama la primera consulta, de modo que
-    importar el modulo no cuesta nada.
-    """
+    """Construye el indice de evidencia clinica y devuelve cuantas raices
+    quedaron. Idempotente y perezoso (lo llama la primera consulta)."""
     global _RAICES, _FRASES, _STEMMER
     if _RAICES is not None:
         return len(_RAICES)
@@ -420,18 +286,11 @@ def cargar():
             if " " not in termino and lexico.fuente(termino) in FUENTES_CURADAS:
                 sueltas.add(termino)
 
-    # lo que no es evidencia clinica se resta ANTES de indexar
-    # Los toponimos tampoco son evidencia clinica. Sin restarlos, 'remitido de
-    # viterbo' se conservaba porque el municipio esta en el lexico como entrada
-    # del diccionario, y luego la reduccion lo dejaba en texto vacio: la nota
-    # sobrevivia sin decir nada. La lista es la misma que usa la reduccion.
-    # Entre lo excluido van tambien las palabras de la fuente NO_CLINICO:
-    # municipios, instituciones y vocabulario administrativo.
-    #
-    # No basta con filtrarlas por fuente al recorrer el lexico, porque este
-    # indice va por RAIZ y una misma raiz la puede aportar otra palabra.
-    # 'hospital' seguia dentro aunque su fuente ya fuera no_clinico, y con ella
-    # 'remitida del hospital santa sofia' seguia contando como clinica.
+    # lo que no es evidencia clinica se resta ANTES de indexar: toponimos
+    # (misma lista que usa la reduccion) y palabras de la fuente NO_CLINICO
+    # del lexico (municipios, instituciones, vocabulario administrativo). Se
+    # restan por STEM y no filtrando por fuente al recorrer el lexico, porque
+    # otra palabra clinica puede compartir la misma raiz no clinica.
     no_clinicas = set()
     if lexico.disponible():
         no_clinicas = {t for t in lexico.terminos()
@@ -446,12 +305,8 @@ def cargar():
 
 
 def es_clinica(palabra):
-    """
-    True si la palabra es evidencia de contenido clinico.
-
-    Se compara por raiz y no por igualdad, de modo que 'vomitando' cuenta
-    gracias a 'vomito', que es la forma que declara el catalogo.
-    """
+    """True si la palabra es evidencia de contenido clinico (comparada por
+    raiz, no por igualdad, contra el indice de `cargar()`)."""
     clave = _plegar(palabra)
     if (clave in PALABRAS_TRAMITE or clave in PALABRAS_ANATOMIA
             or clave in PALABRAS_TIEMPO):
@@ -461,50 +316,22 @@ def es_clinica(palabra):
 
 
 def frases_clinicas(texto):
-    """
-    Expresiones del catalogo de varias palabras presentes en la nota, como
-    'me falta el aire'. Se buscan enteras porque su contenido clinico no esta
-    en ninguna de sus palabras por separado.
-    """
+    """Expresiones del catalogo de varias palabras presentes en la nota,
+    buscadas enteras (su contenido clinico no esta en cada palabra suelta)."""
     cargar()
     plano = " ".join(_plegar(w) for w in RE_PALABRA.findall(sin_encabezados(texto)))
     return [f for f in _FRASES if f in plano]
 
 
 def terminos_clinicos(texto):
-    """
-    Palabras de la nota que son terminología clínica curada y además aportan
-    contenido: ni trámite ni región anatómica suelta.
-
-    Esa resta es la diferencia entre que una palabra figure en el léxico y que
-    diga algo del paciente.
-    """
+    """Palabras de la nota que son terminologia clinica curada y ademas
+    aportan contenido: ni tramite ni region anatomica suelta."""
     return [p for p in con_contenido(texto) if es_clinica(p)]
 
 
 def solo_tramite(texto):
-    """
-    True si la nota no tiene mas que tramite y nombres propios.
-
-    POR QUE NO BASTA CON EXIGIR QUE TODO SEA TRAMITE
-        La version anterior pedia que TODAS las palabras estuvieran en la lista,
-        y por eso dejaba pasar
-
-            'remitido de assbsaluda san cayetano'
-
-        que es una derivacion pura: 'remitido' es tramite, pero 'assbsaluda' y
-        'cayetano' no estan en ninguna lista -- son el nombre de una IPS y de un
-        municipio, y no hay lista que los cubra todos.
-
-        La forma si generaliza: lo que sostiene una nota es la CLINICA. Una
-        palabra que no es terminologia no aporta motivo de consulta, se llame
-        como se llame, asi que basta con que haya tramite y no haya nada
-        clinico.
-
-    Se exige al menos una palabra de tramite: sin ella esto marcaria cualquier
-    nota cuyo vocabulario el lexico todavia no cubra, que es justo el error que
-    el proyecto lleva toda su historia evitando.
-    """
+    """True si la nota no tiene mas que tramite y nombres propios: hay al
+    menos una palabra de tramite y ninguna palabra clinica reconocida."""
     palabras = con_contenido(texto)
     if not palabras:
         return False
@@ -527,22 +354,12 @@ UTIL = ""
 
 
 def evaluar(texto, sintomas=None):
-    """
-    Decide si una nota aporta información clínica.
-
-    Devuelve el par (útil, motivo), donde el motivo es cadena vacía cuando la
-    nota se conserva y, si no, uno de los motivos declarados arriba. Las
-    comprobaciones van de la más barata y concluyente a la más laxa, y terminan
-    en una válvula de escape por longitud.
-
-    `sintomas` es la lista de síntomas que la fase 4 haya reconocido, si se
-    tiene a mano. Cuando se pasa, un síntoma reconocido basta para conservar la
-    nota sin mirar nada más: el catálogo es mejor evidencia que la coincidencia
-    palabra a palabra, porque reconoce expresiones de varias palabras. El
-    parámetro es opcional para que el módulo siga sirviendo dentro de las fases
-    1 a 3, donde todavía no se ha extraído nada.
-    """
+    """Decide si una nota aporta informacion clinica. Devuelve (util, motivo),
+    con motivo = "" si se conserva; si no, uno de los motivos declarados
+    arriba. Ver NLP/docs/FLUJO.md §6 para el orden de las comprobaciones."""
     if sintomas:
+        # un sintoma ya reconocido (fase 4/5) basta para conservar la nota
+        # sin mirar nada mas; parametro opcional, no lo usan las fases 1-3
         return True, UTIL
 
     palabras = con_contenido(texto)
@@ -592,11 +409,8 @@ def evaluar(texto, sintomas=None):
 
 
 def resumen(motivos):
-    """
-    Cuenta los motivos de descarte de una corrida y los devuelve ordenados de
-    más a menos frecuente. Las notas conservadas, cuyo motivo es vacío, no se
-    cuentan.
-    """
+    """Cuenta los motivos de descarte de una corrida y los devuelve ordenados
+    de mas a menos frecuente. Las notas conservadas (motivo vacio) no cuentan."""
     conteo = {}
     for motivo in motivos:
         if motivo:
@@ -605,10 +419,8 @@ def resumen(motivos):
 
 
 def diagnosticar(texto):
-    """
-    Por qué una nota concreta se conserva o se descarta: el veredicto, el
-    motivo y las señales en las que se apoya. Herramienta de inspección manual.
-    """
+    """Por que una nota concreta se conserva o se descarta: el veredicto, el
+    motivo y las senales en las que se apoya. Herramienta de inspeccion manual."""
     util_, motivo = evaluar(texto)
     return {
         "texto": texto,
