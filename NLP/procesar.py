@@ -134,9 +134,22 @@ REDUCIR = True
 
 # Fase 5b: el modelo local de Ollama decide que parte de la nota es el motivo de
 # consulta. Solo ve las notas largas y, si no esta disponible o se inventa algo,
-# el recorte lo hacen las reglas. Ponerlo en False deja el pipeline funcionando
-# sin el.
-USAR_LLM = True
+# el recorte lo hacen las reglas.
+#
+# APAGADO POR LICENCIA, NO POR CALIDAD.
+#     qwen2.5:3b-instruct esta bajo la Qwen RESEARCH LICENSE, de uso
+#     exclusivamente NO COMERCIAL. Verificado el 2026-09-16 con
+#     `ollama show qwen2.5:3b-instruct --license`. Una institucion prestadora de
+#     servicios de salud no es uso de investigacion academica, asi que no puede
+#     darse por autorizado (PLAN.md §6.9). Ver
+#     decisiones/2026-09-16-licencias-modelos-en-uso.md.
+#
+#     Esto no rompe nada: las reglas hacen el recorte igual, y las dos corridas
+#     completas del 15 y el 16 de septiembre se hicieron con el extractor
+#     apagado. Para volver a activarlo hace falta una licencia comercial de
+#     Alibaba o sustituir el modelo por uno de licencia permisiva; entonces se
+#     pone True y se mide su ganancia marginal (E5.6).
+USAR_LLM = False
 
 # La cache guarda la correccion de cada texto distinto, y es lo que hace que
 # repetir una corrida cueste minutos en vez de horas. El riesgo es que conserva
@@ -791,12 +804,12 @@ def main():
         for motivo, veces in motivos:
             print(f"  {veces:6}  {motivo}")
         print(f"  Revisa {DESCARTADAS_CSV.name}: una expresion clinica repetida ahi")
-        print(f"  no es ruido, es una entrada que le falta al diccionario.\n")
+        print("  no es ruido, es una entrada que le falta al diccionario.\n")
 
     print(f"Notas modificadas: {modificados:,} de {len(conservadas):,} "
           f"({modificados/max(len(conservadas), 1)*100:.1f}%)")
     print(f"Sustituciones distintas: {len(filas):,}")
-    print(f"\nTop 15 (revisar que no haya terminos clinicos):")
+    print("\nTop 15 (revisar que no haya terminos clinicos):")
     for fase, o, r, n, _oid in filas[:15]:
         print(f"  {n:5}  [{fase:13}] {o} -> {r}")
 

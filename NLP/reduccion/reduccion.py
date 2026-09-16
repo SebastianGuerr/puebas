@@ -36,6 +36,10 @@ FUENTES_CURADAS = ("diccionario", "catalogo", "externo")
 # antes que borrar una frase del paciente: es la asimetria de coste de todo el
 # proyecto.
 PALABRAS_ORACION_LARGA = 8
+
+# E5.8: una oracion con terminologia clinica de sobra no se descarta por
+# mencionar una institucion. Ver bitacora/2026-09-16-E0.2.md y E5.8.
+FRENO_CLINICO_INSTITUCIONAL = True
 DENSIDAD_MINIMA = 0.40
 
 # Bandera de E5.1 (docs/decisiones/2026-09-16-E5.1-glosas.md). Por defecto no
@@ -53,6 +57,18 @@ QUITAR_GLOSA = False
 # clasificador entrenado y disponible, para poder medir con y sin el freno
 # de frases.py sobre las mismas notas.
 USAR_CLASIFICADOR = True
+
+# Bandera de E5.2 (docs/decisiones/2026-09-16-E5.2.md). Antepone NEG_ (nucleo/
+# negacion.marcar()) al alcance de cada negacion, como ULTIMO paso de recortar(),
+# sobre el texto ya recortado -- no antes: los patrones de esta fase (RE_EXAMEN,
+# RE_TRAMITE, MARCADORES_INSTITUCIONALES...) buscan frases literales, y marcar
+# antes les cambiaria el texto que buscan y los dejaria de reconocer. Apagada por
+# defecto: cambia el contenido de texto_embedding (contrato PLAN.md §7), y el
+# gate de esa seccion exige revectorizar y correr `python -m clustering
+# --validar` antes de adoptarla en la corrida real -- ninguno de los dos esta al
+# alcance de este item. La evidencia medida (contaminacion que corrige, costo en
+# tokens) esta en la decision.
+USAR_NEGACION = False
 
 
 # ==========================================================
@@ -472,7 +488,20 @@ def _quitar_institucional(texto):
     oraciones = RE_ORACION.split(texto)
     utiles = []
     for o in oraciones:
-        if any(m in o.lower() for m in MARCADORES_INSTITUCIONALES):
+        # EL MARCADOR PROPONE; LA TERMINOLOGIA VERIFICA.
+        #
+        # Un marcador institucional tiraba la ORACION ENTERA, y buena parte del
+        # corpus no lleva punto ni punto y coma: la "oracion" es toda la nota.
+        # Asi, una nota que dice el motivo y ademas menciona la EPS perdia el
+        # motivo. Medido sobre las 420 notas que perdian terminologia en la
+        # reparacion del 16/09, este paso causaba 189 (34,2%), la mayor fuente
+        # de perdida, incluidos 'dolor', 'vomito' y 'episodios'.
+        #
+        # El freno es el mismo que ya protege a _quitar_clasificador y el mismo
+        # criterio que usa extractor.py: un tramo con terminologia clinica de
+        # sobra no es tramite, lo mencione o no. Ver E5.8.
+        if (any(m in o.lower() for m in MARCADORES_INSTITUCIONALES)
+                and not (FRENO_CLINICO_INSTITUCIONAL and _protegido_por_clinica(o))):
             continue
         palabras = _con_contenido(o)
         if len(palabras) >= PALABRAS_ORACION_LARGA and densidad_clinica(o) < DENSIDAD_MINIMA:
@@ -526,12 +555,25 @@ def _con_contenido(texto):
             if p not in VACIAS and len(p) >= 3]
 
 
+def _marcar_negacion(texto):
+    """
+    Antepone NEG_ al alcance de cada negacion de `texto` (E5.2), si
+    USAR_NEGACION esta activa. Import diferido: nucleo.negacion no debe
+    cargarse si la bandera esta apagada, igual que frases.py con USAR_CLASIFICADOR.
+    """
+    if not USAR_NEGACION or not texto:
+        return texto
+    from NLP.nucleo import negacion
+    return negacion.marcar(texto)
+
+
 def recortar(texto, agresivo=True):
     """
     Devuelve la nota sin bloque institucional, sin trámite y sin encabezados,
     en dos pasadas (agresiva y suave, ver `_recortar()` y NLP/docs/FLUJO.md
     sección 7). Solo devuelve cadena vacía si la nota no dice nada del
-    paciente; lo que sobrevive es texto original palabra por palabra.
+    paciente; lo que sobrevive es texto original palabra por palabra, con el
+    alcance de una negacion marcado si USAR_NEGACION esta activa (E5.2).
     """
     texto = str(texto or "").strip()
     if not texto:
@@ -543,13 +585,13 @@ def recortar(texto, agresivo=True):
     # tramite es mejor que una frase rota.
     agresiva = _recortar(texto, agresivo=True)
     if agresiva and not crea_costura(texto, agresiva):
-        return agresiva
+        return _marcar_negacion(agresiva)
 
     suave = _recortar(texto, agresivo=False)
     if suave and not crea_costura(texto, suave):
-        return suave
+        return _marcar_negacion(suave)
 
-    return sin_reducir(texto, agresiva or suave)
+    return _marcar_negacion(sin_reducir(texto, agresiva or suave))
 
 
 def _pares_contiguos(texto):
@@ -677,7 +719,12 @@ def diagnosticar(texto):
     paso no se está ejecutando en la corrida real.
     """
     pasos = [("original", texto)]
-    t = _quitar_institucional(texto);     pasos.append(("sin institucional", t))
+    # Este paso FALTABA y la funcion mentia: _recortar() empieza por el
+    # clasificador de frases, asi que todo lo que el quitaba se le atribuia al
+    # siguiente paso. Costo un diagnostico equivocado de E0.2: se culpo a
+    # _quitar_institucional de 189 perdidas que no eran suyas.
+    t = _quitar_clasificador(texto);      pasos.append(("sin clasificador", t))
+    t = _quitar_institucional(t);         pasos.append(("sin institucional", t))
     t = RE_ENCABEZADO.sub(" ", t);        pasos.append(("sin encabezados", t))
     t = RE_ANTECEDENTES.sub(" ", t);      pasos.append(("sin antecedentes", t))
     t = RE_PLURIPATOLOGIA.sub(" ", t);    pasos.append(("sin pluripatologia", t))
