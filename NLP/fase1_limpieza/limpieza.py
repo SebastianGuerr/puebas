@@ -46,7 +46,12 @@ RE_GUIONES = re.compile(r"[\u2010\u2011\u2012\u2013\u2014\u2015]")
 RE_SALTOS = re.compile(r"[\r\n]+")
 RE_TABS = re.compile(r"[\t\v\f]+")
 RE_SIMBOLOS = re.compile(r"[^%s]" % CONSERVADOS)
-RE_REPETIDOS = re.compile(r"(.)\1{%d,}" % MAX_REPETICIONES)
+# La regla existe para 'holaaaaa', que es una letra alargada. Aplicada a un
+# digito destruye el dato: '1000cc' se volvia '100cc', '1000mg' se volvia
+# '100mg' y el documento '30277767' perdia un 7. Medido sobre las 9.311 notas
+# reparadas: ocho casos, dos de ellos dosis. Por eso el grupo excluye digitos.
+# Ver decisiones/2026-09-16-cifras.md.
+RE_REPETIDOS = re.compile(r"(\D)\1{%d,}" % MAX_REPETICIONES)
 RE_ESPACIO_PUNT = re.compile(r"[ ]*(?<!\d)([.,;:])[ ]*|[ ]*([.,;:])[ ]*(?!\d)")
 RE_PUNT_REPETIDA = re.compile(r"([.,;:])[.,;: ]*\1+")
 # El guion suelto de las listas clinicas separa items, no une palabras:
