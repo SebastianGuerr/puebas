@@ -20,8 +20,8 @@
   {
     "nombre": "MeSpEn_Glossaries",
     "descripcion": "46 glosarios bilingues; el par ingles-espanol tiene 125.645 entradas en TSV de 2 columnas. Repositorio completo ~11,8 MB segun la API de GitHub el 2026-09-16; el tamano exacto del ZIP no lo expone codeload.github.com antes de descargar.",
-    "url": "https://github.com/PlanTL-GOB-ES/MeSpEn_Glossaries/archive/refs/heads/master.zip",
-    "fuente_oficial": "Repositorio de la organizacion autora PlanTL-GOB-ES en GitHub (Secretaria de Estado para el Avance Digital, SEAD)",
+    "url": "https://zenodo.org/api/records/2205690/files-archive",
+    "fuente_oficial": "Zenodo, DOI 10.5281/zenodo.2205690 (registro citado en el propio README del repositorio de GitHub PlanTL-GOB-ES/MeSpEn_Glossaries como la unica via de acceso a los datos: el repositorio de GitHub SOLO contiene LICENSE y README.md -- comprobado 2026-09-16 descargando y listando master.zip, 2.026 bytes, sha256 8032cbfe58bf8ddc06366b8d2fa4240fcda37accf832059d17b8bff43e5ebd4f -- los 46 glosarios (125.645 pares ingles-espanol) no estan versionados en el repositorio git, solo en el deposito de Zenodo.",
     "licencia": "CC-BY-4.0",
     "licencia_url": "https://github.com/PlanTL-GOB-ES/MeSpEn_Glossaries/blob/master/LICENSE",
     "obligaciones": "Atribucion obligatoria (CC-BY-4.0); citar el recurso y la licencia si se publica un derivado (REFERENCIAS.md S5).",
@@ -33,7 +33,7 @@
     "user_agent": null,
     "estado": "pendiente",
     "item_del_plan": "E3.10",
-    "motivo_rechazo": null
+    "motivo_rechazo": "URL original (la del ZIP del repositorio de GitHub) corregida hoy: apuntaba al lugar equivocado, no a un problema de disponibilidad. La URL nueva (Zenodo) tampoco se pudo verificar hoy: zenodo.org/api/records/2205690 devolvio HTTP 504 Gateway Time-out (comprobado 2026-09-16, ~12:00 UTC aprox.), mismo patron que SympTEMIST_gazetteer y MedProcNER_gazetteer. archivos_extraer queda sin fijar: no se pudo consultar el listado de archivos del deposito para confirmar el nombre exacto de la descarga (probablemente un zip unico via /files-archive, o archivos TSV individuales por par de idiomas; hay que confirmarlo cuando Zenodo responda). Ver bitacora/2026-09-16-E3.10.md."
   },
   {
     "nombre": "AbreMES-DB",
@@ -69,7 +69,7 @@
     "user_agent": null,
     "estado": "pendiente",
     "item_del_plan": "E3.4",
-    "motivo_rechazo": "zenodo.org no respondio el 2026-09-16 (13:00-13:10 UTC aprox.): 4 intentos con curl agotaron el tiempo de espera sin completar la conexion TLS, y una peticion via herramienta de fetch devolvio HTTP 504 Gateway Timeout tanto para este registro como para la portada de zenodo.org, lo que indica una caida general del sitio y no un problema del registro. La licencia SI esta identificada (CC-BY-4.0); el rechazo es solo por resolucion de URL. archivos_extraer queda en null porque no se pudo consultar el listado de archivos del deposito para confirmar el nombre exacto del TSV del gazetteer; falta fijarlo cuando Zenodo vuelva a responder.",
+    "motivo_rechazo": "zenodo.org devolvio HTTP 504 Gateway Time-out de forma consistente el 2026-09-16: 8 intentos en total repartidos en dos rondas (una inicial de 2 intentos hacia las 11:20, y una de 6 intentos espaciados 90s entre las 11:39 y las 11:47), todos contra el endpoint de contenido del archivo (zenodo.org/api/records/<id>/files/.../content). En el mismo periodo, zenodo.org/api/records/6458115 (DISTEMIST) SI respondio (HTTP 206, descarga completa verificada). El fallo no es de la URL (la misma forma de URL funciono para DISTEMIST) sino de disponibilidad intermitente del servicio para estos registros concretos. Ver bitacora/2026-09-16-E3.4.md.",
     "nota_url": "URL de archivo obtenida de la API de Zenodo el 2026-09-16; la anterior apuntaba a la pagina del deposito y nunca habria descargado"
   },
   {
@@ -107,7 +107,7 @@
     "user_agent": null,
     "estado": "pendiente",
     "item_del_plan": "E3.4",
-    "motivo_rechazo": "Mismo motivo que SympTEMIST_gazetteer: zenodo.org no respondio el 2026-09-16 (timeout de conexion / HTTP 504 en 4 intentos). Licencia identificada (CC-BY-4.0); rechazo solo por resolucion de URL.",
+    "motivo_rechazo": "zenodo.org devolvio HTTP 504 Gateway Time-out de forma consistente el 2026-09-16: 8 intentos en total repartidos en dos rondas (una inicial de 2 intentos hacia las 11:20, y una de 6 intentos espaciados 90s entre las 11:39 y las 11:47), todos contra el endpoint de contenido del archivo (zenodo.org/api/records/<id>/files/.../content). En el mismo periodo, zenodo.org/api/records/6458115 (DISTEMIST) SI respondio (HTTP 206, descarga completa verificada). El fallo no es de la URL (la misma forma de URL funciono para DISTEMIST) sino de disponibilidad intermitente del servicio para estos registros concretos. Ver bitacora/2026-09-16-E3.4.md.",
     "nota_url": "URL de archivo obtenida de la API de Zenodo el 2026-09-16; la anterior apuntaba a la pagina del deposito y nunca habria descargado"
   },
   {
@@ -142,13 +142,13 @@
     "licencia": "Ley 1712 de 2014 (dato abierto)",
     "licencia_url": "https://www.datos.gov.co/d/i7cb-raxc",
     "obligaciones": null,
-    "sha256": null,
-    "tamano_bytes": null,
+    "sha256": "5489897d9647f1ad7b7ab42535f9ebb1de5bd483331f211ea20265b3dadb1064",
+    "tamano_bytes": 75879254,
     "fecha_registro": "2026-09-16",
-    "fecha_descarga": null,
+    "fecha_descarga": "2026-09-16",
     "archivos_extraer": null,
     "user_agent": null,
-    "estado": "pendiente",
+    "estado": "verificado",
     "item_del_plan": "E3.5",
     "motivo_rechazo": null
   },
@@ -160,15 +160,15 @@
     "licencia": "aviso legal no verificado automaticamente",
     "licencia_url": "https://listadomedicamentos.aemps.gob.es/",
     "obligaciones": "Leer Aviso_Legal_Nomenclator.pdf antes de publicar un derivado (REFERENCIAS.md S5).",
-    "sha256": null,
+    "sha256": "634f602078531eacbd25349c547e5c47c2887398f2f3e83a5c02c369e0ebf978",
     "tamano_bytes": 16139143,
     "fecha_registro": "2026-09-16",
-    "fecha_descarga": null,
+    "fecha_descarga": "2026-09-16",
     "archivos_extraer": [
       "DICCIONARIO_PRINCIPIOS_ACTIVOS.xml"
     ],
     "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36",
-    "estado": "pendiente",
+    "estado": "verificado",
     "item_del_plan": "E3.5",
     "motivo_rechazo": null
   },
@@ -216,13 +216,13 @@
     "licencia": "Ley 1712 de 2014 (dato abierto)",
     "licencia_url": "https://www.datos.gov.co/d/c36g-9fc2",
     "obligaciones": null,
-    "sha256": null,
-    "tamano_bytes": null,
+    "sha256": "249668c179092d6b15590f84cc00f3d41851749d67929e892e26f4603739af52",
+    "tamano_bytes": 32191578,
     "fecha_registro": "2026-09-16",
-    "fecha_descarga": null,
+    "fecha_descarga": "2026-09-16",
     "archivos_extraer": null,
     "user_agent": null,
-    "estado": "pendiente",
+    "estado": "verificado",
     "item_del_plan": "E3.6",
     "motivo_rechazo": null
   },

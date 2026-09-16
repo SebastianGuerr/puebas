@@ -8,7 +8,10 @@ No mide correccion clinica (para eso estan test_correccion.py y las fichas de
 E3-E5): mide que la salida de HOY es la salida de MANANA si nadie toco nada.
 """
 
+import os
 from pathlib import Path
+
+import pytest
 
 from NLP.nucleo.salida import EscritorCSV
 
@@ -28,12 +31,22 @@ def test_fases_1_a_5_son_byte_identicas_al_csv_fijado(pipeline_resultado, tmp_pa
     finally:
         escritor.cerrar()
 
+    # Regeneracion deliberada: REGENERAR_GOLDEN=1 python -m pytest NLP/tests -k byte
+    # Se usa SOLO cuando una fase cambia de comportamiento de forma medida y
+    # documentada en decisiones/. Sin la variable, la prueba solo compara.
+    if os.environ.get("REGENERAR_GOLDEN") == "1":
+        RUTA_ESPERADO.parent.mkdir(parents=True, exist_ok=True)
+        RUTA_ESPERADO.write_bytes(ruta_obtenida.read_bytes())
+        pytest.skip(f"golden regenerado a proposito en {RUTA_ESPERADO}")
+
     assert RUTA_ESPERADO.exists(), (
-        f"falta el CSV esperado en {RUTA_ESPERADO}; genera uno con "
-        "prueba_pipeline (ver bitacora 2026-09-16-E2.1.md) y fijalo a mano "
-        "tras revisarlo"
+        f"falta el CSV esperado en {RUTA_ESPERADO}; regeneralo con "
+        "REGENERAR_GOLDEN=1 y revisa el diff antes de fijarlo"
     )
-    assert ruta_obtenida.read_bytes() == RUTA_ESPERADO.read_bytes()
+    assert ruta_obtenida.read_bytes() == RUTA_ESPERADO.read_bytes(), (
+        "la salida de las fases 1-5 cambio. Si el cambio es deliberado y esta "
+        "medido, regenera con REGENERAR_GOLDEN=1 y anota la decision"
+    )
 
 
 def test_las_50_notas_sinteticas_se_conservan(pipeline_resultado, notas_sinteticas_df):

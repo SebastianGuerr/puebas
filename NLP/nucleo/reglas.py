@@ -15,6 +15,7 @@ from rapidfuzz.distance import DamerauLevenshtein
 from NLP import rutas
 from NLP.nucleo import linguistica
 from NLP.recursos import casing
+from NLP.recursos import lexico
 from NLP.nucleo.morfologia import (  # reexportado: el resto del paquete los usa como reglas.X
     LETRAS_RAIZ,
     PREFIJOS_MEDICOS,
@@ -33,6 +34,15 @@ from NLP.nucleo.morfologia import (  # reexportado: el resto del paquete los usa
 RUTA_SIGLAS = rutas.DICCIONARIO_SIGLAS
 RUTA_SIGLAS_PROTEGIDAS = rutas.DATOS / "lexicos" / "siglas_protegidas.txt"
 
+# E3.5/E3.6: listas curadas de farmacos, lugares y nombres propios, cada una
+# con su propio archivo y su propia bandera (PLAN.md S3, principio 8). Mismo
+# patron que SIGLAS_PROTEGIDAS_MANUAL (E3.2): archivo de una forma por
+# linea, cargado aparte para poder auditar y medir cada lista por separado.
+# Ver bitacora/2026-09-16-E3.5.md y bitacora/2026-09-16-E3.6.md.
+RUTA_FARMACOS = rutas.DATOS / "lexicos" / "farmacos.txt"
+RUTA_LUGARES = rutas.DATOS / "lexicos" / "lugares.txt"
+RUTA_NOMBRES = rutas.DATOS / "lexicos" / "nombres.txt"
+
 LONGITUD_MINIMA = 5          # tokens mas cortos solo via correcciones directas
 DISTANCIA_MAXIMA = 2         # ediciones permitidas entre original y candidato
 DIFERENCIA_LONGITUD = 1      # letras de diferencia permitidas
@@ -49,6 +59,18 @@ PROTEGER_ENTIDADES = True
 # Tras bandera para poder medir con y sin ella (PLAN.md §3, principio 8).
 PROTEGER_SIGLAS_LISTA_MANUAL = True
 
+# E3.5/E3.6: banderas independientes para cada lista curada nueva.
+PROTEGER_FARMACOS = True
+PROTEGER_LUGARES = True
+PROTEGER_NOMBRES = True
+
+# E3.4: segunda via de proteccion para la terminologia de DISTEMIST/SympTEMIST
+# integrada en recursos/lexico.py (fuente lexico.GAZETTEER). pesos.peso() ya
+# consulta lexico.fuente() para esa fuente; esta bandera cierra el mismo
+# hueco que E3.2 documento para esta_protegido() (la via de LanguageTool y
+# SymSpell, independiente de la via de pesos.py). Ver bitacora/2026-09-16-E3.4.md.
+PROTEGER_GAZETTEER_LEXICO = True
+
 # Contenido del diccionario, poblado por cargar(). Son estructuras de módulo
 # porque se consultan desde varios motores dentro del bucle de corrección.
 SIGLAS = set()
@@ -63,6 +85,15 @@ PATRONES = []
 # E3.2: lista independiente de siglas_protegidas.txt, cargada aparte del
 # diccionario para que se pueda auditar y medir por separado.
 SIGLAS_PROTEGIDAS_MANUAL = set()
+
+# E3.5/E3.6: mismo patron, una lista por recurso. Se guardan ya plegadas
+# (sin tildes) porque los nombres propios de estas fuentes (topónimos,
+# nombres de persona) sí llevan tilde en el origen (DIVIPOLA, REPS) y la
+# nota de triage casi siempre no; esta_protegido() pliega el token de
+# entrada de la misma forma antes de comparar (ver más abajo).
+FARMACOS_PROTEGIDOS = set()
+LUGARES_PROTEGIDOS = set()
+NOMBRES_PROTEGIDOS = set()
 
 RE_PALABRA = re.compile(r"[a-záéíóúüñ]+")
 RE_MAYUSCULA_INICIAL = re.compile(r"\b[A-ZÁÉÍÓÚÑ][a-záéíóúüñ]{2,}")
@@ -155,6 +186,9 @@ def cargar(ruta=RUTA_SIGLAS):
             SIGLAS.update(x.lower() for x in valor)
 
     cargar_siglas_protegidas()
+    cargar_farmacos()
+    cargar_lugares()
+    cargar_nombres()
     return SIGLAS
 
 
@@ -174,6 +208,35 @@ def cargar_siglas_protegidas(ruta=RUTA_SIGLAS_PROTEGIDAS):
             continue
         SIGLAS_PROTEGIDAS_MANUAL.add(linea.lower())
     return SIGLAS_PROTEGIDAS_MANUAL
+
+
+def _cargar_lista(ruta, destino):
+    """Lee una lista de una forma por linea (`#` comenta) en `destino`."""
+    destino.clear()
+    ruta = Path(ruta)
+    if not ruta.exists():
+        return destino
+    for linea in ruta.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith("#"):
+            continue
+        destino.add(sin_tildes(linea.lower()))
+    return destino
+
+
+def cargar_farmacos(ruta=RUTA_FARMACOS):
+    """Lee `datos/lexicos/farmacos.txt` (E3.5) en `FARMACOS_PROTEGIDOS`."""
+    return _cargar_lista(ruta, FARMACOS_PROTEGIDOS)
+
+
+def cargar_lugares(ruta=RUTA_LUGARES):
+    """Lee `datos/lexicos/lugares.txt` (E3.6) en `LUGARES_PROTEGIDOS`."""
+    return _cargar_lista(ruta, LUGARES_PROTEGIDOS)
+
+
+def cargar_nombres(ruta=RUTA_NOMBRES):
+    """Lee `datos/lexicos/nombres.txt` (E3.6) en `NOMBRES_PROTEGIDOS`."""
+    return _cargar_lista(ruta, NOMBRES_PROTEGIDOS)
 
 
 # ==========================================================
@@ -271,6 +334,20 @@ def esta_protegido(token, protegidos=()):
         return True
     if PROTEGER_SIGLAS_LISTA_MANUAL and token in SIGLAS_PROTEGIDAS_MANUAL:
         return True
+
+    # E3.5/E3.6/E3.4: las listas curadas se guardan sin tildes (ver
+    # cargar_farmacos/_lugares/_nombres); se pliega tambien el token de
+    # entrada para no depender de que la nota lleve la tilde correcta.
+    plegado = sin_tildes(token)
+    if PROTEGER_FARMACOS and plegado in FARMACOS_PROTEGIDOS:
+        return True
+    if PROTEGER_LUGARES and plegado in LUGARES_PROTEGIDOS:
+        return True
+    if PROTEGER_NOMBRES and plegado in NOMBRES_PROTEGIDOS:
+        return True
+    if PROTEGER_GAZETTEER_LEXICO and lexico.fuente(token) == lexico.GAZETTEER:
+        return True
+
     return any(p.search(token) for p in PATRONES)
 
 

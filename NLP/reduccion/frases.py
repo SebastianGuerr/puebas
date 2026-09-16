@@ -212,6 +212,49 @@ def entrenar(datos=None, modelo=None, semilla=0):
     }
 
 
+def validar_cruzado(datos=None, k=5, muestra=None, semilla=0):
+    """
+    Validacion cruzada estratificada sobre el conjunto etiquetado (E5.5),
+    para contrastar la exactitud 0.971 que reporta entrenar() -- una sola
+    particion 80/20 -- contra varios pliegues. `muestra`: submuestreo
+    estratificado a ese tamano antes de vectorizar (el codificador es
+    costoso sobre las 19.586 filas completas). Devuelve exactitud por
+    pliegue y su media. Ver docs/decisiones/2026-09-16-E5.5.md.
+    """
+    import numpy as np
+    import pandas as pd
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
+
+    datos = datos or rutas.FRASES_ETIQUETADAS
+    df = pd.read_csv(datos).fillna("")
+
+    if muestra and muestra < len(df):
+        df, _ = train_test_split(
+            df, train_size=muestra, stratify=df["etiqueta"], random_state=semilla)
+
+    X_txt = df["tramo"].tolist()
+    y = (df["etiqueta"] == BUROCRATICO).astype(int).to_numpy()
+
+    X = vectorizar(X_txt)
+    if X is None:
+        return None
+
+    clf = LogisticRegression(max_iter=2000, class_weight="balanced")
+    cv = StratifiedKFold(n_splits=k, shuffle=True, random_state=semilla)
+    puntajes = cross_val_score(clf, X, y, cv=cv, scoring="accuracy")
+
+    return {
+        "filas": len(df),
+        "burocraticos": int(y.sum()),
+        "clinicos": int((1 - y).sum()),
+        "pliegues": k,
+        "exactitud_por_pliegue": [round(float(p), 4) for p in puntajes],
+        "exactitud_media": round(float(np.mean(puntajes)), 4),
+        "exactitud_desvio": round(float(np.std(puntajes)), 4),
+    }
+
+
 # ==========================================================
 # USO
 # ==========================================================

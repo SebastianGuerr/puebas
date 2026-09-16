@@ -55,6 +55,8 @@ defensas.
 import re
 import threading
 
+from NLP.nucleo import fonetica
+
 MODELO = "PlanTL-GOB-ES/roberta-base-biomedical-clinical-es"
 
 # ==========================================================
@@ -134,6 +136,12 @@ MAX_CARACTERES = 600     # ventana alrededor del hueco que se le pasa al modelo
 #     escribio el paciente, y corregir mal inventa un hecho clinico que nadie
 #     dijo. Entre esos dos errores este proyecto prefiere siempre el primero.
 DISTANCIA_RELATIVA_MAXIMA = 0.5
+
+# E4.3 (docs/decisiones/2026-09-16-E4.3.md): ademas de la distancia relativa,
+# un candidato que SUENA igual que lo escrito (misma clase fonetica: seseo,
+# betacismo, yeismo, h muda, g/j, qu/k, x/s) se admite aunque su distancia de
+# edicion no pase el corte anterior. Bandera apagada por defecto.
+ACEPTAR_POR_FONETICA = False
 
 ACTIVO = True
 
@@ -410,7 +418,9 @@ def _admisible(escrita, candidato):
                 len(_sin_tildes(candidato.lower().replace(" ", ""))))
     if not largo:
         return False
-    return _distancia(escrita, candidato) < DISTANCIA_RELATIVA_MAXIMA * largo
+    if _distancia(escrita, candidato) < DISTANCIA_RELATIVA_MAXIMA * largo:
+        return True
+    return ACEPTAR_POR_FONETICA and fonetica.coinciden(escrita, candidato)
 
 
 def _sin_tildes(texto):

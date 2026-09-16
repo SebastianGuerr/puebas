@@ -69,7 +69,11 @@ PESOS = {
     "diccionario": 0.95,
     "catalogo": 0.95,
     "externo": 0.95,
+    "gazetteer": 0.95,             # E3.4: DISTEMIST/SympTEMIST, terminologia curada (SNOMED CT)
     "farmaco": 0.90,
+    "farmaco_lista_curada": 0.95,  # E3.5: CUM/AEMPS, forma declarada, no adivinada por sufijo
+    "lugar_curado": 0.95,          # E3.6: DIVIPOLA
+    "nombre_curado": 0.95,         # E3.6: REPS
 
     # El vocabulario del modelo biomedico queda deliberadamente por debajo del
     # umbral de proteccion. El tokenizador se entreno sobre historias clinicas
@@ -136,6 +140,22 @@ def peso(palabra):
     if token in reglas.DIRECTAS:
         return PESOS["correccion_directa"], "correccion_directa"
 
+    # E3.5/E3.6: listas curadas (farmacos, lugares, nombres). Van antes de
+    # consultar el lexico para que su peso alto (0.95) no quede por debajo
+    # del vocabulario biomedico (0.45) cuando la misma palabra figura en
+    # ambos -- medido: 'orozco' aparece en el vocabulario BPE del modelo
+    # biomedico (peso 0.45, no llega al umbral de proteccion) y en
+    # nombres.txt (REPS); sin este orden pesos.peso() nunca reflejaba la
+    # fuente curada. Se pliegan tildes porque las tres fuentes de origen
+    # (CUM/AEMPS, DIVIPOLA, REPS) sí las llevan y la nota casi nunca.
+    plegado = morfologia.sin_tildes(token)
+    if reglas.PROTEGER_FARMACOS and plegado in reglas.FARMACOS_PROTEGIDOS:
+        return PESOS["farmaco_lista_curada"], "farmaco_lista_curada"
+    if reglas.PROTEGER_LUGARES and plegado in reglas.LUGARES_PROTEGIDOS:
+        return PESOS["lugar_curado"], "lugar_curado"
+    if reglas.PROTEGER_NOMBRES and plegado in reglas.NOMBRES_PROTEGIDOS:
+        return PESOS["nombre_curado"], "nombre_curado"
+
     if lexico.disponible():
         origen = lexico.fuente(token)
         if origen == lexico.DICCIONARIO:
@@ -149,6 +169,8 @@ def peso(palabra):
             return PESOS["catalogo"], "catalogo"
         if origen == lexico.EXTERNO:
             return PESOS["externo"], "externo"
+        if origen == lexico.GAZETTEER and reglas.PROTEGER_GAZETTEER_LEXICO:
+            return PESOS["gazetteer"], "gazetteer"
         if origen == lexico.BIOMEDICO:
             return PESOS["biomedico"], "biomedico"
 

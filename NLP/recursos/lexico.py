@@ -17,6 +17,13 @@ RUTA_SIGLAS = rutas.DICCIONARIO_SIGLAS
 RUTA_CATALOGO = rutas.CATALOGO_SINTOMAS
 RUTA_EXTERNO = rutas.LEXICO_EXTERNO
 
+# E3.4: gazetteer de sintomas/hallazgos (DISTEMIST; SympTEMIST pendiente de
+# que Zenodo responda, ver bitacora/2026-09-16-E3.4.md). Fuente curada
+# propia, independiente de EXTERNO (CIE-10): no se mezclan porque tienen
+# procedencia y cobertura distintas y hay que poder medir cada una por
+# separado (PLAN.md §3, principio 8).
+RUTA_GAZETTEER = rutas.DATOS / "lexicos" / "gazetteer_distemist.txt"
+
 MODELO_BIOMEDICO = "PlanTL-GOB-ES/roberta-base-biomedical-clinical-es"
 
 # Longitud minima para entrar. Por debajo de 4 letras el vocabulario BPE esta
@@ -34,6 +41,7 @@ DISTANCIA_MAXIMA = 2
 DICCIONARIO = "diccionario"     # escrito a mano
 CATALOGO = "catalogo"           # catalogo de sintomas
 EXTERNO = "externo"             # CIE-10, SNOMED, INVIMA
+GAZETTEER = "gazetteer"         # DISTEMIST/SympTEMIST (E3.4)
 BIOMEDICO = "biomedico"         # vocabulario del modelo clinico
 
 # Palabras del diccionario propio que NO son evidencia clinica: municipios,
@@ -130,6 +138,23 @@ def _del_externo():
     return salida
 
 
+def _del_gazetteer():
+    """
+    Términos de gazetteer_distemist.txt (E3.4), uno por línea. Mismo formato
+    que lexico_externo.txt pero fuente y procedencia distintas (ver
+    RUTA_GAZETTEER); se mantiene aparte para poder medir su aporte solo.
+    """
+    if not RUTA_GAZETTEER.exists():
+        return set()
+    salida = set()
+    for linea in RUTA_GAZETTEER.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith("#"):
+            continue
+        salida.update(linea.split())
+    return salida
+
+
 def _del_modelo_biomedico(modelo=MODELO_BIOMEDICO):
     """
     Palabras enteras del vocabulario BPE del tokenizador biomédico (se
@@ -174,7 +199,16 @@ def construir():
     # despues del CIE-10 a proposito -- 'hospital' y 'consulta' estan ahi y hay
     # que degradarlas -- y antes del catalogo y del diccionario, que si son
     # evidencia clinica y tienen que poder recuperarlas.
+    # GAZETTEER va justo despues de BIOMEDICO (y antes de EXTERNO) a
+    # proposito: reduccion.py lee lexico_clinico.json por su cuenta y solo
+    # cuenta como densidad clinica las fuentes de FUENTES_CURADAS =
+    # ('diccionario','catalogo','externo'), que no incluye 'gazetteer'. Si
+    # una palabra existe en ambas fuentes, que gane 'externo' evita
+    # reclasificarla fuera de esa tupla y cambiar en silencio el recorte de
+    # la fase 5 (medido: con 'gazetteer' pisando a 'externo' se perdia
+    # 'comisura labial' en la nota 900008, ver bitacora/2026-09-16-E3.4.md).
     for fuente, palabras in ((BIOMEDICO, _del_modelo_biomedico()),
+                             (GAZETTEER, _del_gazetteer()),
                              (EXTERNO, _del_externo()),
                              (NO_CLINICO, no_clinicas),
                              (CATALOGO, _del_catalogo()),

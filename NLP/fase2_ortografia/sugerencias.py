@@ -43,6 +43,7 @@ import re
 
 from NLP.fase2_ortografia import candidatos
 from NLP.fase2_ortografia import vocabulario
+from NLP.nucleo import fonetica
 from NLP.nucleo import linguistica
 from NLP.nucleo import morfologia
 from NLP.recursos import lexico
@@ -64,14 +65,68 @@ LONGITUD_MINIMA = 4
 
 RE_ALFABETICA = re.compile(r"^[a-záéíóúüñ]+$")
 
+# E4.6 (docs/decisiones/2026-09-16-E4.6.md): buena parte del lexico clinico
+# tiene frecuencia 0 en el corpus del hospital, y es la fuente de la que sale
+# 'paraliticos' como vecino de 'paraclinicos' pese a no aparecer nunca en las
+# notas. Bandera apagada por defecto: activarla exige que el candidato del
+# lexico este respaldado por el corpus, igual que ya se exige para las
+# expansiones (FRECUENCIA_EXPANSION) y las divisiones (FRECUENCIA_MITAD). No
+# se toca _del_corpus: esa fuente ya sale del corpus por construccion.
+# ACTIVADA el 2026-09-16 tras E4.6. El lexico clinico contiene formas que este
+# hospital no escribe nunca, y la capa de contexto las prefiere por fluidez:
+# 'paraclinicos' -> 'paraliticos' salia de aqui. Exigir que el candidato del
+# lexico aparezca al menos una vez en el corpus cierra 237 de los 409 pares de
+# frecuencia cero (57,9%) y ademas quita 'patinete' de los candidatos de
+# 'pacinete', sin perder ninguna correccion buena medida.
+# Ver decisiones/2026-09-16-E4.6.md.
+RESPALDO_CANDIDATO_LEXICO = True
+FRECUENCIA_RESPALDO_CANDIDATO_LEXICO = 1
+
 
 # ==========================================================
 # FUENTES DE CANDIDATOS
 # ==========================================================
 
 def _del_lexico(palabra):
-    """Formas del léxico clínico dentro de la distancia de edición máxima."""
-    return lexico.vecinos(palabra, DISTANCIA_MAXIMA, MAX_POR_FUENTE)
+    """
+    Formas del léxico clínico dentro de la distancia de edición máxima.
+
+    Con `RESPALDO_CANDIDATO_LEXICO` se descartan las que el corpus del
+    hospital no escribe nunca: el léxico junta diccionario propio, catálogo,
+    CIE-10/SNOMED y el vocabulario del modelo biomédico, y las tres últimas
+    fuentes traen formas que esta institución no usa (medición: decisión de
+    este ítem).
+    """
+    vecinos = lexico.vecinos(palabra, DISTANCIA_MAXIMA, MAX_POR_FUENTE)
+    if RESPALDO_CANDIDATO_LEXICO:
+        vecinos = [v for v in vecinos
+                   if candidatos.frecuencia(v) >= FRECUENCIA_RESPALDO_CANDIDATO_LEXICO]
+    return vecinos
+
+
+# E4.3 (docs/decisiones/2026-09-16-E4.3.md): candidatos que SUENAN igual que
+# lo escrito (misma clase fonetica: seseo, betacismo, yeismo, h muda, g/j,
+# qu/k, x/s), tomados del vocabulario que el propio corpus escribe con
+# frecuencia. Bandera apagada por defecto.
+USAR_FONETICA_GENERADOR = False
+FRECUENCIA_MINIMA_FONETICA = 20
+_INDICE_FONETICO = None
+
+
+def _indice_fonetico():
+    global _INDICE_FONETICO
+    if _INDICE_FONETICO is None:
+        formas = [p for p, n in candidatos.CONTEO.items()
+                  if n >= FRECUENCIA_MINIMA_FONETICA and RE_ALFABETICA.match(p)]
+        _INDICE_FONETICO = fonetica.construir_indice(formas)
+    return _INDICE_FONETICO
+
+
+def _del_fonetica(palabra):
+    """Formas frecuentes del corpus que suenan igual que la palabra (E4.3)."""
+    if not USAR_FONETICA_GENERADOR:
+        return []
+    return fonetica.candidatos(palabra, _indice_fonetico(), MAX_POR_FUENTE)
 
 
 def _del_corpus(palabra):
@@ -201,7 +256,8 @@ def _divisiones(palabra):
 def generar(palabra):
     """
     Todos los candidatos para una palabra, sin repetidos y sin la palabra
-    misma, en el orden en que los aportan las cuatro fuentes.
+    misma, en el orden en que los aportan las fuentes (cuatro, y una quinta
+    -fonetica- tras su bandera; ver E4.3).
 
     Devuelve una lista vacía cuando ninguna fuente aporta nada, que es el caso
     mayoritario: la mayor parte de las palabras de una nota están bien escritas.
@@ -211,7 +267,7 @@ def generar(palabra):
         return []
 
     vistos, salida = {palabra}, []
-    for fuente in (_del_lexico, _del_corpus, _divisiones, _expansiones):
+    for fuente in (_del_lexico, _del_corpus, _divisiones, _expansiones, _del_fonetica):
         for candidato in fuente(palabra):
             clave = candidato.lower()
             if clave in vistos:
@@ -233,5 +289,6 @@ def diagnosticar(palabra):
         "corpus": _del_corpus(palabra),
         "divisiones": _divisiones(palabra),
         "expansiones": _expansiones(palabra),
+        "fonetica": _del_fonetica(palabra),
         "todos": generar(palabra),
     }

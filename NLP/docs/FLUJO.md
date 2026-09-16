@@ -283,6 +283,7 @@ tiene comando de regeneración) y, vía `nucleo/reglas.EXPANDIBLES`,
 | `EXPANDIR_ENCABEZADOS` | `True` | `normalizacion.py:61` |
 | `LONGITUD_MINIMA_SIGLA` | `3` | `normalizacion.py:66` — siglas de 2 letras no se expanden, coinciden con palabras corrientes |
 | `SEPARAR_CONCEPTO` | `False` (E5.1) | `normalizacion.py` | apagada: `normalizar()` sigue anotando inline igual que hoy. Encendida, `normalizar_separado(texto)` devuelve `(texto_sin_glosa, concepto_normalizado)` en vez de un solo texto con el paréntesis dentro |
+| `EXPANDIR_ABREVIATURAS_PROPUESTAS` | `False` (E5.3) | `normalizacion.py` | apagada: expandiría además los candidatos no ambiguos de `salidas/e3_7_8/abreviaturas_candidatas.csv` (E3.8), tratándolos como declarados seguros solo para esta prueba. Medido sobre 9.311 notas: toca 67 (0,72 %), y 61 de esas 67 sufren daño real (falso positivo de sigla sobre una palabra corriente, o colisión de la glosa nueva con un patrón de recorte de fase 5). Ver `decisiones/2026-09-16-E5.3.md` |
 
 **Subpasos**, en el orden de `normalizar()`: (1) `expandir_encabezados` — anota el
 significado del rótulo de apartado (`"ap:"` → `"ap (antecedentes personales):"`);
@@ -470,14 +471,15 @@ lenguaje local, fase 5b).
 |---|---|---|
 | `PALABRAS_ORACION_LARGA` | `8` | `reduccion.py:38` |
 | `DENSIDAD_MINIMA` | `0.40` | `reduccion.py:39` |
-| `TOPE_PALABRAS` | `60` | `reduccion.py:355` |
-| `LONGITUD_MINIMA` | `1` | `reduccion.py:354` |
+| `TOPE_PALABRAS` | `60` | `reduccion.py:371` |
+| `LONGITUD_MINIMA` | `1` | `reduccion.py:370` |
 | `MAX_LONGITUD` / `UMBRAL_BUROCRATICO` | `64` / `0.85` | `frases.py` (ficha en `ARQUITECTURA.md` §2.7) |
 | `LONGITUD_MINIMA` (extractor) | `1` | `extractor.py:28` — ve todas las notas, no solo las largas |
 | `FRACCION_MAXIMA` / `FRACCION_CLINICA_MINIMA` | `0.85` / `0.50` | `extractor.py:46,53` |
 | `QUITAR_GLOSA` | `False` (E5.1) | `reduccion.py` — si `True`, `recortar()` quita también `(...)` de la fase 3; sin efecto si el texto ya llega sin ella (`normalizacion.SEPARAR_CONCEPTO=True`) |
+| `USAR_NEGACION` | `False` (E5.2) | `reduccion.py` — si `True`, `recortar()` antepone `NEG_` (`nucleo/negacion.marcar()`) al alcance de cada negación, como último paso, sobre el texto ya recortado. Apagada por defecto: cambia `texto_embedding` (contrato §7 de `PLAN.md`) y exige revectorizar y `clustering --validar`; ver `decisiones/2026-09-16-E5.2.md` |
 
-**Subpasos**, en el orden de `_recortar()` (`reduccion.py:594-639`), llamada por
+**Subpasos**, en el orden de `_recortar()` (`reduccion.py:636-682`), llamada por
 `recortar()`: pasada **agresiva** — `_quitar_clasificador` (tramos que `frases.py`
 marca administrativos, salvo que su densidad clínica los proteja) →
 `_quitar_institucional` (oraciones con marcador institucional, u oraciones largas
@@ -490,7 +492,11 @@ temporal/demográfico); si tampoco sirve, se devuelve el texto original
 (`sin_reducir()`). Si `USAR_LLM`, el extractor (fase 5b) sustituye el recorte por
 su propia extracción, verificada literalmente contra la nota, o marca
 `MOTIVO_SIN_CONTEXTO` si concluye que no hay motivo de consulta; cualquier otro
-resultado del modelo deja mandar al recorte por reglas.
+resultado del modelo deja mandar al recorte por reglas. Si `USAR_NEGACION` (E5.2),
+el texto que sale de cualquiera de las tres ramas de `recortar()` (agresiva, suave
+o sin reducir) pasa por `negacion.marcar()` como último paso, después de `_pulir()`
+y no antes: los patrones de arriba buscan frases literales, y marcar antes los
+dejaría de reconocer.
 
 **Qué se conserva**: la negación viaja dentro del texto (un cuadro descrito como
 resuelto tiene que llegarle así al modelo; viaja también aparte, como campo
@@ -652,3 +658,4 @@ aceptación y la dependencia de E4-E5.
 |---|---|---|
 | 2026-09-16 | E1.3 | Primera versión: recorrido de la nota, una sección por fase 1-6, ejemplos sintéticos ejecutados, discrepancias encontradas |
 | 2026-09-16 | E5.1 | Constantes `SEPARAR_CONCEPTO` (fase 3) y `QUITAR_GLOSA` (fase 5) en las tablas de §5 y §7; bullet de glosas en §9 actualizado con la medición y el enlace a `decisiones/2026-09-16-E5.1-glosas.md` |
+| 2026-09-16 | E5.2, E5.3 | Constante `USAR_NEGACION` (fase 5, §7) y nota sobre el marcado de negación como último paso de `recortar()`; constante `EXPANDIR_ABREVIATURAS_PROPUESTAS` (fase 3, §5). Enlaces a `decisiones/2026-09-16-E5.2.md` y `decisiones/2026-09-16-E5.3.md` |

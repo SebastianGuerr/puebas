@@ -172,7 +172,14 @@ USAR_CACHE = True
 # guarda esas decisiones, y reutilizarla reproduce el daño intacto.
 #
 # Se suma la fase 2b (coherencia.py), que tambien cambia lo que sale.
-VERSION_CORRECTOR = "4-con-spacy-y-coherencia"
+# 5: cambian capas CACHEADAS, asi que la cache de la version 4 no vale.
+#   - fase 1 ya no destruye cifras (1000mg dejaba de ser 1000mg)
+#   - sugerencias.py exige respaldo del corpus al candidato del lexico
+#   - coherencia.py protege el vocabulario propio del hospital y acota la
+#     exencion por errata de teclado
+#   - el lexico clinico incorpora el gazetteer de DISTEMIST
+# Ver las decisiones del 2026-09-16 en docs/decisiones/.
+VERSION_CORRECTOR = "5-cifras-respaldo-y-vocabulario-propio"
 
 # Como se llama en notas_descartadas.csv el veredicto del modelo. Se escribe
 # tal cual en la columna motivo_descarte, al lado de los motivos que pone la

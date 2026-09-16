@@ -31,6 +31,16 @@ EXPANDIR_ENCABEZADOS = True   # 'aa:' -> 'aa (antecedentes alergicos):'
 # columna de concepto en vez de un parentesis dentro del texto de embedding.
 SEPARAR_CONCEPTO = False
 
+# Bandera de E5.3 (docs/decisiones/2026-09-16-E5.3.md). Candidatos minados por
+# recursos/abreviaturas.py (E3.8) en salidas/e3_7_8/abreviaturas_candidatas.csv,
+# filtrados por su columna 'ambigua' (no por el whitelist a mano de
+# diccionario_siglas.json, que esta bandera no toca). Apagada por defecto: la
+# medicion muestra que la mayoria de los 45 candidatos 'no ambiguos' son ruido
+# de mineria (fragmentos, apellidos, toponimos que el filtro de vocabulario no
+# reconocio), no siglas reales -- ver la decision.
+EXPANDIR_ABREVIATURAS_PROPUESTAS = False
+RUTA_ABREVIATURAS_PROPUESTAS = rutas.SALIDAS / "e3_7_8" / "abreviaturas_candidatas.csv"
+
 # Longitud minima de una sigla para expandirla. Las de dos letras coinciden
 # con palabras corrientes del espanol y con fragmentos de nombres propios, de
 # modo que expandirlas parte palabras y anota significados equivocados.
@@ -48,6 +58,29 @@ _DESACTIVADAS = []        # (clave, motivo) para el informe
 _COLOQUIAL = {}
 _PROCESADOR = None
 _RESPALDO = None
+
+
+def _candidatas_e3_8(ruta=RUTA_ABREVIATURAS_PROPUESTAS):
+    """
+    Siglas nuevas y no ambiguas de E3.8 ('ambigua'=False, 'ya_en_diccionario'=
+    False en abreviaturas_candidatas.csv), como {sigla: definicion}. Vacio si
+    el CSV no existe. Solo lectura: nunca escribe ni modifica ese archivo.
+    """
+    import csv as _csv
+
+    ruta = Path(ruta)
+    if not ruta.exists():
+        return {}
+    candidatas = {}
+    with ruta.open(encoding="utf-8-sig", newline="") as f:
+        for fila in _csv.DictReader(f):
+            if fila.get("ambigua") == "True" or fila.get("ya_en_diccionario") == "True":
+                continue
+            sigla = (fila.get("sigla") or "").strip().lower()
+            definicion = (fila.get("definicion") or "").strip()
+            if sigla and definicion:
+                candidatas[sigla] = definicion
+    return candidatas
 
 
 def _sin_tildes(texto):
@@ -96,6 +129,16 @@ def cargar(ruta=RUTA_COLOQUIAL, lt=None):
 
     if EXPANDIR_SIGLAS:
         for sigla, significado in reglas.EXPANDIBLES.items():
+            candidatas.setdefault(sigla, significado)
+
+    # E5.3: la propuesta de E3.8 se trata como declarada segura SOLO para esta
+    # prueba (no toca diccionario_siglas.json, que sigue siendo el whitelist
+    # curado a mano). Sin esto, ambiguedad.evaluar() las dejaria inactivas
+    # igual que cualquier sigla no declarada, y la bandera no mediria nada.
+    if EXPANDIR_ABREVIATURAS_PROPUESTAS:
+        propuestas = _candidatas_e3_8()
+        _DECLARADAS_SEGURAS.update(propuestas)
+        for sigla, significado in propuestas.items():
             candidatas.setdefault(sigla, significado)
 
     tabla = {}

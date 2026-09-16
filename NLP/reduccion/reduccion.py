@@ -37,9 +37,14 @@ FUENTES_CURADAS = ("diccionario", "catalogo", "externo")
 # proyecto.
 PALABRAS_ORACION_LARGA = 8
 
-# E5.8: una oracion con terminologia clinica de sobra no se descarta por
-# mencionar una institucion. Ver bitacora/2026-09-16-E0.2.md y E5.8.
-FRENO_CLINICO_INSTITUCIONAL = True
+# E5.8: se probo proteger la oracion con marcador institucional cuando su
+# densidad clinica es alta, como ya se hace con el clasificador de frases.
+# MEDIDO Y DESCARTADO: solo rescataba 4 notas de 9.311 (420 -> 416 perdidas) y
+# la prueba byte-identica de tests/ delato que conservaba el bloque
+# institucional entero. La densidad no separa ese texto porque el lexico
+# clinico cuenta 'salud', 'atencion' y 'nivel' como terminologia. Queda
+# implementado y apagado; el arreglo real esta en otra parte de la fase 5.
+FRENO_CLINICO_INSTITUCIONAL = False
 DENSIDAD_MINIMA = 0.40
 
 # Bandera de E5.1 (docs/decisiones/2026-09-16-E5.1-glosas.md). Por defecto no
