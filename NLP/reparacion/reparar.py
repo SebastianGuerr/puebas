@@ -232,6 +232,70 @@ def informar(clasificaciones):
     return len(peores)
 
 
+# Metricas de calidad.py que deciden si el CSV reparado sustituye al vigente, y
+# en que direccion tiene que moverse cada una para que el cambio sea una mejora.
+METRICAS_GATE = {
+    "retencion_media": "sube",
+    "prop_retencion_total": "sube",
+    "prop_sin_terminologia_en_embedding": "baja",
+    "prop_pierden_mas_de_la_mitad": "baja",
+    "notas_vacias": "baja",
+    "notas_sobre_ventana_bge": "baja",
+}
+
+
+def autoriza_aplicar(df_viejo, df_nuevo, empeoraron, forzar=False):
+    """
+    True si el CSV reparado puede sustituir al vigente. Ver bitacora de E0.3.
+
+    POR QUE NO BASTA CON CONTAR LAS NOTAS QUE PIERDEN UN TERMINO
+        Esa era la unica condicion hasta el 2026-09-16, y era imposible de
+        cumplir: compara el CSV nuevo contra el VIEJO, y el viejo se produjo con
+        artefactos ausentes. Cualquier nota que el corrector nuevo escriba de
+        otra forma -- aunque sea mejor -- figura como perdida. Medido: 428 notas
+        "pierden" mientras la retencion media SUBE de 0,9185 a 0,9773 y las que
+        llegan sin terminologia caen de 204 a 49.
+
+        Contar diferencias no dice si el resultado es mejor. Lo que decide es la
+        calidad absoluta de cada version, que es lo que mide evaluacion/calidad.
+        La cuenta de notas que pierden se sigue mostrando: es la lista que hay
+        que revisar, no el criterio de aceptacion.
+    """
+    from NLP.evaluacion import calidad
+
+    print("\n" + "=" * 64)
+    print("COMPARACION DE CALIDAD (es lo que decide si se aplica)\n")
+    antes, despues = calidad.medir(df_viejo), calidad.medir(df_nuevo)
+
+    peores = []
+    for clave, direccion in METRICAS_GATE.items():
+        a, b = antes.get(clave), despues.get(clave)
+        if a is None or b is None:
+            continue
+        mejor = (b > a) if direccion == "sube" else (b < a)
+        marca = "  ok" if (mejor or b == a) else "PEOR"
+        print(f"  {marca}  {clave:38} {a!s:>10} -> {b!s:>10}")
+        if not (mejor or b == a):
+            peores.append(clave)
+
+    if empeoraron:
+        print(f"\n  {empeoraron:,} notas pierden algun termino frente al CSV viejo.")
+        print("  Revisalas con `python -m NLP.reparacion.revision`. No es el")
+        print("  criterio de aceptacion, pero es la lista que hay que mirar.")
+
+    if peores and not forzar:
+        print(f"\n  NO SE APLICA: empeora en {len(peores)} metrica(s): "
+              f"{', '.join(peores)}.")
+        print("  Arregla la causa, o repite con --forzar si la revision a mano")
+        print("  lo justifica y queda anotado en una bitacora.")
+        return False
+    if peores:
+        print(f"\n  SE APLICA CON --forzar pese a empeorar en: {', '.join(peores)}.")
+    else:
+        print("\n  Ninguna metrica de calidad empeora: se aplica.")
+    return True
+
+
 def main():
     procesar.terminologia.alarmas.reiniciar()  # E2.0: idem procesar.main()
     ap = argparse.ArgumentParser(
@@ -240,6 +304,8 @@ def main():
                     help="reparar solo las primeras N notas (para probar)")
     ap.add_argument("--aplicar", action="store_true",
                     help="sustituir triage_limpio.csv (aparta la version anterior con rotar)")
+    ap.add_argument("--forzar", action="store_true",
+                    help="aplicar aunque empeore alguna metrica de calidad")
     ap.add_argument("--con-llm", action="store_true",
                     help="usar el extractor de Ollama en la fase 5")
     ap.add_argument("--csv", default=str(CSV_ENTRADA),
@@ -284,9 +350,7 @@ def main():
         print("  bien, repite con --aplicar.")
         return
 
-    if empeoraron:
-        print(f"\n  NO SE APLICA: {empeoraron:,} notas pierden terminologia.")
-        print("  Arregla la causa y vuelve a correr antes de aplicar.")
+    if not autoriza_aplicar(df, nuevo, empeoraron, args.forzar):
         raise SystemExit(1)
 
     anterior = aplicar(args.csv, csv_salida)

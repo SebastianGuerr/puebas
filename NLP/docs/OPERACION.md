@@ -236,6 +236,75 @@ este documento (E1.3/E1.4) corrige el punto de `README.md` sin `Historial`; el
 faltante de `evaluacion/perturbar.py` queda pendiente porque `ARQUITECTURA.md` no
 está entre los archivos que este ítem puede tocar.
 
+### 3.10 Procedimiento completo: limpiar el CSV actual y regenerar los embeddings
+
+Deja `triage_limpio.csv` con el corrector vigente y los vectores al día. Se ejecuta entero
+y en este orden desde la raíz del repositorio. `PY` es `.venv\Scripts\python.exe`.
+
+```
+REM 1. Comprobar que estan los artefactos que el proceso da por hechos
+%PY% -m NLP.nucleo.requisitos
+
+REM 2. Frecuencias del corpus completo (si no existen o son de otra corrida)
+%PY% -m NLP.recursos.corpus_lexico
+
+REM 3. Lexico clinico, con los gazetteers integrados
+%PY% -m NLP.recursos.lexico
+
+REM 4. Si VERSION_CORRECTOR cambio, migrar la cache en vez de tirarla
+%PY% -m NLP.nucleo.migrar_cache --desde <version anterior> --hasta <version nueva>
+%PY% -m NLP.nucleo.migrar_cache --desde <version anterior> --hasta <version nueva> --aplicar
+
+REM 5. Reparar sin tocar nada, y revisar el informe termino a termino
+%PY% -m NLP.reparacion.reparar
+%PY% -m NLP.reparacion.revision
+
+REM 6. Medir el resultado contra el CSV vigente ANTES de sustituirlo
+%PY% -m NLP.evaluacion.calidad --csv NLP\salidas\triage_limpio.csv --comparar NLP\salidas\triage_reparado.csv
+
+REM 7. Solo si los numeros mejoran: aplicar
+%PY% -m NLP.reparacion.reparar --aplicar
+
+REM 8. Revectorizar y validar
+%PY% -m embedding.vectorizar
+%PY% -m clustering --validar
+```
+
+El paso 6 es el que decide: `--comparar` cruza por `OID` y muestra la diferencia columna a
+columna. Lo que tiene que subir es la retención de terminología; lo que tiene que bajar es
+el número de notas que se quedan sin terminología clínica.
+
+El paso 7 no sustituye nada si quedan notas en `perdio_motivo` sin revisar: `reparar.py` se
+niega y sale con código 1. La versión anterior del CSV la aparta `salida.rotar()`.
+
+### 3.11 Generar notas nuevas desde la base de datos
+
+```
+REM Corrida normal: procesa las notas que aun no estan en el CSV
+%PY% -m NLP.procesar
+
+REM Prueba corta antes de una corrida larga
+%PY% -m NLP.procesar --limite 200
+
+REM Rehacer el CSV entero desde cero (aparta el anterior)
+%PY% -m NLP.procesar --rehacer
+```
+
+`procesar.py` es incremental: lee `DIM_TRIAGE`, descarta las notas cuyo `OID` ya está
+escrito y añade solo las nuevas, así que se puede lanzar tantas veces como haga falta.
+Cuántas trae cada corrida lo fija `LIMITE_REGISTROS` (hoy 5.000; `None` para la tabla
+entera) y `--limite` lo pisa para una corrida concreta sin tocar el archivo.
+
+Después de añadir notas nuevas hay que vectorizarlas:
+
+```
+%PY% -m embedding.vectorizar
+%PY% -m clustering --validar
+```
+
+`embedding/` deduplica por el hash del texto, de modo que solo vectoriza lo que no tiene
+vector todavía: no hace falta `--rehacer` salvo que cambie el modelo de embeddings.
+
 ## 4. Errores conocidos y su solución
 
 De `ESTADO.md` §5, más lo confirmado al preparar este documento (2026-09-16):
