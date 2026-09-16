@@ -20,10 +20,11 @@ cuales responde a por qué vino el paciente:
 - **Conducta**: "se realiza rastreo ecográfico", "se dan recomendaciones y
   signos de alarma", "se decide derivar paciente" — lo que hizo el
   hospital, no lo que traía el paciente.
-- **Antecedentes**: "paciente con antecedentes de artritis reumatoide,
-  síndrome de sjögren, trombocitopenia autoinmune, osteoporosis...". En la
-  nota 787265 son 60 de sus 153 palabras (el texto más largo del corpus
-  mide 153 palabras).
+- **Antecedentes**: un listado de enfermedades crónicas previas encabezado por
+  "paciente con antecedentes de...". En la nota más larga del corpus (153 palabras)
+  ocupa 60 de ellas, es decir el 39 % del texto, sin aportar nada al motivo de
+  consulta de esa visita. *(Ejemplo descrito, no citado: el contenido original era la
+  historia clínica de un paciente identificable por su OID; `PLAN.md` §3, principio 7.)*
 
 `_quitar_institucional()` descarta oraciones enteras (separa por punto y
 punto y coma). La nota larga de triage no usa ninguno de los dos: es una

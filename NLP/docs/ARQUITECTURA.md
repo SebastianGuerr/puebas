@@ -562,6 +562,14 @@ spaCy/LanguageTool/sklearn). `main` (`--gold`, `--csv` con `TRIAGE_LIMPIO` por d
 `salidas/metricas/<fecha>-<item>.json` y una fila en `salidas/metricas/historico.csv`
 (vía `nucleo/salida.EscritorCSV`).
 
+**`control.py`** — Pasa la muestra de control (`datos/evaluacion/muestra_control.csv`,
+notas reales aportadas por el propietario con lo que se espera de cada una) por las fases
+1-5 y muestra, nota a nota, el texto original y el `texto_embedding` resultante. Es el
+bucle rapido de verificacion: **cinco segundos frente a una hora** de reparar el corpus
+entero. Cinco notas destaparon un fallo que 9.311 no habian destapado (el clasificador de
+frases convertia los puntos en comas). `--fases` muestra tambien el corregido y el
+normalizado. No escribe nada.
+
 **`calidad.py`** (E0.5) — Informe agregado de la calidad de un CSV de triage, sin exponer
 texto de notas: retención de terminología clínica en `texto_embedding` frente a
 `texto_original`, recorte, notas vacías o muy cortas, proporción con glosa, longitud frente
@@ -973,6 +981,7 @@ las etapas (`PLAN.md` §4.2).
 
 | Fecha | Ítem | Cambio |
 |---|---|---|
+| 2026-09-16 | cierre | Ficha de `evaluacion/control.py`; el plan y la investigación se archivan en `docs/archivo/` |
 | 2026-09-15 | previo al plan | Primera versión |
 | 2026-09-15 | E0.2 | Nuevo `reparacion/revision.py`: ficha en §2.10, entrada en §1 y §3 |
 | 2026-09-15 | E1.2, E1.6 | Nuevo `evaluacion/paridad_docs.py`: ficha en §2.9 y línea en §3; §6 redactada (guía de estilo, sustituye el texto provisional) |

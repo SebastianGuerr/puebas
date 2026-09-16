@@ -74,7 +74,7 @@ USAR_CLASIFICADOR = True
 # --validar` antes de adoptarla en la corrida real -- ninguno de los dos esta al
 # alcance de este item. La evidencia medida (contaminacion que corrige, costo en
 # tokens) esta en la decision.
-USAR_NEGACION = False
+USAR_NEGACION = True
 
 
 # ==========================================================
@@ -257,6 +257,9 @@ RE_ORACION = re.compile(r"(?<=[.;])\s+")
 
 # el mismo corte que usa reduccion/frases.py, para que los tramos coincidan
 RE_TRAMO_CLASIF = re.compile(r"\s*[.;,]\s*")
+# Igual, pero capturando el separador para poder reengancharlo (ver
+# _quitar_clasificador). Sin esto, rearmar convertia los puntos en comas.
+RE_TRAMO_CLASIF_SEP = re.compile(r"\s*([.;,])\s*")
 
 # ==========================================================
 # LOS TRES BLOQUES DE LA NOTA LARGA
@@ -464,11 +467,27 @@ def _quitar_clasificador(texto):
     if not [t for t in tramos if t not in sobran]:
         return texto
 
-    # se reconstruye quitando solo los tramos marcados, conservando el resto
-    # tal cual: el objetivo es recortar, no reescribir
-    partes = [t.strip() for t in RE_TRAMO_CLASIF.split(texto)
-              if t.strip() and t.strip() not in sobran]
-    return ", ".join(partes) if partes else texto
+    # SE CONSERVA EL SEPARADOR DE CADA TRAMO, Y NO ES UN DETALLE DE ESTILO.
+    #
+    # Antes se rearmaba con ", ".join(...), y eso convertia TODOS los puntos en
+    # comas. El filtro institucional que corre justo despues parte por punto y
+    # por punto y coma, asi que pasaba a ver UNA sola oracion con el motivo de
+    # consulta y el bloque de la EPS dentro; como no podia tirarla entera, la
+    # devolvia entera. Resultado medido sobre la muestra de control (nota
+    # C-001): la propaganda de la EPS llegaba intacta a texto_embedding.
+    #
+    # Al conservar el separador, cada tramo se reengancha como estaba y las
+    # fases siguientes siguen viendo las oraciones que el texto tenia.
+    piezas = RE_TRAMO_CLASIF_SEP.split(texto)
+    partes = []
+    for i in range(0, len(piezas), 2):
+        tramo = piezas[i].strip()
+        separador = piezas[i + 1] if i + 1 < len(piezas) else ""
+        if not tramo or tramo in sobran:
+            continue
+        partes.append(tramo + separador)
+    texto_nuevo = " ".join(partes).strip()
+    return texto_nuevo if texto_nuevo else texto
 
 
 def _quitar_institucional(texto):

@@ -870,6 +870,73 @@ constituirían contribución original.
   (E3.1).
 
 
+## 11. Qué resultó cierto al implementarlo (E7.4)
+
+Esta sección se escribe al cerrar E3–E5 y cierra el círculo de la revisión: qué de lo
+investigado sobrevivió al contacto con los datos, qué no, y qué hacía falta y no estaba en
+la literatura consultada. Cada fila enlaza la decisión que la midió.
+
+### 11.1 Técnicas que funcionaron
+
+| Técnica | Qué predecía la revisión | Qué se midió | Decisión |
+|---|---|---|---|
+| Léxico del corpus propio como protección (§4) | protegería la jerga que ningún diccionario recoge | el corrector destruía `antier` (224 usos), `maluca` (282), `cuncho` (44); con el umbral de 5 apariciones, el daño deshecho sube del 2,9 % al 38,2 % | `2026-09-16-E4.1` |
+| Exigir respaldo del corpus al **candidato** (§2) | evitaría proponer formas que el hospital no escribe | el 86,3 % de las 32.315 formas del léxico clínico no aparece nunca en el corpus; de ahí salía `paraclínicos → paralíticos`. Cierra 237 de 409 pares dañinos | `2026-09-16-E4.6` |
+| Canal ruidoso con prior de dominio (Kernighan 1990) | elegiría mejor que la frecuencia sola | exactitud 0,8515 frente a 0,8333, **con la misma intervención sobre texto limpio** | `2026-09-16-E4.4` |
+| Verificador enmascarado solo en la zona gris (§2.7) | serviría como verificador, no como decisor | razón buenas:malas de 50:1 en el cubo `revisar`; como decisor general habría hecho daño | `2026-09-16-E4.6` |
+| Gazetteers clínicos (SympTEMIST/DISTEMIST, §4) | ampliarían la cobertura del léxico | DISTEMIST suma 27.255 formas (32.315 → 47.803) y evita dos correcciones dañinas | `bitacora/2026-09-16-E3.4` |
+| Auditoría por par distinto (§3.2) | permitiría revisar miles de notas en una hora | 2.193 pares resumen 3.078 cambios; **fue la base de cinco decisiones** y del conjunto juzgado a mano | `bitacora/2026-09-16-E2.4` |
+| Corpus de errores autoinducidos (Fivez 2017) | mediría cobertura sin anotación humana | 6.779 pares deterministas; es lo que permitió medir E4.2 y E4.4 sin gold | `bitacora/2026-09-16-E2.3` |
+
+### 11.2 Técnicas que se descartaron con medición
+
+| Técnica | Por qué se descartó |
+|---|---|
+| Piso de frecuencia para los candidatos (E4.2) | F0.5 baja de 0,9213 a 0,8787 sin que la intervención sobre texto limpio baje ni un token |
+| Fonética como criterio de aceptación (E4.3) | efecto cero medible; como generador, +1 corrección en 83 |
+| No restituir tildes (E4.5) | quitar las tildes funde 1.702 grupos que suman el 26,84 % de las ocurrencias: **la hipótesis de la ficha era falsa**, no restituir parte el mismo concepto en dos tokens |
+| Proteger por «frecuencia sin imán» (E4.1) | bloquea el 36 % de las correcciones buenas para atrapar el 73 % del daño |
+| Expandir abreviaturas propias (E5.3) | dañaba 61 de las 67 notas que tocaba: `cae` colisiona con el verbo español |
+| Freno clínico sobre el bloque institucional (E5.8) | conservaba la propaganda entera de la EPS; la densidad no separa ese texto porque el léxico cuenta `salud` y `atención` como clínicas |
+
+### 11.3 Lo que hizo falta y no estaba en la revisión
+
+Es la parte más útil de esta sección: cuatro problemas que decidieron la calidad del
+resultado y que **ninguna de las 60 fuentes consultadas menciona**, porque no son de
+procesamiento de lenguaje sino de ingeniería del dato.
+
+1. **La fase 1 destruía cifras.** Una regla para `holaaaaa` colapsaba también los dígitos:
+   `1000mg` se volvía `100mg`. Ninguna métrica de corrección ortográfica lo habría
+   detectado, porque no es una corrección: es la limpieza de formato.
+   → `decisiones/2026-09-16-cifras.md`.
+
+2. **Dos formas del mismo lema no son una corrección ortográfica.** `desaturado →
+   desaturada`, `llevo → lleva`. La literatura de corrección trata la palabra aislada y no
+   distingue entre arreglar una errata y cambiar la flexión de una palabra bien escrita.
+   → `decisiones/2026-09-16-E4.10-mismo-lema.md`.
+
+3. **El criterio de aceptación de una reparación no puede ser la diferencia contra el CSV
+   anterior** si el anterior está mal generado. Hay que medir calidad absoluta.
+   → `bitacora/2026-09-16-E0.3`.
+
+4. **La caché de correcciones se migra, no se tira.** Subir la versión del corrector
+   costaba más de 20 horas de recómputo; razonar sobre qué entradas puede haber cambiado el
+   cambio lo bajó a minutos. → `nucleo/migrar_cache.py` y `OPERACION.md` §6.
+
+### 11.4 Lo que sigue sin resolverse
+
+- **Palabra real sustituida por otra palabra real** (`álgica → alérgica`, `urente →
+  urgente`, `maluca → mala`): 68 apariciones. La señal de frecuencia llegó a su techo y el
+  contexto no las distingue. La vía es ampliar el léxico propio y la revisión humana de
+  `pares_correccion.csv`, no otra regla.
+- **Normalización conceptual (E5.7)**: la cobertura medida es del 21 % frente al 80 % que
+  pide la ficha. La causa está identificada —al nivel 1 se le pasa la nota entera cuando
+  está hecho para menciones cortas— y es corregible.
+- **Sin conjunto anotado por una persona con criterio clínico (E0.6)**, todas las cifras de
+  esta sección se apoyan en sustitutos construidos por quien desarrolla. Son defendibles y
+  están documentados, pero no son la vara que el plan quería.
+
+
 ## Historial
 
 | Fecha | Ítem | Cambio |

@@ -232,11 +232,28 @@ def negado(texto, inicio_token, fin_token):
     return any(_se_solapan((inicio_token, fin_token), t) for t in alcance(texto))
 
 
+# Palabras a las que NO se les pone el prefijo aunque caigan dentro del alcance.
+# Marcar 'y', 'de' u 'horas' no aporta nada y ensucia el texto: lo que importa
+# es que quede marcado el sintoma, no la preposicion que lo acompaña. Se
+# reutiliza la lista de depuracion.py en vez de escribir otra, porque dos
+# listas de palabras vacias acaban divergiendo.
+SOLO_CONTENIDO = True
+
+
+def _es_contenido(palabra):
+    """True si merece llevar el prefijo: no es palabra vacia ni numero."""
+    from NLP.depuracion import depuracion
+
+    p = str(palabra).lower()
+    if len(p) < 3 or p.isdigit():
+        return False
+    return p not in depuracion.VACIAS
+
+
 def marcar(texto, prefijo="NEG_"):
     """
-    Texto con `prefijo` antepuesto a cada palabra dentro de un alcance de
-    negacion. Para uso de E5.2 (prefijo antes de vectorizar); no se invoca
-    todavia desde ninguna fase del pipeline.
+    Texto con `prefijo` antepuesto a las palabras con contenido que caen dentro
+    de un alcance de negacion. Ver decisiones/2026-09-16-E5.2.md.
     """
     if not texto:
         return texto
@@ -248,10 +265,13 @@ def marcar(texto, prefijo="NEG_"):
     partes, ultimo = [], 0
     for token in _tokens(texto):
         en_alcance = any(_se_solapan((token.start(), token.end()), t) for t in tramos)
-        if en_alcance:
-            partes.append(texto[ultimo:token.start()])
-            partes.append(prefijo + token.group(0))
-            ultimo = token.end()
+        if not en_alcance:
+            continue
+        if SOLO_CONTENIDO and not _es_contenido(token.group(0)):
+            continue
+        partes.append(texto[ultimo:token.start()])
+        partes.append(prefijo + token.group(0))
+        ultimo = token.end()
     partes.append(texto[ultimo:])
     return "".join(partes)
 
