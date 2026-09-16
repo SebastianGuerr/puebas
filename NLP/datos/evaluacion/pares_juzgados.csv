@@ -1,0 +1,128 @@
+original,correccion,juicio,motivo
+pacinete,paciente,buena,typo de teclado hacia una palabra muy frecuente
+conciente,consciente,buena,falta ortografica corriente
+dolro,dolor,buena,typo de teclado
+consistete,consistente,buena,letra omitida
+semasn,seman,mala,el reemplazo no es una palabra; deberia ser semanas
+instaurada,instaurado,mala,cambia el genero de una forma correcta
+envio,enviaron,mala,cambia persona y numero del verbo
+consutla,consulta,buena,transposicion de letras
+llevo,lleva,mala,cambia el tiempo verbal
+desaturado,desaturada,mala,cambia el genero sin evidencia
+paicnete,paciente,buena,transposicion de letras
+apra,para,buena,transposicion de letras
+malestra,malestar,buena,transposicion de letras
+mcuho,mucho,buena,transposicion de letras
+refeire,refiere,buena,transposicion de letras
+quein,quien,buena,transposicion de letras
+secundigestante,segundigestante,mala,secundigestante es el termino obstetrico correcto
+golpie,golpe,buena,letra sobrante
+algica,alergica,mala,algica es relativo al dolor; alergica es otra cosa
+triage,triaje,dudosa,variante grafica aceptada; no cambia el concepto
+saturado,saturando,mala,cambia el tiempo verbal
+maluca,mala,mala,maluca es colombianismo por indispuesta
+corte,corto,mala,cambia el sustantivo por un adjetivo
+reifere,refiere,buena,transposicion de letras
+apciente,paciente,buena,transposicion de letras
+oncologos,oncologia,mala,cambia la persona por la especialidad
+paraclinicos,paraliticos,mala,paraclinicos son examenes; paraliticos es un cuadro neurologico
+escalas,escaleras,dudosa,ambas plausibles segun el contexto
+door,dolor,buena,typo de teclado
+distencion,distension,buena,restitucion correcta
+ahce,hace,buena,transposicion de letras
+incio,inicio,buena,letra omitida
+paciene,paciente,buena,letra omitida
+uan,un,dudosa,podria ser una
+compaia,compania,buena,letra omitida
+espectoracion,expectoracion,buena,falta ortografica corriente
+gripa,gripe,mala,gripa es la forma usada en Colombia y es 48 veces mas frecuente aqui
+antier,antir,mala,antier es colombianismo por anteayer; antir no existe
+tien,tiene,buena,letra omitida
+valoraicon,valoracion,buena,transposicion de letras
+normosaturada,normocaturada,mala,convierte una palabra correcta en uuna inexistente
+urente,urgente,mala,urente describe dolor quemante
+desmayo,desmaya,mala,cambia el sustantivo por el verbo
+tebngo,tengo,buena,letra sobrante
+cuncho,cinco,mala,cuncho es colombianismo; nada que ver con un numero
+schock,shock,buena,letra sobrante
+pra,para,buena,letra omitida
+deirva,deriva,buena,transposicion de letras
+pacietne,paciente,buena,transposicion de letras
+paciete,paciente,buena,letra omitida
+manjeo,manejo,buena,transposicion de letras
+gral,general,buena,expansion de abreviatura habitual
+abodminal,abdominal,buena,transposicion de letras
+paicente,paciente,buena,transposicion de letras
+caudro,cuadro,buena,transposicion de letras
+estoamgo,estomago,buena,transposicion de letras
+sangardo,sangrado,buena,transposicion de letras
+quine,quien,buena,transposicion de letras
+tratameinto,tratamiento,buena,transposicion de letras
+empeoro,empeorado,mala,cambia el tiempo verbal
+derehco,derecho,buena,transposicion de letras
+entumido,entumecido,buena,forma completa del participio
+izqueirda,izquierda,buena,transposicion de letras
+machuque,machaque,mala,machucar es colombianismo por golpear o aplastar
+parrillera,parrilla,mala,parrillera es quien va de acompanante en la moto
+refire,refiere,buena,letra omitida
+singos,signos,buena,transposicion de letras
+prioritara,prioritaria,buena,letra omitida
+pegue,sigue,dudosa,cambio de consonante sin evidencia
+ocn,con,buena,transposicion de letras
+motocileta,motocicleta,buena,letra omitida
+manifista,manifiesta,buena,letra omitida
+laceraciones,alteraciones,mala,laceracion es una herida; alteracion es otra cosa
+iii,ii,dudosa,numero romano; sin contexto no se decide
+etsoy,estoy,buena,transposicion de letras
+algico,agudo,mala,algico es relativo al dolor
+cosnulta,consulta,buena,transposicion de letras
+prioirtaria,prioritaria,buena,transposicion de letras
+doliren,dolores,dudosa,forma dudosa en el original
+encuentro,encuentra,mala,cambia la persona del verbo
+epcho,pecho,buena,transposicion de letras
+esoty,estoy,buena,transposicion de letras
+valordo,valorado,buena,letra omitida
+tegno,tengo,buena,transposicion de letras
+triado,traido,dudosa,triado puede ser participio de triar
+toraxico,toracico,buena,falta ortografica corriente
+tine,tiene,buena,letra omitida
+aporrie,aporte,mala,aporrear es colombianismo por golpearse
+sinto,siento,buena,letra omitida
+shcok,shock,buena,transposicion de letras
+dolro,dolo,mala,dolo es un termino juridico; deberia ser dolor
+basica,fisica,mala,cambia el adjetivo por otro distinto
+coros,cortos,dudosa,sin contexto no se decide
+desespero,desesperado,mala,desespero es sustantivo valido en Colombia
+refieiendo,refiriendo,buena,transposicion de letras
+entumida,entubada,mala,entumecida no es entubada; cambio clinico grave
+entumida,entumecida,buena,forma completa del participio
+fisiatria,fisaria,mala,el reemplazo no es una palabra
+hemeticos,hematicos,buena,cuadro hematico
+intercosatal,intercostal,buena,transposicion de letras
+izqueirdo,izquierdo,buena,transposicion de letras
+maluquita,mariquita,mala,maluquita es colombianismo por indispuesta
+neiga,niega,buena,transposicion de letras
+picadas,picaduras,dudosa,picadas se usa en Colombia para picaduras de insecto
+piquina,pequena,mala,piquina es colombianismo por picor
+tabaquista,tabaquismo,dudosa,cambia la persona por el habito
+refirendo,refiriendo,buena,letra omitida
+perosnal,personal,buena,transposicion de letras
+realziacion,realizacion,buena,transposicion de letras
+qu,que,buena,letra omitida
+abceso,absceso,buena,falta ortografica corriente
+abdomianl,abdominal,buena,transposicion de letras
+abdomne,abdomen,buena,transposicion de letras
+abominal,abdominal,buena,letra omitida
+badominal,abdominal,buena,transposicion de letras
+clincia,clinica,buena,transposicion de letras
+consulto,consulta,mala,cambia el tiempo verbal
+conulta,consulta,buena,letra omitida
+conuslta,consulta,buena,transposicion de letras
+copn,con,buena,letra sobrante
+corto,corte,mala,cambia el adjetivo por un sustantivo
+deposciones,deposiciones,buena,letra omitida
+dlor,dolor,buena,letra omitida
+entumecimeinto,entumecimiento,buena,transposicion de letras
+epixtasis,epistaxis,buena,transposicion de letras
+evolcuion,evolucion,buena,transposicion de letras
+fibre,fiebre,buena,transposicion de letras

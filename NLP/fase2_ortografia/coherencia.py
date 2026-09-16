@@ -68,6 +68,30 @@ from NLP.recursos import casing
 FRACCION_DISTANCIA_MAXIMA = 0.40
 FACTOR_FRECUENCIA = 10
 
+# Regla estricta de frecuencia (E4.1). Con ella, se revierte tambien cuando el
+# original es SOLO ALGO mas frecuente que el reemplazo, y siempre que el
+# reemplazo no aparezca nunca en el corpus. Medida sobre 120 pares juzgados a
+# mano (datos/evaluacion/pares_juzgados.csv): ver decisiones/2026-09-16-E4.1.
+# Se deja tras bandera para poder medir con y sin ella (PLAN §3, principio 8).
+FRECUENCIA_ESTRICTA = False
+
+# Con FRECUENCIA_ESTRICTA, minimo de apariciones del original para que su
+# ventaja de frecuencia cuente. Por debajo, las dos palabras son raras y la
+# comparacion no dice nada.
+FRECUENCIA_MINIMA_ESTRICTA = 5
+
+# E3.3: una forma que el corpus escribe al menos estas veces cuenta como
+# vocabulario propio del hospital aunque ningun diccionario la recoja.
+RESPALDO_POR_CORPUS = True
+FRECUENCIA_RESPALDO_CORPUS = 20
+
+# La salida por errata de teclado solo vale cuando el original NO era una
+# palabra. Medido sobre datos/evaluacion/pares_juzgados.csv: una sola edicion
+# convierte 'corte' en 'corto', 'llevo' en 'lleva' y 'desmayo' en 'desmaya',
+# que son palabras distintas, y la exencion las dejaba pasar sin llegar nunca
+# a la comparacion de frecuencias. Ver decisiones/2026-09-16-E4.1.
+ERRATA_SOLO_SIN_RESPALDO = True
+
 # Por debajo de esto no se revisa nada. Las palabras cortas dan distancias
 # relativas enormes por un solo caracter y el vocabulario las acepta casi
 # todas, asi que ninguna de las dos señales significa nada.
@@ -78,6 +102,7 @@ MOTIVO_CLINICO = "termino clinico convertido en palabra corriente"
 MOTIVO_INVENTADA = "la correccion no es una palabra de ningun diccionario"
 MOTIVO_DISTANCIA = "el reemplazo no se parece al original"
 MOTIVO_FRECUENCIA = "el original es mucho mas frecuente que el reemplazo"
+MOTIVO_NO_ESCRITA = "el reemplazo no aparece ni una vez en el corpus"
 
 RE_TOKEN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 RE_PUNTUACION = re.compile(r"^[^\w\s]$", re.UNICODE)
@@ -129,9 +154,17 @@ def _tiene_respaldo(palabra):
     original, así que solo tiene sentido cuando el original era mejor que la
     corrección; si tampoco era una palabra, la reversión no arregla nada.
     """
-    return (linguistica.en_vocabulario(palabra)
+    if (linguistica.en_vocabulario(palabra)
             or reglas.es_palabra_conocida(palabra)
-            or _es_clinica(palabra))
+            or _es_clinica(palabra)):
+        return True
+    # Lo que el personal escribe muchas veces es vocabulario suyo, no una
+    # errata: 'antier', 'maluca', 'piquina', 'cuncho' y 'parrillera' no estan
+    # en ningun diccionario del español general y aqui aparecen decenas de
+    # veces. Sin esta via, el corrector las trata como erratas y las destruye
+    # (E3.3). Tras bandera para poder medir con y sin ella.
+    return bool(RESPALDO_POR_CORPUS
+                and pesos.frecuencia(palabra) >= FRECUENCIA_RESPALDO_CORPUS)
 
 
 def nombres_del_corpus():
@@ -205,7 +238,8 @@ def juzgar(original, candidato, entidades=(), frecuencia=None):
     if _es_clinica(o) and not _es_clinica(c):
         return MOTIVO_CLINICO
 
-    if _es_errata_de_teclado(o, c):
+    if _es_errata_de_teclado(o, c) and not (
+            ERRATA_SOLO_SIN_RESPALDO and _tiene_respaldo(o)):
         return None
 
     # SOLO SE REVIERTE LO QUE TENIA ALGO QUE PERDER
@@ -235,6 +269,15 @@ def juzgar(original, candidato, entidades=(), frecuencia=None):
         f_o, f_c = frecuencia(o), frecuencia(c)
         if f_o and f_o >= FACTOR_FRECUENCIA * max(f_c, 1):
             return MOTIVO_FRECUENCIA
+        if FRECUENCIA_ESTRICTA:
+            # El reemplazo no se escribe NUNCA en el corpus: no puede ser la
+            # forma correcta de nada que este hospital escriba.
+            if f_o and not f_c:
+                return MOTIVO_NO_ESCRITA
+            # El original gana en frecuencia y ademas se escribe lo bastante
+            # como para no ser una errata suelta.
+            if f_o >= max(f_c, 1) and f_o >= FRECUENCIA_MINIMA_ESTRICTA:
+                return MOTIVO_FRECUENCIA
 
     return None
 
