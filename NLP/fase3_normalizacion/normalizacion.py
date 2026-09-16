@@ -83,11 +83,6 @@ def _candidatas_e3_8(ruta=RUTA_ABREVIATURAS_PROPUESTAS):
     return candidatas
 
 
-def _sin_tildes(texto):
-    """Atajo al plegado de acentos del paquete, que conserva la eñe."""
-    return reglas.sin_tildes(texto)
-
-
 # ==========================================================
 # CARGA DEL DICCIONARIO
 # ==========================================================
@@ -204,7 +199,7 @@ def _construir_flashtext(tabla):
         destino = termino if MODO == "reemplazar" else f"{expresion} ({termino})"
         kp.add_keyword(expresion, destino)
         # el texto viene sin tildes en muchas notas; se registran las dos formas
-        plano = _sin_tildes(expresion)
+        plano = reglas.sin_tildes(expresion)
         if plano != expresion:
             destino_plano = termino if MODO == "reemplazar" else f"{plano} ({termino})"
             kp.add_keyword(plano, destino_plano)

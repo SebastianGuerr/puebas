@@ -55,7 +55,7 @@ defensas.
 import re
 import threading
 
-from NLP.nucleo import fonetica
+from NLP.nucleo import fonetica, morfologia
 
 MODELO = "PlanTL-GOB-ES/roberta-base-biomedical-clinical-es"
 
@@ -369,8 +369,8 @@ def _distancia(a, b):
         'asociado', que no tiene nada que ver. Con la transposicion a 1 se
         separan solas, sin tocar ningun umbral.
     """
-    a = _sin_tildes(a.lower().replace(" ", ""))
-    b = _sin_tildes(b.lower().replace(" ", ""))
+    a = morfologia.sin_tildes(a.lower().replace(" ", ""))
+    b = morfologia.sin_tildes(b.lower().replace(" ", ""))
     if a == b:
         return 0
 
@@ -414,19 +414,13 @@ def _admisible(escrita, candidato):
     Las expansiones de abreviatura no pasan por aqui: van en su propia tanda
     (ver _es_expansion y elegir()).
     """
-    largo = max(len(_sin_tildes(escrita.lower().replace(" ", ""))),
-                len(_sin_tildes(candidato.lower().replace(" ", ""))))
+    largo = max(len(morfologia.sin_tildes(escrita.lower().replace(" ", ""))),
+                len(morfologia.sin_tildes(candidato.lower().replace(" ", ""))))
     if not largo:
         return False
     if _distancia(escrita, candidato) < DISTANCIA_RELATIVA_MAXIMA * largo:
         return True
     return ACEPTAR_POR_FONETICA and fonetica.coinciden(escrita, candidato)
-
-
-def _sin_tildes(texto):
-    """Pliega los acentos conservando la enye, como el resto del paquete."""
-    from NLP.nucleo import morfologia
-    return morfologia.sin_tildes(texto)
 
 
 def _es_expansion(escrita, candidato):
@@ -461,8 +455,8 @@ def _es_expansion(escrita, candidato):
         una palabra cualquiera contenga sus letras en orden por azar; el riesgo
         estaba concentrado justo en el borde.
     """
-    e = _sin_tildes(escrita.lower())
-    c = _sin_tildes(candidato.lower().replace(" ", ""))
+    e = morfologia.sin_tildes(escrita.lower())
+    c = morfologia.sin_tildes(candidato.lower().replace(" ", ""))
     if len(c) <= len(e) or len(c) >= 2 * len(e):
         return False
     it = iter(c)

@@ -97,6 +97,40 @@ FRECUENCIA_RESPALDO_CORPUS = 5
 # a la comparacion de frecuencias. Ver decisiones/2026-09-16-E4.1.
 ERRATA_SOLO_SIN_RESPALDO = True
 
+# E4.10: dos formas del MISMO lema no son una correccion ortografica, sino un
+# cambio de genero, tiempo o persona sobre una palabra que ya estaba bien
+# escrita. Medido sobre datos/evaluacion/pares_juzgados.csv: atrapa
+# 'desaturado' -> 'desaturada', 'envio' -> 'enviaron', 'llevo' -> 'lleva',
+# 'instaurada' -> 'instaurado' y 'desmayo' -> 'desmaya', y NO toca ninguna
+# correccion buena ('pacinete' -> 'paciente' y 'dolro' -> 'dolor' tienen lemas
+# distintos). Ver decisiones/2026-09-16-E4.10-mismo-lema.md.
+REVERTIR_MISMO_LEMA = True
+
+_LEMATIZADOR = None
+_LEMAS = {}
+
+
+def lema(palabra):
+    """Lema de una palabra suelta, con memoria. Cadena vacia si no hay modelo."""
+    global _LEMATIZADOR
+    p = str(palabra).lower().strip()
+    if p in _LEMAS:
+        return _LEMAS[p]
+    if _LEMATIZADOR is None:
+        try:
+            import spacy
+
+            from NLP.nucleo.linguistica import MODELO
+
+            _LEMATIZADOR = spacy.load(MODELO, disable=["parser", "ner"])
+        except Exception:
+            _LEMATIZADOR = False
+    if not _LEMATIZADOR:
+        return ""
+    doc = _LEMATIZADOR(p)
+    _LEMAS[p] = doc[0].lemma_.lower() if len(doc) else ""
+    return _LEMAS[p]
+
 # Por debajo de esto no se revisa nada. Las palabras cortas dan distancias
 # relativas enormes por un solo caracter y el vocabulario las acepta casi
 # todas, asi que ninguna de las dos señales significa nada.
@@ -108,6 +142,7 @@ MOTIVO_INVENTADA = "la correccion no es una palabra de ningun diccionario"
 MOTIVO_DISTANCIA = "el reemplazo no se parece al original"
 MOTIVO_FRECUENCIA = "el original es mucho mas frecuente que el reemplazo"
 MOTIVO_NO_ESCRITA = "el reemplazo no aparece ni una vez en el corpus"
+MOTIVO_MISMO_LEMA = "cambia la forma gramatical, no la ortografia"
 
 RE_TOKEN = re.compile(r"\w+|[^\w\s]", re.UNICODE)
 RE_PUNTUACION = re.compile(r"^[^\w\s]$", re.UNICODE)
@@ -242,6 +277,14 @@ def juzgar(original, candidato, entidades=(), frecuencia=None):
     # 'comico' es una sola edicion, pasaria como errata, y deja de ser clinico.
     if _es_clinica(o) and not _es_clinica(c):
         return MOTIVO_CLINICO
+
+    # Dos formas del mismo lema no son una correccion de ortografia. Va ANTES
+    # de la salida por errata de teclado porque casi todas estas parejas estan
+    # a distancia 1 ('llevo'/'lleva') y esa puerta las dejaba pasar.
+    if REVERTIR_MISMO_LEMA and _tiene_respaldo(o):
+        lo, lc = lema(o), lema(c)
+        if lo and lc and lo == lc:
+            return MOTIVO_MISMO_LEMA
 
     if _es_errata_de_teclado(o, c) and not (
             ERRATA_SOLO_SIN_RESPALDO and _tiene_respaldo(o)):

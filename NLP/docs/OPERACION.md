@@ -307,23 +307,240 @@ vector todavía: no hace falta `--rehacer` salvo que cambie el modelo de embeddi
 
 ## 4. Errores conocidos y su solución
 
-De `ESTADO.md` §5, más lo confirmado al preparar este documento (2026-09-16):
+Revisada entera el 2026-09-16 al cierre de la sesión de ejecución: cada fila se comprobó
+contra el código de ese día, y las que ya no ocurren se retiraron en vez de arrastrarse.
 
-| Error | Causa | Solución / estado |
+| Error | Causa | Estado |
 |---|---|---|
-| `reparacion/reparar.py` escribe con pandas (`QUOTE_MINIMAL`); `procesar.py` con `nucleo/salida.py` (`QUOTE_ALL`) | dos escritores de CSV distintos | pendiente, E0.4 |
-| La copia `triage_limpio.previo-<sello>.csv` no la purga `salida.rotar()` | el glob de `rotar()` no reconoce ese patrón de nombre | pendiente, E0.4 |
-| `embedding/corpus.py` lee el CSV sin `encoding=` | funciona hoy por el manejo del BOM de pandas, pero es frágil | anotado para revisar en E7.2 |
-| `embedding/estructurar.py` falla con `AttributeError: module 'embedding.rutas' has no attribute 'CATALOGO_SINTOMAS'` | `embedding/extraccion.py:61,64` importa `embedding.rutas` en vez de `NLP.rutas`, que es quien define esa constante | sin solución todavía; no ejecutar `embedding.estructurar` (ver `FLUJO.md` §10, discrepancia 1) |
-| La receta que imprime `requisitos.py` para `clasificador_frases` es `python -m NLP.reduccion.frases` | ese comando regenera `datos/frases_etiquetadas.csv` (curado a mano) y destruye la curación | **no seguir esa receta**; usar `from NLP.reduccion import frases; frases.entrenar()` (sección 5) |
-| `perdio_motivo` cuenta `dada`, `salud`, `toma`, `signos` como terminología clínica | están en el léxico curado aunque no aportan motivo de consulta en la mayoría de sus usos | ruido conocido; se revisa por término con `reparacion.revision --termino <palabra>` |
-| `requirements.txt` fija `scikit-learn==1.4.2`; el `.venv` puede traer otra versión | desalineación entre archivo fijado y entorno instalado | comprobar con `pip show scikit-learn` tras instalar |
-| Léxico curado sin cobertura de cola larga (`ginecobstetricia`, `tensionales`) | recursos léxicos incompletos | pendiente, E3 |
-| `alarmas.reiniciar()` nunca se invoca desde `procesar.py` ni `reparar.py` | los contadores de vetos y abstenciones acumulan entre corridas dentro del mismo proceso | pendiente, E2.0; si se corre `procesar.main()` dos veces en el mismo proceso Python (p. ej. en una prueba), los contadores del resumen se mezclan |
-| `evaluacion/referencia.py` falla con `FileNotFoundError` | `salidas/muestra_revision.csv` nunca se generó (`escaneo.py --muestra`) | pendiente, E0.6 |
-| `NLP/tests/` sin pruebas | E2.1 no ejecutado | ver sección 3.8 |
-| No existe `NLP/evaluacion/metricas.py` | E2.2 no ejecutado | `python -m NLP.evaluacion.metricas` no es un comando válido todavía |
-| **`recursos/lexico.py` y `recursos/casing.py` no usan `argparse`** | cualquier invocación con `python -m`, **incluida una con `--help`**, ejecuta `main()` completo y sobrescribe el artefacto correspondiente en `salidas/`; `casing.py` además abre una conexión a la base de datos y lee la tabla completa | comprobado el 2026-09-16 al intentar listar la ayuda de todos los módulos de `recursos/`: `lexico.py` reconstruyó `lexico_clinico.json` (32.315 formas, idéntico al documentado) y `casing.py` reconstruyó `lexico_casing.json` leyendo 94.226 notas de la base de datos (4.845 entradas: 145 siglas, 164 nombres propios — antes 4.843, la diferencia es el crecimiento normal del corpus entre el 15 y el 16 de septiembre, de 94.136 a 94.226 notas). **No invocar estos dos módulos salvo que se quiera regenerar el artefacto a propósito**; no tienen forma segura de "solo consultar" |
+| **`recursos/lexico.py` y `recursos/casing.py` no usan `argparse`** | cualquier invocación con `python -m`, **incluida `--help`**, ejecuta `main()` y sobrescribe el artefacto; `casing.py` además lee la tabla completa de la base de datos | **vivo**. No invocar esos dos módulos salvo para regenerar el artefacto a propósito. Comprobado el 2026-09-16 al intentar listar su ayuda: reconstruyeron `lexico_clinico.json` y `lexico_casing.json` sin avisar |
+| `perdio_motivo` cuenta `dada`, `salud`, `toma`, `signos` como terminología clínica | están en el léxico curado aunque no aportan motivo de consulta en la mayoría de sus usos | **vivo**, ruido conocido. Se revisa por término con `reparacion.revision --termino <palabra>` |
+| Léxico sin cobertura de cola larga, y colombianismos que el corrector destruye (`maluca`, `cuncho`, `piquiña`, `urente`) | el español de Colombia no está en ningún diccionario general, y el corpus no repite lo bastante esas formas | **vivo**. Mitigado por `coherencia.RESPALDO_POR_CORPUS` (umbral 5) y por las listas de E3.2–E3.6; lo que queda necesita revisión humana de `pares_correccion.csv` |
+| `evaluacion/referencia.py` da cero en todo | las 27 anotaciones de `datos/referencia_correcciones.json` no comparten ningún OID con `muestra_revision.csv` | **vivo**, desacople de datos. Se resuelve al anotar el gold v0 (E0.6) |
+| `alarmas.reiniciar()` acumulaba entre corridas del mismo proceso | no se llamaba desde ningún punto de entrada | **resuelto** (E2.0): se llama al inicio de `procesar.main()` y de `reparar.main()` |
+| `reparacion/reparar.py` escribía con pandas (`QUOTE_MINIMAL`) y `procesar.py` con `nucleo/salida.py` (`QUOTE_ALL`) | dos escritores distintos para el mismo archivo | **resuelto** (E0.4): `reparar.py` usa `EscritorCSV` y aparta la versión anterior con `rotar()` |
+| `embedding/estructurar.py` fallaba con `AttributeError` al importarse | `embedding/rutas.py` re-exportaba `TRIAGE_LIMPIO` de `NLP.rutas` pero no `CATALOGO_SINTOMAS` | **resuelto** (E6.4): se re-exporta con el mismo patrón; el módulo corre de punta a punta |
+| `requisitos.py` recomendaba `python -m NLP.reduccion.frases` para regenerar el clasificador | esa receta es precisamente el comando que destruye `datos/frases_etiquetadas.csv`, curado a mano | **resuelto** (2026-09-16): la receta pasa a `python -c "from NLP.reduccion import frases; frases.entrenar()"` |
+| `requirements.txt` fijaba `scikit-learn==1.4.2` con 1.9.1 instalado | el archivo no se actualizó al cambiar el entorno | **resuelto**: alineado a 1.9.1 |
+| `NLP/tests/` sin pruebas y sin `metricas.py` | E2.1 y E2.2 no se habían ejecutado | **resuelto**: 8 archivos de prueba, 38 pruebas en verde, y `evaluacion/metricas.py` operativo |
+| La fase 1 destruía cifras (`1000mg` → `100mg`) | `RE_REPETIDOS` colapsaba cualquier carácter repetido, dígitos incluidos | **resuelto**: el grupo excluye dígitos; `tests/test_cifras.py` lo fija |
+| La reparación completa abortaba al final por `OID` duplicados | `comparar()` daba por único un `OID` que el contrato (§7) declara no único | **resuelto**: se deduplica conservando la última aparición |
+| La prueba byte-idéntica fallaba sin que nadie tocara el pipeline | la política `eol=lf` de `.gitattributes` normalizaba el CSV de referencia, que debe conservar CRLF | **resuelto**: `NLP/tests/datos/*.csv` marcados como binarios |
+
+## 5. Advertencia grande: `python -m NLP.reduccion.frases`
+
+**No ejecutar nunca `python -m NLP.reduccion.frases`.** Su función `main()`
+llama a `construir_datos()`, que **regenera `datos/frases_etiquetadas.csv` desde
+las reglas y sobrescribe la curación manual** que es la fuente de verdad del
+clasificador de tramos. Es el mismo error que ya ocurrió una vez con este
+archivo (lección registrada en `PLAN.md` §5.7 y en el briefing de este ítem).
+
+Para reentrenar el clasificador con los datos curados que ya existen:
+
+```python
+from NLP.reduccion import frases
+frases.entrenar()
+```
+
+Esto sí es seguro: lee `datos/frases_etiquetadas.csv` tal como está y escribe
+`salidas/clasificador_frases.joblib`. La única vez que se justifica
+`construir_datos()` (y por tanto el `main()` completo) es para arrancar el
+archivo curado **desde cero**, con la curación humana ya perdida a propósito —
+nunca en una corrida normal ni en una reparación.
+
+Esta misma advertencia aplica, con menos gravedad, a `recursos/lexico.py` y
+`recursos/casing.py` (sección 4): no destruyen datos curados a mano, pero
+sobrescriben artefactos generados sin previo aviso ante cualquier invocación,
+incluida `--help`.
+
+## 6. Política de versión del corrector (E7.2)
+
+Ejecutada de punta a punta el 2026-09-16, dos veces (v4 → v5 y v5 → v6). Lo que sigue no
+es el procedimiento tal como lo imagina el plan, sino el que funcionó, con las dos
+correcciones que hicieron falta para que funcionara.
+
+### Cuándo hay que subir la versión
+
+Solo cuando cambia una capa **cacheada**, es decir, algo que altere el `texto_corregido`
+que produce la fase 2: un umbral, un léxico, un generador de candidatos, una capa nueva.
+
+**No hay que subirla** cuando cambia la fase 2b (`coherencia.py`), porque se aplica fuera
+de la caché a propósito, ni cuando cambian las fases 3, 4 o 5. Ese detalle ahorra horas:
+la regla del mismo lema (E4.10) entró entera sin recalcular nada.
+
+### Procedimiento
+
+1. **Subir `VERSION_CORRECTOR`** en `procesar.py`, con un comentario que enumere qué
+   cambió. La cadena entra en la clave de caché (`nucleo/cache.py`), así que subirla
+   invalida la caché anterior sin borrar nada a mano.
+
+2. **Migrar la caché en vez de tirarla.** Recalcular las ~7.300 entradas en frío costaba
+   más de 20 horas medidas; migrarlas costó minutos. El criterio depende de **qué** cambió,
+   por eso el comando exige declararlo:
+
+   ```
+   %PY% -m NLP.nucleo.migrar_cache --desde <vieja> --hasta <nueva> --respaldo-lexico
+   %PY% -m NLP.nucleo.migrar_cache --desde <vieja> --hasta <nueva> --abstencion
+   ```
+
+   | Criterio | Cuándo se usa | Qué invalida |
+   |---|---|---|
+   | `--respaldo-lexico` | el generador de candidatos deja de proponer formas que el corpus no escribe (v4 → v5) | las correcciones que contienen una de esas formas |
+   | `--abstencion` | una capa nueva rescata donde antes se abstenía (v5 → v6, canal ruidoso) | las correcciones que dejaron alguna palabra sin reconocer |
+
+   Sin `--aplicar` solo informa. Resultados reales: v4 → v5 migró 7.159 de 7.321 entradas
+   (162 a recalcular); v5 → v6 migró 5.842 de 7.316 (1.474 a recalcular).
+
+   **Si el cambio nuevo no encaja en ningún criterio existente, hay que escribir uno.** El
+   módulo se niega a migrar sin criterio: migrar a ciegas equivale a dar por bueno que
+   nada cambia, y eso corrompe la caché en silencio.
+
+3. **Reparar el CSV vigente** con la versión nueva y revisar el informe:
+
+   ```
+   %PY% -m NLP.reparacion.reparar
+   %PY% -m NLP.reparacion.revision
+   ```
+
+4. **Aplicar.** El criterio de aceptación **no** es «cero notas que pierdan un término»:
+   esa condición compara contra el CSV anterior y es imposible de cumplir cuando el
+   anterior está mal generado — cualquier nota que el corrector nuevo escriba mejor cuenta
+   como pérdida. Lo que decide es la **calidad absoluta**, que `reparar.py --aplicar`
+   compara y muestra antes de tocar nada:
+
+   ```
+   %PY% -m NLP.reparacion.reparar --aplicar
+   ```
+
+   Se niega si empeora `retencion_media`, `prop_retencion_total`,
+   `prop_sin_terminologia_en_embedding`, `prop_pierden_mas_de_la_mitad`, `notas_vacias` o
+   `notas_sobre_ventana_bge`. `--forzar` salta la negativa y debe quedar justificado en una
+   bitácora.
+
+5. **Comprobar las pruebas**: `%PY% -m pytest NLP/tests -q` (38 en verde). Si falla la
+   prueba de salida byte-idéntica, **el comportamiento cambió**: si el cambio es
+   deliberado y está medido, se regenera con `REGENERAR_GOLDEN=1` tras revisar el diff; si
+   no, hay un fallo que arreglar.
+
+6. **Purgar copias antiguas**: `rotar()` conserva las tres últimas
+   `triage_limpio_<sello>.csv`; las de `cache_correcciones.previo-<sello>.json` que deja
+   el migrador se borran a mano cuando ya no hagan falta.
+
+7. Revectorizar y validar el agrupamiento **solo cuando el propietario lo pida**: eso
+   pertenece a `embedding/` y `clustering/`, fuera del alcance de la fase NLP.
+
+### Lo que se aprendió ejecutándolo
+
+- **La compuerta tenía el criterio equivocado** y bloqueaba una mejora evidente. Corregida
+  (paso 4).
+- **La comparación contra el CSV viejo no sirve como criterio de aceptación** cuando el
+  viejo está corrupto; sirve como lista de revisión.
+- **La caché se migra, no se tira.** Sin el migrador, cada subida de versión cuesta una
+  jornada de máquina.
+- **Un fallo al final de una corrida larga cuesta la corrida entera.** La reparación abortó
+  dos veces por `OID` duplicados después de 90 minutos cada vez, porque la comprobación
+  estaba en el último paso. Conviene validar las suposiciones sobre los datos al principio.
+
+## Historial': 1
+  - README.md
+
+Resultado: 1 faltantes, 0 huérfanas, 1 documentos sin Historial
+```
+
+`--estricto` devuelve código de salida distinto de cero si hay algo pendiente
+(útil para CI); forma parte del gate de todas las etapas (`PLAN.md` §4.2). Nota:
+este documento (E1.3/E1.4) corrige el punto de `README.md` sin `Historial`; el
+faltante de `evaluacion/perturbar.py` queda pendiente porque `ARQUITECTURA.md` no
+está entre los archivos que este ítem puede tocar.
+
+### 3.10 Procedimiento completo: limpiar el CSV actual y regenerar los embeddings
+
+Deja `triage_limpio.csv` con el corrector vigente y los vectores al día. Se ejecuta entero
+y en este orden desde la raíz del repositorio. `PY` es `.venv\Scripts\python.exe`.
+
+```
+REM 1. Comprobar que estan los artefactos que el proceso da por hechos
+%PY% -m NLP.nucleo.requisitos
+
+REM 2. Frecuencias del corpus completo (si no existen o son de otra corrida)
+%PY% -m NLP.recursos.corpus_lexico
+
+REM 3. Lexico clinico, con los gazetteers integrados
+%PY% -m NLP.recursos.lexico
+
+REM 4. Si VERSION_CORRECTOR cambio, migrar la cache en vez de tirarla
+%PY% -m NLP.nucleo.migrar_cache --desde <version anterior> --hasta <version nueva>
+%PY% -m NLP.nucleo.migrar_cache --desde <version anterior> --hasta <version nueva> --aplicar
+
+REM 5. Reparar sin tocar nada, y revisar el informe termino a termino
+%PY% -m NLP.reparacion.reparar
+%PY% -m NLP.reparacion.revision
+
+REM 6. Medir el resultado contra el CSV vigente ANTES de sustituirlo
+%PY% -m NLP.evaluacion.calidad --csv NLP\salidas\triage_limpio.csv --comparar NLP\salidas\triage_reparado.csv
+
+REM 7. Solo si los numeros mejoran: aplicar
+%PY% -m NLP.reparacion.reparar --aplicar
+
+REM 8. Revectorizar y validar
+%PY% -m embedding.vectorizar
+%PY% -m clustering --validar
+```
+
+El paso 6 es el que decide: `--comparar` cruza por `OID` y muestra la diferencia columna a
+columna. Lo que tiene que subir es la retención de terminología; lo que tiene que bajar es
+el número de notas que se quedan sin terminología clínica.
+
+El paso 7 no sustituye nada si quedan notas en `perdio_motivo` sin revisar: `reparar.py` se
+niega y sale con código 1. La versión anterior del CSV la aparta `salida.rotar()`.
+
+### 3.11 Generar notas nuevas desde la base de datos
+
+```
+REM Corrida normal: procesa las notas que aun no estan en el CSV
+%PY% -m NLP.procesar
+
+REM Prueba corta antes de una corrida larga
+%PY% -m NLP.procesar --limite 200
+
+REM Rehacer el CSV entero desde cero (aparta el anterior)
+%PY% -m NLP.procesar --rehacer
+```
+
+`procesar.py` es incremental: lee `DIM_TRIAGE`, descarta las notas cuyo `OID` ya está
+escrito y añade solo las nuevas, así que se puede lanzar tantas veces como haga falta.
+Cuántas trae cada corrida lo fija `LIMITE_REGISTROS` (hoy 5.000; `None` para la tabla
+entera) y `--limite` lo pisa para una corrida concreta sin tocar el archivo.
+
+Después de añadir notas nuevas hay que vectorizarlas:
+
+```
+%PY% -m embedding.vectorizar
+%PY% -m clustering --validar
+```
+
+`embedding/` deduplica por el hash del texto, de modo que solo vectoriza lo que no tiene
+vector todavía: no hace falta `--rehacer` salvo que cambie el modelo de embeddings.
+
+## 4. Errores conocidos y su solución
+
+Revisada entera el 2026-09-16 al cierre de la sesión de ejecución: cada fila se comprobó
+contra el código de ese día, y las que ya no ocurren se retiraron en vez de arrastrarse.
+
+| Error | Causa | Estado |
+|---|---|---|
+| **`recursos/lexico.py` y `recursos/casing.py` no usan `argparse`** | cualquier invocación con `python -m`, **incluida `--help`**, ejecuta `main()` y sobrescribe el artefacto; `casing.py` además lee la tabla completa de la base de datos | **vivo**. No invocar esos dos módulos salvo para regenerar el artefacto a propósito. Comprobado el 2026-09-16 al intentar listar su ayuda: reconstruyeron `lexico_clinico.json` y `lexico_casing.json` sin avisar |
+| `perdio_motivo` cuenta `dada`, `salud`, `toma`, `signos` como terminología clínica | están en el léxico curado aunque no aportan motivo de consulta en la mayoría de sus usos | **vivo**, ruido conocido. Se revisa por término con `reparacion.revision --termino <palabra>` |
+| Léxico sin cobertura de cola larga, y colombianismos que el corrector destruye (`maluca`, `cuncho`, `piquiña`, `urente`) | el español de Colombia no está en ningún diccionario general, y el corpus no repite lo bastante esas formas | **vivo**. Mitigado por `coherencia.RESPALDO_POR_CORPUS` (umbral 5) y por las listas de E3.2–E3.6; lo que queda necesita revisión humana de `pares_correccion.csv` |
+| `evaluacion/referencia.py` da cero en todo | las 27 anotaciones de `datos/referencia_correcciones.json` no comparten ningún OID con `muestra_revision.csv` | **vivo**, desacople de datos. Se resuelve al anotar el gold v0 (E0.6) |
+| `alarmas.reiniciar()` acumulaba entre corridas del mismo proceso | no se llamaba desde ningún punto de entrada | **resuelto** (E2.0): se llama al inicio de `procesar.main()` y de `reparar.main()` |
+| `reparacion/reparar.py` escribía con pandas (`QUOTE_MINIMAL`) y `procesar.py` con `nucleo/salida.py` (`QUOTE_ALL`) | dos escritores distintos para el mismo archivo | **resuelto** (E0.4): `reparar.py` usa `EscritorCSV` y aparta la versión anterior con `rotar()` |
+| `embedding/estructurar.py` fallaba con `AttributeError` al importarse | `embedding/rutas.py` re-exportaba `TRIAGE_LIMPIO` de `NLP.rutas` pero no `CATALOGO_SINTOMAS` | **resuelto** (E6.4): se re-exporta con el mismo patrón; el módulo corre de punta a punta |
+| `requisitos.py` recomendaba `python -m NLP.reduccion.frases` para regenerar el clasificador | esa receta es precisamente el comando que destruye `datos/frases_etiquetadas.csv`, curado a mano | **resuelto** (2026-09-16): la receta pasa a `python -c "from NLP.reduccion import frases; frases.entrenar()"` |
+| `requirements.txt` fijaba `scikit-learn==1.4.2` con 1.9.1 instalado | el archivo no se actualizó al cambiar el entorno | **resuelto**: alineado a 1.9.1 |
+| `NLP/tests/` sin pruebas y sin `metricas.py` | E2.1 y E2.2 no se habían ejecutado | **resuelto**: 8 archivos de prueba, 38 pruebas en verde, y `evaluacion/metricas.py` operativo |
+| La fase 1 destruía cifras (`1000mg` → `100mg`) | `RE_REPETIDOS` colapsaba cualquier carácter repetido, dígitos incluidos | **resuelto**: el grupo excluye dígitos; `tests/test_cifras.py` lo fija |
+| La reparación completa abortaba al final por `OID` duplicados | `comparar()` daba por único un `OID` que el contrato (§7) declara no único | **resuelto**: se deduplica conservando la última aparición |
+| La prueba byte-idéntica fallaba sin que nadie tocara el pipeline | la política `eol=lf` de `.gitattributes` normalizaba el CSV de referencia, que debe conservar CRLF | **resuelto**: `NLP/tests/datos/*.csv` marcados como binarios |
 
 ## 5. Advertencia grande: `python -m NLP.reduccion.frases`
 
@@ -386,4 +603,6 @@ verificada.
 
 | Fecha | Ítem | Cambio |
 |---|---|---|
+| 2026-09-16 | E7.2 | §4 revisada entera contra el código (9 errores resueltos se retiran, 4 siguen vivos); §6 reescrita con el procedimiento realmente ejecutado dos veces, la migración de caché y el criterio de aceptación por calidad absoluta |
+| 2026-09-16 | E0.3 | §3.10 y §3.11: procedimiento completo de limpieza del CSV y generación de notas nuevas |
 | 2026-09-16 | E1.4 | Primera versión: instalación, tabla de artefactos, comandos por escenario, errores conocidos, advertencia sobre `frases.py` y sobre `recursos/lexico.py`/`recursos/casing.py`, política de versión del corrector |

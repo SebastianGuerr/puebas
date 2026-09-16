@@ -5,7 +5,7 @@
 numpy==1.26.4
 pandas==2.2.3
 scipy==1.14.1
-scikit-learn==1.4.2
+scikit-learn==1.9.1        # alineado con el .venv el 2026-09-16; antes decia 1.4.2
 joblib==1.4.2
 tqdm==4.66.1
 # lo usa pandas para leer y escribir el vocabulario y el indice de embedding/

@@ -199,6 +199,18 @@ nota y, como el corrector captura la excepción y devuelve el texto sin tocar, l
 ortográfica quedaría anulada sin ningún mensaje de error. `offset`, `largo`, `span`,
 `regla`, `categoria`, `reemplazos`, `verificar`.
 
+**`migrar_cache.py`** (187) (E7.2) — CLI `python -m NLP.nucleo.migrar_cache --desde
+<version> --hasta <version> [--aplicar]`: migra `CACHE_CORRECCIONES` de una versión de
+`VERSION_CORRECTOR` a la siguiente sin recalcular las entradas que el cambio no puede
+afectar. `cargar`, `clasificar` (devuelve migrables/a_recalcular), `main`. Dos criterios
+de invalidación activables por bandera de línea de comandos, uno por cada subida de
+versión ocurrida: `--respaldo-lexico` (v4→v5: invalida correcciones con formas del
+léxico que el corpus no escribe, ver `sugerencias.RESPALDO_CANDIDATO_LEXICO`) y
+`--abstencion` (v5→v6: invalida donde el corrector se abstuvo en algún token, ver
+`candidatos.USAR_CANAL_RUIDOSO`). Por defecto no escribe nada; `--aplicar` guarda copia
+previa con sello antes de sobrescribir `CACHE_CORRECCIONES`. Excluido de este refactor
+(E6.2): no se divide ni se toca.
+
 ### 2.3 `fase1_limpieza/`
 
 **`limpieza.py`** (254) — `limpiar` (minúsculas, espacios, símbolos; no cambia
@@ -489,12 +501,26 @@ Bitácora: `bitacora/2026-09-16-E3.8.md`.
 
 ### 2.9 `evaluacion/`
 
-**`auditoria.py`** (851) `[G]` — Mide una corrida y escribe `REPORTE_CAMBIOS`
-(`fase, original, corregido, veces, oid_ejemplo`). `escribir_reporte`, `dano_probable`,
-`motivo_dano` (los mismos umbrales que `coherencia.juzgar`, implementados aparte),
-`medir`, `sustituciones`, `regresiones` (7 casos fijos), `typos_no_corregidos` (10
-pares), `comparar`, `main` (`--guardar`, `--contra`). Contiene su propia distancia de
-Levenshtein sin transposición.
+**`auditoria.py`** (265) — Orquestador de la auditoría (E6.2, dividido de las 851
+líneas originales en cuatro archivos). Reexporta toda la interfaz de
+`auditoria_constantes.py`, `auditoria_medicion.py` y `auditoria_dano.py` (para que
+`NLP.evaluacion.auditoria.<nombre>` no cambie), y añade `escribir_reporte` (escribe
+`REPORTE_CAMBIOS`: `fase, original, corregido, veces, oid_ejemplo`), `FASES`, `informe`,
+`comparar`, `main` (`--guardar`, `--contra`).
+
+**`auditoria_constantes.py`** (98) — Nombres de columna, expresiones regulares,
+tablas de símbolos clínicos (`SIMBOLOS_CLINICOS`, `SIMBOLOS_CONVERTIDOS`) y los casos
+fijos `REGRESIONES` (7) y `TYPOS_QUE_DEBEN_CORREGIRSE` (10), compartidos por
+`auditoria_medicion.py` y `auditoria_dano.py`.
+
+**`auditoria_medicion.py`** (346) — `leer` (el CSV de una corrida), `sustituciones`
+(alineamiento antes/después por `SequenceMatcher`), `medir`, `regresiones` (contra los
+7 casos fijos), `typos_no_corregidos` (contra los 10 pares).
+
+**`auditoria_dano.py`** (150) — `motivo_dano` (los mismos umbrales que
+`coherencia.juzgar`, implementados aparte), `dano_probable`. Contiene su propia
+distancia de Levenshtein sin transposición (`_distancia`); importa `_sin_tildes` de
+`auditoria_medicion.py` en vez de duplicarla (E6.2).
 
 **`escaneo.py`** (344) — Clasifica notas por señales objetivas y muestrea de forma
 estratificada. `escanear`, `rareza`, `muestrear`, `main` (`--bd`, `--muestra`). Escribe
@@ -628,6 +654,15 @@ en las notas sinteticas de tramite (ver bitacora 2026-09-16-E2.1.md, hallazgo).
 **`test_pipeline_completo.py`** — Fases 1-5 sobre las 50 notas sinteticas,
 byte a byte contra `tests/datos/triage_esperado.csv` fijado a mano.
 
+**`test_cifras.py`** — Ninguna fase toca una cifra (dosis, documento,
+medida): `test_fase1_conserva_las_cifras` (fase 1 sobre 6 notas
+sinteticas), `test_fase1_sigue_colapsando_letras_alargadas` (la
+proteccion de cifras no rompe el colapso de letras repetidas),
+`test_guardian_de_cifras` (`ortografia.mismas_cifras()` rechaza
+`1000cc->100cc`, `1000mg->100mg`, `2000->200` y el cambio de un digito en
+un numero de documento; permite correcciones que no tocan digitos). Ver
+`decisiones/2026-09-16-cifras.md`.
+
 ### 2.12 `fase6_conceptos/`
 
 Fase 6 (E5.7): convierte `texto_embedding` (u otra columna de texto) en
@@ -703,11 +738,16 @@ frases      -> rutas; dif.: depuracion, reduccion
 extractor   -> dif.: depuracion
 reglas      -> rutas, nucleo.{linguistica, morfologia}, recursos.casing
 requisitos  -> rutas
+migrar_cache -> rutas; dif.: fase1.limpieza, fase2.candidatos, nucleo.linguistica,
+               nucleo.reglas, recursos.lexico
 lexico      -> rutas, nucleo.morfologia
 casing      -> rutas, nucleo.morfologia; dif.: nucleo.conexion_bd
 corpus_lexico -> rutas; dif.: nucleo.conexion_bd
 ambiguedad  -> nucleo.linguistica; dif.: nucleo.lt_compat
-auditoria   -> rutas; dif.: fase2.pesos, nucleo.reglas
+auditoria   -> auditoria_constantes, auditoria_medicion, auditoria_dano
+auditoria_constantes -> rutas
+auditoria_medicion -> auditoria_constantes
+auditoria_dano -> auditoria_medicion; dif.: fase2.pesos, nucleo.reglas
 escaneo     -> rutas, nucleo.morfologia; dif.: nucleo.{linguistica, reglas, conexion_bd}
 referencia  -> rutas, nucleo.morfologia
 paridad_docs -> rutas
@@ -956,3 +996,5 @@ las etapas (`PLAN.md` §4.2).
 | 2026-09-16 | E4.4, E4.9 | Nuevo `fase2_ortografia/canal.py` (ficha en §2.4, línea en §3): canal ruidoso (Kernighan 1990) con prior de dominio, entrenado sobre `salidas/pares_correccion.csv` y `datos/lexicos/corpus_frecuencia.tsv` (fila en §4 actualizada). `candidatos.py` (§2.4): `USAR_CANAL_RUIDOSO = True` — rescata la abstención final de `elegir()` sin sustituir el desempate por frecuencia. `ortografia.py` (§2.4): `construir_lexico()` entrena y carga el canal; línea de código actualizada (765). `procesar.py` (§2.1): `VERSION_CORRECTOR` sube a `"6-canal-ruidoso"` (línea de código actualizada, 843; el valor documentado aquí estaba desactualizado desde la v4, corregido de paso a la v6 real). Decisiones en `decisiones/2026-09-16-E4.4.md` y `decisiones/2026-09-16-E4.9.md`; bitácoras `bitacora/2026-09-16-E4.4.md` y `bitacora/2026-09-16-E4.9.md` |
 | 2026-09-16 | E4.7 | Bloqueado, sin cambios de código: `gensim` no está instalado ni en `requirements.txt` pese a que el encargo daba eso por hecho (`REFERENCIAS.md` ya lo listaba como "candidato", no "en uso"). No se crea `fase2_ortografia/semantica.py`. Decisión en `decisiones/2026-09-16-E4.7.md`, bitácora `bitacora/2026-09-16-E4.7.md` |
 | 2026-09-16 | E4.8 | Verificación sin cambios de código: `CATEGORIAS_PERMITIDAS = {"TYPOS"}` confirmada correcta sobre 600 notas (`AGREEMENT_NOUNS` se dispara 15 veces y 0 llegan al corrector). Decisión en `decisiones/2026-09-16-E4.8.md`, bitácora `bitacora/2026-09-16-E4.8.md` |
+| 2026-09-16 | E6.1 | Decisión de arquitectura: no se mueven paquetes a `fases/` en este refactor (dos de los seis quedan fuera de alcance del ítem); E6.2 divide archivos grandes dentro de su carpeta actual. `decisiones/2026-09-16-E6.1-arquitectura.md` |
+| 2026-09-16 | E6.0, E6.2 | Unificados los envoltorios idénticos de `sin_tildes` (`fase2_ortografia/contexto.py`, `fase3_normalizacion/normalizacion.py`) y el plegado en línea de `reduccion/reduccion.py:_es_clinica`, los tres llamando ahora a `nucleo/morfologia.sin_tildes` (orden de riesgo cero de `bitacora/2026-09-16-E6.3.md` §6). `evaluacion/auditoria.py` (851 líneas) dividido en `auditoria.py` (265, orquestador), `auditoria_constantes.py` (98, nueva ficha), `auditoria_medicion.py` (346, nueva ficha) y `auditoria_dano.py` (150, nueva ficha); líneas de §3 actualizadas. `NLP/tests -q` sigue en 38/38 tras cada paso. Bitácora `bitacora/2026-09-16-E6.2.md` |

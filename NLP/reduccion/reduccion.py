@@ -11,6 +11,7 @@ import re
 from pathlib import Path
 
 from NLP import rutas
+from NLP.nucleo import morfologia
 
 RE_ESPACIOS = re.compile(r"\s+")
 
@@ -409,22 +410,14 @@ def densidad_clinica(oracion):
 
 def _es_clinica(palabra):
     """
-    True si la palabra está en el léxico clínico.
-
-    Pliega la palabra igual que se guardó la clave (minúsculas, sin tildes,
-    eñe protegida) antes de comparar.
+    True si la palabra esta en el lexico clinico. Pliega la palabra igual
+    que se guardo la clave (minusculas, sin tildes) antes de comparar.
     """
     if _LEXICO is None:
         cargar_lexico()
     if not _LEXICO:
         return False
-    import unicodedata
-    # la eñe se protege con un caracter de control antes de descomponer los
-    # acentos y se restaura despues; ese caracter va literal en la linea de
-    # abajo y no se ve al leerlo, asi que conviene no tocarla a ciegas
-    plano = "".join(c for c in unicodedata.normalize("NFD", palabra.replace("ñ", ""))
-                    if not unicodedata.combining(c)).replace("", "ñ")
-    return plano in _LEXICO
+    return morfologia.sin_tildes(palabra) in _LEXICO
 
 
 def _protegido_por_clinica(tramo):

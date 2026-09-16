@@ -29,9 +29,14 @@ ARTEFACTOS = [
      "no se restaura ninguna sigla a mayuscula",
      False),
 
+    # NO es `python -m NLP.reduccion.frases`: ese comando REGENERA
+    # datos/frases_etiquetadas.csv, que esta curado a mano, y destruye el
+    # trabajo humano que hay dentro. Paso el 2026-09-15 y se recupero con git.
+    # Esta receta la imprime el propio verificador cuando falta el artefacto,
+    # asi que decia a quien la siguiera que se pegara un tiro en el pie.
     ("clasificador_frases",
      rutas.CLASIFICADOR_FRASES,
-     "python -m NLP.reduccion.frases",
+     'python -c "from NLP.reduccion import frases; frases.entrenar()"',
      "la fase 5 pierde la capa que cubre lo que los patrones no enumeran",
      False),
 
