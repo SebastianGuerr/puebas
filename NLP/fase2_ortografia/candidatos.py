@@ -26,19 +26,27 @@ LOS UMBRALES, Y QUÉ EVITA CADA UNO
                            cercanos, uno debe dominar claramente.
     DISTANCIA_POR_TRAMOS   E4.2, apagado por defecto: tope de distancia de
                            edición por tramos de longitud del original.
+    USAR_CANAL_RUIDOSO     E4.4, apagado por defecto: antes de abstenerse por
+                           falta de un candidato dominante, intenta un
+                           rescate con el canal ruidoso y el prior de
+                           dominio de `canal.py`. Solo puede sumar
+                           cobertura: se consulta donde el módulo ya iba a
+                           abstenerse, nunca sustituye una decisión tomada.
 
 Cuando ningún candidato reúne evidencia suficiente, el módulo se abstiene y
 deja constancia en el registro de abstenciones. Elegir sin evidencia no mejora
 el texto: inventa información.
 
 Medición de E4.2 (`DISTANCIA_POR_TRAMOS`, valores probados de
-`FRECUENCIA_CANDIDATO`): docs/decisiones/2026-09-16-E4.2.md.
+`FRECUENCIA_CANDIDATO`): docs/decisiones/2026-09-16-E4.2.md. Medición de E4.4
+(`USAR_CANAL_RUIDOSO`): docs/decisiones/2026-09-16-E4.4.md.
 """
 
 from collections import Counter
 
 from rapidfuzz.distance import DamerauLevenshtein
 
+from NLP.fase2_ortografia import canal
 from NLP.fase2_ortografia import terminologia
 from NLP.nucleo import reglas
 
@@ -68,6 +76,18 @@ TRAMO_MEDIO_MAXIMO = 9        # 6-9 letras
 DISTANCIA_TRAMO_CORTO = 1
 DISTANCIA_TRAMO_MEDIO = 2
 DISTANCIA_TRAMO_LARGO = 3
+
+# E4.4/E4.9 (docs/decisiones/2026-09-16-E4.4.md,
+# docs/decisiones/2026-09-16-E4.9.md): canal ruidoso con prior de dominio
+# (fase2_ortografia/canal.py), como RESCATE de la abstencion final de este
+# modulo ("varios candidatos sin uno dominante"), no como reemplazo del
+# desempate por frecuencia que ya funciona. Solo actua donde este modulo ya
+# iba a abstenerse, asi que solo puede sumar cobertura, nunca cambiar una
+# decision que hoy se toma. Medido sobre autoinducido.csv con exactamente
+# este mismo criterio de rescate: 0,8515 contra 0,8333 de la frecuencia sola
+# (n=714), sin subir la intervencion sobre texto limpio (2/1069 en ambos,
+# los mismos dos casos). ADOPTADA en E4.9 (VERSION_CORRECTOR "6").
+USAR_CANAL_RUIDOSO = True
 
 CONTEO = Counter()
 
@@ -193,6 +213,15 @@ def elegir(original, sugerencias, protegidos=()):
     segunda = -empatados[1][1] if len(empatados) > 1 else 0
     if mejor >= FRECUENCIA_DESEMPATE and mejor >= max(segunda * RATIO_DESEMPATE, 1):
         return empatados[0][2]
+
+    # 5bis. E4.4: rescate por canal ruidoso + prior de dominio, SOLO en el
+    # caso que el paso anterior ya iba a abandonar. No sustituye la regla de
+    # arriba, la complementa donde no alcanza a decidir: por eso solo puede
+    # sumar cobertura, nunca deshacer una decision que el modulo ya tomaba.
+    if USAR_CANAL_RUIDOSO and canal.disponible():
+        rescatado = canal.elegir(original, [c for _d, _f, c in empatados])
+        if rescatado is not None:
+            return rescatado
 
     # varios candidatos igual de plausibles y ninguno domina: no hay manera de
     # saber cual se quiso escribir, y elegir uno inventaria informacion

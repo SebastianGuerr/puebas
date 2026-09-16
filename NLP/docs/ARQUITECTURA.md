@@ -21,6 +21,8 @@ NLP/
   recursos/            constructores de léxicos y diccionarios; descargador con manifiesto
   evaluacion/          auditoría de corridas, escaneo del corpus, referencia anotada
   reparacion/          reprocesa un CSV existente, compara y revisa el informe
+  fase6_conceptos/     fase 6 (E5.7): texto -> concepto SNOMED (PhraseMatcher,
+                       vecino mas cercano, NER); tras bandera, fuera de procesar.py
   tests/               pruebas de regresion (pytest); datos/ con las notas sinteticas
   datos/               curado a mano, versionado (incluye recursos_manifiesto.json)
   salidas/             generado por scripts, ignorado por git
@@ -45,7 +47,7 @@ documentación interna es hoy extensa y narrativa; E1.5 la reduce.
 `embedding/datos/catalogo_sintomas.json` (acoplamiento inverso; ver `PLAN.md` §6).
 Importado por 15 módulos.
 
-**`procesar.py`** (811) `[G]` — Orquestador. Único archivo que conoce la base de datos.
+**`procesar.py`** (843) `[G]` — Orquestador. Único archivo que conoce la base de datos.
 `cargar_corpus` (léxico de frecuencias sobre `LIMITE_LEXICO` notas), `cargar_registros`
 (solo notas no procesadas), `preparar` (fase 1 + clave de caché), `corregir_lote`
 (fase 2 en `N_HILOS` hilos, guardando caché cada `GUARDAR_CADA`), `procesar_bloque`
@@ -53,8 +55,11 @@ Importado por 15 módulos.
 `--rehacer`). Configuración: `TABLA = DIM_TRIAGE`, `COLUMNA = HCTMOTCON`, `LLAVE = OID`,
 `LIMITE_REGISTROS = 5000`, `LIMITE_LEXICO = 200000`, `N_HILOS = 4`, `BLOQUE_ESCRITURA =
 250`, `NORMALIZAR`, `REVISAR_COHERENCIA`, `DEPURAR`, `REDUCIR`, `USAR_LLM`, `USAR_CACHE`,
-`VERSION_CORRECTOR = "4-con-spacy-y-coherencia"`. Lee BD y `CACHE_CORRECCIONES`;
-escribe `TRIAGE_LIMPIO`, `REPORTE_CAMBIOS`, `NOTAS_DESCARTADAS`, `CACHE_CORRECCIONES`.
+`VERSION_CORRECTOR = "6-canal-ruidoso"` (E4.9, `docs/decisiones/2026-09-16-E4.9.md`;
+sube el canal ruidoso de `candidatos.py`/`canal.py`, E4.4 — la caché de la versión 5 no
+migra gratis, ver esa decisión, sección "Migración de caché"). Lee BD y
+`CACHE_CORRECCIONES`; escribe `TRIAGE_LIMPIO`, `REPORTE_CAMBIOS`, `NOTAS_DESCARTADAS`,
+`CACHE_CORRECCIONES`.
 
 ### 2.2 `nucleo/`
 
@@ -208,11 +213,13 @@ Cadena: correcciones directas → enmascarado clínico → LanguageTool (solo `T
 SymSpell → capa de contexto → restauración de siglas → (2b) coherencia. Cada capa ve
 menos texto que la anterior; la terminología clínica no llega a ninguna.
 
-**`ortografia.py`** (730) `[G]` — Orquestador de la fase. `corregir(texto, original)`,
-`cargar_siglas`, `cargar_lexico_clinico`, `construir_lexico` (frecuencias + SymSpell),
-`iniciar_languagetool` / `cerrar_languagetool` (mata el árbol de procesos Java),
-`aplicar_directas`, `restaurar_mayusculas`, `aplicar_contexto`, `es_sigla_real`.
-Configuración: `CATEGORIAS_PERMITIDAS = {"TYPOS"}`, `USAR_VOCABULARIO`,
+**`ortografia.py`** (765) `[G]` — Orquestador de la fase. `corregir(texto, original)`,
+`cargar_siglas`, `cargar_lexico_clinico`, `construir_lexico` (frecuencias + SymSpell +
+canal ruidoso, E4.9: entrena `canal.py` sobre `salidas/pares_correccion.csv` y carga su
+prior de dominio), `iniciar_languagetool` / `cerrar_languagetool` (mata el árbol de
+procesos Java), `aplicar_directas`, `restaurar_mayusculas`, `aplicar_contexto`,
+`es_sigla_real`. Configuración: `CATEGORIAS_PERMITIDAS = {"TYPOS"}` (verificada sin
+cambios en E4.8, `docs/decisiones/2026-09-16-E4.8.md`), `USAR_VOCABULARIO`,
 `RESTAURAR_MAYUSCULAS`, `USAR_CONTEXTO`, `FRECUENCIA_PALABRA_ESTABLECIDA = 20`,
 `RATIO_EXPANSION_MAXIMO = 2.0`, `DOMINANCIA_PARA_ESCRIBIR = 0.85`.
 
@@ -237,12 +244,25 @@ misma palabra figura en ambos — medido con `orozco` (bitácora/2026-09-16-E3.6
 contra el léxico médico. `enmascarar(texto, corregir)` → `Nota`, `admisible`.
 `LONGITUD_MINIMA_CORRECCION = 6`.
 
-**`candidatos.py`** (200) — Elige entre las sugerencias de LanguageTool o se abstiene.
+**`candidatos.py`** (229) — Elige entre las sugerencias de LanguageTool o se abstiene.
 `elegir`, `construir_lexico`, `frecuencia`. `FRECUENCIA_CANDIDATO = 3`,
 `FRECUENCIA_DESEMPATE = 10`, `RATIO_DESEMPATE = 3`, `UMBRAL_TERMINO = 10`. E4.2
 (apagadas por defecto, `docs/decisiones/2026-09-16-E4.2.md`): `DISTANCIA_POR_TRAMOS =
 False`, `TRAMO_CORTO_MAXIMO = 5`, `TRAMO_MEDIO_MAXIMO = 9`, `DISTANCIA_TRAMO_CORTO = 1`,
-`DISTANCIA_TRAMO_MEDIO = 2`, `DISTANCIA_TRAMO_LARGO = 3`.
+`DISTANCIA_TRAMO_MEDIO = 2`, `DISTANCIA_TRAMO_LARGO = 3`. E4.4/E4.9
+(`docs/decisiones/2026-09-16-E4.4.md`, `docs/decisiones/2026-09-16-E4.9.md`):
+`USAR_CANAL_RUIDOSO = True` (activada) — antes de abstenerse por "varios candidatos sin
+uno dominante", consulta `canal.elegir()` sobre la misma lista ya filtrada; solo puede
+sumar cobertura, nunca cambia una decisión que el desempate por frecuencia ya toma.
+
+**`canal.py`** (280) — Canal ruidoso con prior de dominio (Kernighan 1990; Brill y
+Moore 2000). `_alinear` (Damerau-Levenshtein con reconstrucción del camino, tipo de
+operación), `entrenar_canal`/`entrenar_desde_pares_correccion` (costes por tipo de
+edición sobre `salidas/pares_correccion.csv`), `cargar_prior` (unigramas de
+`datos/lexicos/corpus_frecuencia.tsv` + bigramas contados sobre los textos que se le
+pasen), `log_canal`, `log_prior`, `puntuar`, `elegir`, `diagnosticar`. `PESO_BIGRAMA =
+0.6`, `MARGEN_MINIMO = 1.0`. Nuevo en E4.4 (`docs/decisiones/2026-09-16-E4.4.md`);
+consumido tras bandera por `candidatos.py` (E4.9).
 
 **`vocabulario.py`** (362) — SymSpell sobre el vocabulario del corpus (solo formas que
 spaCy reconoce). `construir`, `sugerir`, `corregir_texto`, `vecinos`, `disponible`.
@@ -608,6 +628,49 @@ en las notas sinteticas de tramite (ver bitacora 2026-09-16-E2.1.md, hallazgo).
 **`test_pipeline_completo.py`** — Fases 1-5 sobre las 50 notas sinteticas,
 byte a byte contra `tests/datos/triage_esperado.csv` fijado a mano.
 
+### 2.12 `fase6_conceptos/`
+
+Fase 6 (E5.7): convierte `texto_embedding` (u otra columna de texto) en
+concepto SNOMED CT con código, en tres niveles crecientes de costo. No se
+llama desde `procesar.py`; es un paso aparte tras bandera (`PLAN.md` §3
+principio 8). Decisión y coste medido: `decisiones/2026-09-16-E5.7.md`.
+
+**`nivel0.py`** (E5.7) — `PhraseMatcher` de spaCy (tokenizador vacío
+`spacy.blank("es")`, sin modelo entrenado) contra `rutas.GAZETTEER_DISTEMIST_TSV`
+(el TSV crudo `code/language/term/semantic_tag/mainterm`, no el
+`datos/lexicos/gazetteer_distemist.txt` de E3.4, que son formas sueltas sin
+código). `construir()` (patrones con y sin tildes, memoizado), `emparejar(texto)`
+→ lista de `(concepto_snomed, concepto_termino)` sin solapes, `anotar(texto)` →
+`(concepto_snomed, concepto_termino)` con varios conceptos unidos por `;`,
+`diagnosticar()`. Sin configuración editable.
+
+**`nivel1.py`** (E5.7) — Vecino más cercano contra un índice de embeddings
+`[CLS]` de los términos preferidos del gazetteer, con
+`BSC-NLP4BIA/SapBERT-from-roberta-base-biomedical-clinical-es` (Apache-2.0;
+sin `safetensors`, solo `pytorch_model.bin`). `construir_indice(limite,
+guardar)` (embebe `mainterm=1`, guarda `.npz` en `rutas.FASE6_SALIDAS`),
+`cargar_indice(ruta)`, `vecino_mas_cercano(textos, indice, umbral)` (producto
+punto sobre vectores normalizados). `MODELO`, `LONGITUD_MAXIMA = 25`,
+`LOTE = 32`, `UMBRAL_SIMILITUD = 0.80` (sin calibrar contra gold, ver
+decisión). CLI: `python -m NLP.fase6_conceptos.nivel1 --limite-gazetteer N`.
+
+**`nivel2.py`** (E5.7) — NER con `BSC-NLP4BIA/bsc-bio-ehr-es-carmen-symptemist`
+(CC-BY-4.0) solo sobre notas largas (`LONGITUD_NOTA_LARGA = 15` palabras);
+pre-tokeniza en palabras como exige la tarjeta del modelo y alinea
+subtokens con `word_ids()`. `es_nota_larga(texto)`, `menciones(texto)` →
+lista de menciones etiquetadas, `anotar(texto, indice_nivel1, umbral_nivel1)`
+resuelve cada mención con `nivel0` y, si no reconoce, con `nivel1`. No asigna
+código por sí solo: extrae la mención y delega en los otros dos niveles.
+
+**`combinar.py`** (E5.7) — Orquesta los tres niveles sobre un CSV:
+`procesar_csv(ruta_entrada, ruta_salida, limite, usar_nivel1, usar_nivel2,
+indice_ruta)` intenta nivel 0, luego nivel 1 (si hay índice guardado), luego
+nivel 2; escribe `OID, texto_embedding, concepto_snomed, concepto_termino,
+nivel` con `nucleo/salida.EscritorCSV`. CLI: `python -m
+NLP.fase6_conceptos.combinar --csv --salida --limite --sin-nivel1
+--sin-nivel2 --indice`. No se invoca desde `procesar.py` ni cambia
+`triage_limpio.csv`.
+
 ## 3. Grafo de dependencias
 
 Importaciones internas (dif. = diferida dentro de una función; rompe un ciclo).
@@ -618,12 +681,13 @@ procesar    -> rutas, depuracion, evaluacion.auditoria, fase1.limpieza,
                nucleo.{cache, datos, reglas, requisitos, progreso, salida},
                reduccion.{extractor, reduccion}, recursos.casing
                dif.: fase2.contexto, nucleo.conexion_bd
-ortografia  -> fase1.limpieza, candidatos, contexto, enmascarado, pesos, sugerencias,
-               terminologia, vocabulario, nucleo.{linguistica, lt_compat, reglas},
-               recursos.{casing, lexico}
+ortografia  -> fase1.limpieza, candidatos, canal, contexto, enmascarado, pesos,
+               sugerencias, terminologia, vocabulario,
+               nucleo.{linguistica, lt_compat, reglas}, recursos.{casing, lexico}
 pesos       -> nucleo.{linguistica, morfologia, reglas}, recursos.{casing, lexico}
 enmascarado -> pesos, terminologia, nucleo.{linguistica, morfologia, reglas}, recursos.lexico
-candidatos  -> terminologia, nucleo.reglas
+candidatos  -> canal, terminologia, nucleo.reglas
+canal       -> rutas
 vocabulario -> terminologia, nucleo.{linguistica, morfologia, reglas}
 sugerencias -> candidatos, vocabulario, nucleo.{fonetica, linguistica, morfologia}, recursos.lexico
 terminologia-> alarmas, nucleo.{linguistica, morfologia, reglas}; dif.: candidatos
@@ -660,6 +724,10 @@ extraer_cie10   -> rutas
 descargar       -> rutas
 negacion        -> nucleo.morfologia
 abreviaturas    -> rutas, nucleo.salida; dif.: nucleo.{conexion_bd, linguistica}, procesar
+nivel0          -> rutas, nucleo.morfologia
+nivel1          -> rutas
+nivel2          -> fase6_conceptos.{nivel0, nivel1}
+combinar        -> rutas, nucleo.salida, fase6_conceptos.{nivel0, nivel1, nivel2}
 ```
 
 Módulos hoja: `rutas`, `morfologia`, `linguistica`, `clinico`, `cache`, `datos`,
@@ -685,7 +753,8 @@ mismo respaldo).
 licencia, sha256, tamaño, fechas, `archivos_extraer`, `estado`; ver `recursos/descargar.py`
 y REFERENCIAS.md §2). `datos/lexicos/` (E3.2, E3.3, E3.4, E3.5, E3.6, E3.7): `siglas_protegidas.txt` (40
 formas a mano, cabecera con fuente y criterio; la lee `nucleo/reglas.cargar_siglas_protegidas`),
-`corpus_frecuencia.tsv` (`forma\tfrecuencia`; la lee `recursos/corpus_lexico.py`),
+`corpus_frecuencia.tsv` (`forma\tfrecuencia`; la lee `recursos/corpus_lexico.py`, y
+también `fase2_ortografia/canal.py` como prior de dominio de unigramas, E4.4),
 `negacion.txt` (243 disparadores en 4 categorías — `pre`, `post`, `pseudo`,
 `terminador` —, NegEx-MES licencia MIT más lista propia; cabecera con fuente, licencia
 y sha256; la lee `nucleo/negacion.cargar`), `gazetteer_distemist.txt` (E3.4; 27.255
@@ -721,9 +790,17 @@ NLP.recursos.descargar --solo <nombre>`.
 | `siglas_detectadas.csv`, `muestra_revision.csv`, `referencia.csv` | scripts de `recursos/` y `evaluacion/` | no existen en disco hoy |
 | `e3_7_8/abreviaturas_candidatas.csv` | `recursos/abreviaturas.py` | `sigla, definicion, ocurrencias, ocurrencias_totales, ambigua, ya_en_diccionario, definiciones_alternativas` |
 | `e4_3_6/tarea{1_capa_responsable,2_fuente_lexico,3a_pares_juzgados,3b_autoinducido,3c_limpio,4_rejilla,5_6_banderas}.json` | medición de E4.6/E4.3 (scripts de sesión, no versionados; comandos en `bitacora/2026-09-16-E4.6.md`) | resultados crudos por tarea, uno por archivo |
+| `fase6/indice_conceptos_sapbert*.npz` | `fase6_conceptos/nivel1.py` (`construir_indice`) | `codigos, terminos, matriz` (embeddings `[CLS]` normalizados del gazetteer) |
+| `fase6/conceptos.csv` | `fase6_conceptos/combinar.py` | `OID, texto_embedding, concepto_snomed, concepto_termino, nivel` |
 
 Formato de escritura: `nucleo/salida.py` produce utf-8-sig, CRLF, QUOTE_ALL;
 `reparar.py` usa pandas (QUOTE_MINIMAL) — se unifica en E0.4.
+
+`fase6_conceptos/nivel0.py` lee `rutas.GAZETTEER_DISTEMIST_TSV`
+(`recursos_externos/DISTEMIST_gazetteer/content`, el TSV crudo del manifiesto,
+no `datos/lexicos/gazetteer_distemist.txt`): primer módulo del paquete que
+lee directamente un recurso de `recursos_externos/` en vez de la forma
+derivada en `datos/lexicos/` (E3.4).
 
 ## 5. Observaciones para el refactor (E6)
 
@@ -874,4 +951,8 @@ las etapas (`PLAN.md` §4.2).
 | 2026-09-16 | E5.2 | `USAR_NEGACION = False` nueva en `reduccion/reduccion.py` (§2.7): conecta `nucleo/negacion.marcar()` (E3.7) como último paso de `recortar()`. Apagada por defecto (pendiente de revectorizar y `clustering --validar`). Decisión en `decisiones/2026-09-16-E5.2.md`, bitácora `bitacora/2026-09-16-E5.2.md` |
 | 2026-09-16 | E5.3 | `EXPANDIR_ABREVIATURAS_PROPUESTAS = False` nueva en `fase3_normalizacion/normalizacion.py` (§2.5): expande candidatos no ambiguos de E3.8 tras bandera. Apagada por defecto: medido que daña 61 de las 67 notas que toca. Decisión en `decisiones/2026-09-16-E5.3.md`, bitácora `bitacora/2026-09-16-E5.3.md` |
 | 2026-09-16 | E4.6, E4.3 | Confirma que el daño de frecuencia cero (E4.2) entra por `_del_lexico` en `sugerencias.py`; `paralíticos` sale del léxico clínico sin respaldo de corpus (86,3 % de sus 32.315 formas no aparece nunca en `triage_limpio.csv`). Nuevo `nucleo/fonetica.py` (ficha en §2.2, línea en §3). `fase2_ortografia/sugerencias.py` (§2.4): `RESPALDO_CANDIDATO_LEXICO`, `FRECUENCIA_RESPALDO_CANDIDATO_LEXICO`, quinta fuente `_del_fonetica()` tras `USAR_FONETICA_GENERADOR`. `fase2_ortografia/contexto.py` (§2.4): `ACEPTAR_POR_FONETICA`. `RESPALDO_CANDIDATO_LEXICO` quedó activada (`True`) — verificado sin costo medido, ver nota de procedencia en la bitácora; las otras tres quedan apagadas (ganancia positiva pero pequeña, o nula). `USAR_CONTEXTO` se mantiene activa (razón buenas:malas 50:1 en el cubo `revisar`). Decisiones en `decisiones/2026-09-16-E4.6.md` y `decisiones/2026-09-16-E4.3.md`; bitácoras `bitacora/2026-09-16-E4.6.md` y `bitacora/2026-09-16-E4.3.md` |
+| 2026-09-16 | E5.7 | Nuevo paquete `fase6_conceptos/` (§2.12, entrada en §1, líneas en §3): `nivel0.py` (`PhraseMatcher` vs. TSV crudo de DISTEMIST), `nivel1.py` (vecino más cercano con SapBERT-es), `nivel2.py` (NER `carmen-symptemist` en notas largas), `combinar.py` (orquestador con bandera, fuera de `procesar.py`). Nuevas constantes en `rutas.py`: `GAZETTEER_DISTEMIST_TSV`, `FASE6_SALIDAS`, `INDICE_CONCEPTOS_NIVEL1`. Filas en §4 (`salidas/fase6/`). Coste medido y por qué no se completó el índice del gazetteer entero en esta sesión: `decisiones/2026-09-16-E5.7.md` |
 | 2026-09-16 | E3.4, E3.5, E3.6 | `recursos/lexico.py` (§2.8): quinta fuente `GAZETTEER` (`_del_gazetteer`, `datos/lexicos/gazetteer_distemist.txt`, DISTEMIST CC-BY-4.0, 27.255 formas; orden en `construir()` entre `BIOMEDICO` y `EXTERNO` a propósito, ver ficha). `nucleo/reglas.py` (§2.2): `PROTEGER_GAZETTEER_LEXICO`, `PROTEGER_FARMACOS`, `PROTEGER_LUGARES`, `PROTEGER_NOMBRES`, `FARMACOS_PROTEGIDOS`/`LUGARES_PROTEGIDOS`/`NOMBRES_PROTEGIDOS`, `cargar_farmacos`/`cargar_lugares`/`cargar_nombres`, import nuevo de `recursos.lexico`. `fase2_ortografia/pesos.py` (§2.4): motivos `gazetteer`, `farmaco_lista_curada`, `lugar_curado`, `nombre_curado`, reordenados antes de la consulta a `lexico.disponible()`. Nuevos `datos/lexicos/gazetteer_distemist.txt`, `farmacos.txt`, `lugares.txt`, `nombres.txt` (fila en §4). `salidas/lexico_clinico.json` regenerado: 32.315 → 47.803 formas. `recursos_manifiesto.json`: `DISTEMIST_gazetteer` ya estaba verificado; `CUM`, `REPS`, `AEMPS_principios_activos` pasan a `verificado` con sha256 fijado; `SympTEMIST_gazetteer`, `MedProcNER_gazetteer`, `MeSpEn_Glossaries` siguen `pendiente` (Zenodo con HTTP 504 persistente el 2026-09-16; la URL de `MeSpEn_Glossaries` además se corrigió a Zenodo, el repositorio de GitHub no trae los datos). MeSpEn no se integró (E3.10, sin poder descargarse). Bitácoras `bitacora/2026-09-16-E3.4.md`, `E3.5.md`, `E3.6.md`, `E3.10.md` |
+| 2026-09-16 | E4.4, E4.9 | Nuevo `fase2_ortografia/canal.py` (ficha en §2.4, línea en §3): canal ruidoso (Kernighan 1990) con prior de dominio, entrenado sobre `salidas/pares_correccion.csv` y `datos/lexicos/corpus_frecuencia.tsv` (fila en §4 actualizada). `candidatos.py` (§2.4): `USAR_CANAL_RUIDOSO = True` — rescata la abstención final de `elegir()` sin sustituir el desempate por frecuencia. `ortografia.py` (§2.4): `construir_lexico()` entrena y carga el canal; línea de código actualizada (765). `procesar.py` (§2.1): `VERSION_CORRECTOR` sube a `"6-canal-ruidoso"` (línea de código actualizada, 843; el valor documentado aquí estaba desactualizado desde la v4, corregido de paso a la v6 real). Decisiones en `decisiones/2026-09-16-E4.4.md` y `decisiones/2026-09-16-E4.9.md`; bitácoras `bitacora/2026-09-16-E4.4.md` y `bitacora/2026-09-16-E4.9.md` |
+| 2026-09-16 | E4.7 | Bloqueado, sin cambios de código: `gensim` no está instalado ni en `requirements.txt` pese a que el encargo daba eso por hecho (`REFERENCIAS.md` ya lo listaba como "candidato", no "en uso"). No se crea `fase2_ortografia/semantica.py`. Decisión en `decisiones/2026-09-16-E4.7.md`, bitácora `bitacora/2026-09-16-E4.7.md` |
+| 2026-09-16 | E4.8 | Verificación sin cambios de código: `CATEGORIAS_PERMITIDAS = {"TYPOS"}` confirmada correcta sobre 600 notas (`AGREEMENT_NOUNS` se dispara 15 veces y 0 llegan al corrector). Decisión en `decisiones/2026-09-16-E4.8.md`, bitácora `bitacora/2026-09-16-E4.8.md` |

@@ -16,3 +16,10 @@
 *.pdf binary
 *.npy binary
 *.joblib binary
+
+# Los CSV de referencia de las pruebas se comparan BYTE A BYTE contra lo que
+# escribe nucleo/salida.py, que usa CRLF. Si git los normaliza a LF al
+# extraerlos, la prueba falla sin que nadie haya tocado el pipeline: paso el
+# 2026-09-16 al restaurar el dorado con `git checkout`. Se marcan como binarios
+# para que git conserve sus bytes tal cual.
+NLP/tests/datos/*.csv -text

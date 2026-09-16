@@ -115,6 +115,8 @@ función `corregir(texto, texto_original)` (`ortografia.py:550-676`).
 | frecuencias del corpus | se calculan en cada corrida, `procesar.cargar_corpus()` (lee la BD) | desempate entre candidatos, detección de jerga |
 | LanguageTool (servicio Java, no archivo) | se descarga solo la primera vez que se instancia `language_tool_python.LanguageTool("es")` | propone candidatos de corrección, categoría `TYPOS` únicamente |
 | `PlanTL-GOB-ES/roberta-base-biomedical-clinical-es` (modelo, se cachea en disco tras la primera descarga) | automático al llamar `contexto.iniciar()` | capa de contexto (palabra real mal empleada) |
+| `datos/lexicos/corpus_frecuencia.tsv` | `python -m NLP.recursos.corpus_lexico` | prior de dominio (unigramas) del canal ruidoso, E4.4 |
+| `salidas/pares_correccion.csv` | `python -m NLP.evaluacion.pares` | entrena los costes del canal ruidoso (E4.4); si falta, el canal usa costes de edición sin calibrar (aviso, no error) |
 
 **Constantes**:
 
@@ -135,6 +137,8 @@ función `corregir(texto, texto_original)` (`ortografia.py:550-676`).
 | `RATIO_MINIMO` (SymSpell) | `10` | `vocabulario.py:53` | si el original es común, la sugerencia debe superarlo por este factor |
 | `UMBRAL_SOSPECHA` / `UMBRAL_GANANCIA` | `-6.0` / `2.0` | `fase2_ortografia/contexto.py:67,73` | umbral de log-probabilidad para marcar sospecha; ganancia mínima del candidato sobre lo escrito |
 | `LONGITUD_MINIMA` / `DISTANCIA_MAXIMA` (protección) | `5` / `2` | `nucleo/reglas.py:56-57` | tokens más cortos solo se tocan por corrección directa; ediciones permitidas |
+| `USAR_CANAL_RUIDOSO` | `True` | `fase2_ortografia/candidatos.py` | E4.4/E4.9: rescata con el canal ruidoso + prior de dominio (`canal.py`) los casos donde el desempate por frecuencia ya iba a abstenerse; nunca sustituye una decisión ya tomada |
+| `MARGEN_MINIMO` / `PESO_BIGRAMA` | `1.0` / `0.6` | `fase2_ortografia/canal.py` | margen mínimo en log-probabilidad para que el canal decida en vez de abstenerse; peso del bigrama frente al unigrama en el prior |
 
 Ninguna de estas constantes de fase 2 (salvo las citadas explícitamente en
 `decisiones/`) tiene un registro de medición en `decisiones/`. **Sin medición** —
@@ -167,7 +171,11 @@ respaldo medido tiene por escrito. El plan lo prevé como trabajo futuro (E4.1-E
    desde `candidatos.elegir`): de las sugerencias de LanguageTool, filtra las que
    violan el criterio clínico (antónimo morfológico, truncamiento, cambio de
    familia o de categoría, fármaco, término contra término) y de las que quedan
-   elige por menor distancia y frecuencia en el corpus, o se abstiene.
+   elige por menor distancia y frecuencia en el corpus, o se abstiene. Antes de
+   abstenerse por "varios candidatos sin uno dominante", E4.9 añadió un rescate:
+   `candidatos.elegir()` consulta `canal.elegir()` (canal ruidoso + prior de
+   dominio, E4.4) sobre la misma lista ya filtrada; solo puede sumar una
+   corrección donde antes no había ninguna, nunca cambiar la que ya se elegía.
 6. **SymSpell** (`vocabulario.corregir_texto`): solo sobre los tokens que
    LanguageTool marcó y no se corrigieron, para los errores de digitación sobre
    terminología que LanguageTool no reconoce.
@@ -183,8 +191,10 @@ respaldo medido tiene por escrito. El plan lo prevé como trabajo futuro (E4.1-E
    nada de lo anterior. La clave es `version\x00texto\x00protegidos`
    (`procesar.py:227-229`); si la clave está en `cache_correcciones.json`, la
    fase 2 entera se salta para esa nota. `VERSION_CORRECTOR` (hoy
-   `"4-con-spacy-y-coherencia"`, `procesar.py:162`) es lo único que invalida la
-   caché entre corridas.
+   `"6-canal-ruidoso"`, `procesar.py`, E4.9) es lo único que invalida la caché
+   entre corridas. La migración de la caché de la versión 5 a la 6 no tiene
+   atajo barato (`nucleo/migrar_cache.py` solo sabe migrar el cambio de la v5);
+   ver `decisiones/2026-09-16-E4.9.md`, sección "Migración de caché".
 
 **Ejemplo (nota B)**, salida real — demuestra el límite de esta demostración:
 
@@ -562,19 +572,93 @@ bloque institucional sobrevive completo. Solo la pasada agresiva (`RE_TRAMITE`) 
 quitar el tramo `"trae orden de remision... prioritaria,"` porque ese sí es un
 patrón de tramo, no de oración.
 
-## 8. Fase 6 — Conceptos (prevista, E5.7)
+## 8. Fase 6 — Conceptos (E5.7)
 
-No existe todavía. Prevista en `PLAN.md` §8, ítem **E5.7 Normalización conceptual
-(fase 6, nueva)**: `PhraseMatcher` contra SympTEMIST + DISTEMIST (nivel 0),
-SapBERT-es o ClinLinker-KB-GP con vecino más cercano (nivel 1), NER
-(`carmen-symptemist`) solo en notas largas (nivel 2); columnas previstas
-`concepto_snomed` y `concepto_termino`. Ver `PLAN.md` §8 para el criterio de
-aceptación y la dependencia de E4-E5.
+**Entrada**: `texto_embedding` (u otra columna de texto que se le pase).
+**Salida**: `concepto_snomed` (código SNOMED CT, o varios unidos por `;`) y
+`concepto_termino` (el término preferido de cada código). Implementada en el
+paquete `fase6_conceptos/`, **no llamada desde `procesar.py`**: es un paso
+aparte tras bandera (`PLAN.md` §3 principio 8 y §7 — añadir columnas es
+transparente para `embedding/`). Se invoca con `python -m
+NLP.fase6_conceptos.combinar`. Coste medido, qué nivel cumple y qué no:
+`decisiones/2026-09-16-E5.7.md`.
+
+**Artefactos que consume**: `rutas.GAZETTEER_DISTEMIST_TSV`
+(`recursos_externos/DISTEMIST_gazetteer/content`, el TSV crudo
+`code/language/term/semantic_tag/mainterm` del manifiesto, CC-BY-4.0 — no
+`datos/lexicos/gazetteer_distemist.txt`, que son formas sueltas sin código
+para el corrector, E3.4); opcionalmente un índice de nivel 1 guardado en
+`salidas/fase6/` (`nivel1.construir_indice`).
+
+**Tres niveles, en orden de intento** (`combinar._procesar_texto`):
+
+1. **Nivel 0** (`nivel0.py`) — `PhraseMatcher` de spaCy (tokenizador vacío
+   `spacy.blank("es")`, sin modelo entrenado: solo hace falta segmentar en
+   palabras) contra los 103.153 códigos del gazetteer DISTEMIST (SympTEMIST,
+   que la ficha también pide, sigue sin poder descargarse: Zenodo con HTTP
+   504 persistente, `bitacora/2026-09-16-E3.4.md`). Cada patrón entra con su
+   forma original y su forma sin tildes. Coincidencia por la mención más
+   larga y sin solapes. Medido sobre las 9.311 notas completas (no una
+   muestra): construir el índice tarda 63,1 s (una vez por proceso);
+   emparejar las 9.311 notas, 2,0 s (0,22 ms/nota); cobertura 21,15 % de
+   todas las notas del CSV.
+2. **Nivel 1** (`nivel1.py`) — si nivel 0 no reconoce nada, vecino más
+   cercano por producto punto contra un índice de embeddings `[CLS]` del
+   gazetteer con SapBERT-es (`BSC-NLP4BIA/SapBERT-from-roberta-base-biomedical-clinical-es`,
+   Apache-2.0; tarjeta del modelo: `[CLS]`, `max_length=25`, pensado para
+   menciones cortas). Hoy `combinar.py` le pasa la **nota completa**, no una
+   mención aislada, y la medición muestra que eso es su punto débil: a un
+   umbral responsable (0,80) la cobertura es casi nula (0,7–1,7 % sobre 300
+   notas de prueba); bajar el umbral sube la cobertura pero sin gold que
+   confirme precisión. Construir el índice de embeddings del gazetteer
+   completo (103.153 conceptos) se midió en 63–115 minutos de CPU (según
+   carga de la máquina) y **no se completó en esta sesión** por presupuesto
+   de tiempo, no por límite técnico: queda un índice parcial de 8.000
+   conceptos en `salidas/fase6/indice_conceptos_sapbert_muestra8000.npz`
+   para poder medir el resto. `nivel1.UMBRAL_SIMILITUD = 0.80` sin calibrar
+   contra gold.
+3. **Nivel 2** (`nivel2.py`) — si tampoco nivel 1 resuelve y la nota es
+   "larga" (`LONGITUD_NOTA_LARGA = 15` palabras, 23,59 % del corpus), NER con
+   `BSC-NLP4BIA/bsc-bio-ehr-es-carmen-symptemist` (CC-BY-4.0; pre-tokeniza en
+   palabras y alinea subtokens con `word_ids()`, como exige la tarjeta).
+   Extrae menciones (no asigna código por sí solo) y las resuelve con
+   `nivel0.emparejar` y, si no, `nivel1.vecino_mas_cercano`. Medido sobre 150
+   notas largas: 91,33 % produce al menos una mención, 602 ms/nota. Es
+   cualitativamente el nivel más sólido de los tres: las menciones que
+   extrae (frases de 2-6 palabras) son el tipo de texto corto para el que
+   nivel 1 está diseñado — a diferencia de pasarle la nota completa.
+
+**Lo que la medición sugiere para una versión 2** (no implementado en E5.7
+por tiempo): alimentar nivel 1 con las menciones de nivel 2 también en notas
+**cortas** (hoy nivel 2 solo corre en notas largas por diseño de la ficha;
+una nota corta sin cobertura de nivel 0 cae directo a nivel 1 sobre el texto
+completo, el caso débil medido). Detalle completo, con las cifras de las dos
+corridas de nivel 1 (con carga y sin carga de la máquina) y los ejemplos
+anonimizados de asignación: `decisiones/2026-09-16-E5.7.md`.
+
+**Coste total y cobertura del pipeline combinado, medido de verdad sobre 500
+notas** (`python -m NLP.fase6_conceptos.combinar --limite 500`, no una
+extrapolación): 778,61 ms/nota, que a 5.000 notas son **64,9 minutos** —
+**por encima** del presupuesto de 1 h que fija la ficha (~8 % de exceso).
+Cobertura 0+1 medida: **20,40 %**, muy por debajo del 80 % exigido (nivel 1
+aportó 4 de 500 notas). La causa del tiempo está identificada:
+`combinar.py` llama a nivel 1 nota por nota en vez de en lote; procesar por
+lotes (`nivel1._embeber` ya lo soporta internamente) es la mejora obvia para
+bajar del presupuesto, no implementada en este ítem. Detalle completo, con
+la primera estimación por partes (25-27 min, hecha antes de correr el
+pipeline real y corregida por optimista) y las dos mediciones de nivel 1:
+`decisiones/2026-09-16-E5.7.md`.
 
 ## 9. Lo que el flujo no hace todavía
 
-- No hay fase 6: ningún texto llega codificado a un concepto SNOMED ni a un
-  vocabulario controlado de síntomas más allá del catálogo de reglas (E5.7).
+- Hay fase 6 (E5.7, `fase6_conceptos/`), pero no corre por defecto: ningún
+  texto de `triage_limpio.csv` llega codificado a un concepto SNOMED salvo
+  que se invoque aparte, `python -m NLP.fase6_conceptos.combinar`. De sus
+  tres niveles, nivel 0 está medido sobre el corpus completo y cumple el
+  presupuesto de tiempo; nivel 1, tal como lo usa `combinar.py` hoy (sobre la
+  nota completa, no una mención), muestra cobertura casi nula a un umbral
+  responsable; nivel 2 es sólido mas caro y solo cubre notas largas. Ver
+  sección 8 y `decisiones/2026-09-16-E5.7.md`.
 - La negación se queda dentro de la frase (`"niega fiebre"`) pero no viaja como
   campo estructurado ni como alcance marcado (`NEG_`) en `texto_embedding`
   (E5.2).
@@ -587,7 +671,11 @@ aceptación y la dependencia de E4-E5.
   `decisiones/2026-09-16-E5.1-glosas.md`. Encenderlas sin adaptar
   `clustering/etiquetas.py` para que lea la nueva fuente de nombres sigue
   siendo lo que advierte `PLAN.md` §7: degrada los nombres sin fallo visible.
-- No hay lematización selectiva (E5.4).
+- No hay lematización selectiva (E5.4): medido su efecto sobre vocabulario y
+  el riesgo sobre la terminología clínica curada (riesgo bajo, ganancia de
+  agrupamiento pequeña), pero no se implementó ningún módulo de producción
+  ni se midió ARI/silueta, el criterio real de la ficha. Ver
+  `decisiones/2026-09-16-E5.4.md`.
 - No hay pruebas automatizadas que fijen el comportamiento de ninguna fase:
   `NLP/tests/` solo tiene una carpeta `datos/` vacía; `python -m pytest NLP/tests
   -q` ejecutado el 2026-09-16 devuelve `no tests ran in 0.07s` (E2.1).
@@ -659,3 +747,5 @@ aceptación y la dependencia de E4-E5.
 | 2026-09-16 | E1.3 | Primera versión: recorrido de la nota, una sección por fase 1-6, ejemplos sintéticos ejecutados, discrepancias encontradas |
 | 2026-09-16 | E5.1 | Constantes `SEPARAR_CONCEPTO` (fase 3) y `QUITAR_GLOSA` (fase 5) en las tablas de §5 y §7; bullet de glosas en §9 actualizado con la medición y el enlace a `decisiones/2026-09-16-E5.1-glosas.md` |
 | 2026-09-16 | E5.2, E5.3 | Constante `USAR_NEGACION` (fase 5, §7) y nota sobre el marcado de negación como último paso de `recortar()`; constante `EXPANDIR_ABREVIATURAS_PROPUESTAS` (fase 3, §5). Enlaces a `decisiones/2026-09-16-E5.2.md` y `decisiones/2026-09-16-E5.3.md` |
+| 2026-09-16 | E5.7 | Sección 8 reescrita: fase 6 (`fase6_conceptos/`) ya existe, con sus tres niveles, coste medido y cobertura por nivel. §9: bullets de "fase 6" y "lematización" actualizados con lo medido en E5.7 y E5.4. Enlaces a `decisiones/2026-09-16-E5.7.md` y `decisiones/2026-09-16-E5.4.md` |
+| 2026-09-16 | E4.4, E4.9 | §3 (fase 2): dos artefactos nuevos en la tabla de consumo (`corpus_frecuencia.tsv`, `pares_correccion.csv`, para el canal ruidoso); constantes `USAR_CANAL_RUIDOSO`, `MARGEN_MINIMO`, `PESO_BIGRAMA`; subpaso 5 ampliado con el rescate del canal; subpaso 9 y `VERSION_CORRECTOR` corregidos a la versión real (`"6-canal-ruidoso"`, estaban desactualizados desde la v4). Enlaces a `decisiones/2026-09-16-E4.4.md` y `decisiones/2026-09-16-E4.9.md` |

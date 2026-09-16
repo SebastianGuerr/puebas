@@ -178,8 +178,19 @@ USAR_CACHE = True
 #   - coherencia.py protege el vocabulario propio del hospital y acota la
 #     exencion por errata de teclado
 #   - el lexico clinico incorpora el gazetteer de DISTEMIST
+# 6 (E4.9): candidatos.py rescata con el canal ruidoso + prior de dominio
+#   (fase2_ortografia/canal.py, USAR_CANAL_RUIDOSO=True) los casos en los
+#   que el desempate por frecuencia ya iba a abstenerse. Solo puede sumar
+#   correcciones que antes no se aplicaban, nunca cambiar una que ya se
+#   aplicaba. Medido en docs/decisiones/2026-09-16-E4.9.md: sube la
+#   exactitud sobre autoinducido.csv (0,8333 -> 0,8515) sin subir la
+#   intervencion sobre limpio.csv (2/1069 en las dos versiones). Migracion
+#   de cache: ver docs/decisiones/2026-09-16-E4.9.md, "Migracion de cache" --
+#   el criterio de nucleo/migrar_cache.py es especifico del cambio de la v5
+#   y no cubre este; no hay forma barata de saber que entradas de v5 se ven
+#   afectadas sin recalcularlas.
 # Ver las decisiones del 2026-09-16 en docs/decisiones/.
-VERSION_CORRECTOR = "5-cifras-respaldo-y-vocabulario-propio"
+VERSION_CORRECTOR = "6-canal-ruidoso"
 
 # Como se llama en notas_descartadas.csv el veredicto del modelo. Se escribe
 # tal cual en la columna motivo_descarte, al lado de los motivos que pone la

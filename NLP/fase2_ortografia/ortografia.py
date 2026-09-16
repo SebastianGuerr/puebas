@@ -8,6 +8,7 @@ Este módulo orquesta la fase; la lógica vive en los módulos del paquete:
     enmascarado.py        aparta lo clínico y lo corrige contra el léxico
     nucleo/reglas.py      qué no se toca: siglas, números, entidades, forma
     candidatos.py         cuál de las sugerencias se aplica
+    canal.py              rescate por canal ruidoso + prior de dominio (E4.4)
     vocabulario.py        SymSpell, para los errores que LanguageTool no ve
     sugerencias.py        candidatos declarados para la capa de contexto
     contexto.py           si la palabra cabe donde está
@@ -48,6 +49,7 @@ import threading
 import language_tool_python
 
 from NLP.fase2_ortografia import candidatos
+from NLP.fase2_ortografia import canal
 from NLP.fase2_ortografia import contexto
 from NLP.fase2_ortografia import enmascarado
 from NLP.fase2_ortografia import pesos
@@ -191,6 +193,21 @@ def construir_lexico(textos):
         entradas = vocabulario.construir(textos)
         if entradas:
             print(f"  diccionario SymSpell: {entradas:,} formas validas")
+
+    # E4.4/E4.9: el canal ruidoso solo puede rescatar (candidatos.py,
+    # USAR_CANAL_RUIDOSO) si tiene el prior de dominio cargado. Sin
+    # salidas/pares_correccion.csv se queda con los costes de partida
+    # (Levenshtein con pesos iguales) en vez de los aprendidos: sigue
+    # funcionando, solo que sin la calibracion de E4.4.
+    try:
+        canal.entrenar_desde_pares_correccion()
+    except OSError:
+        print("  AVISO: falta salidas/pares_correccion.csv; el canal ruidoso "
+              "usa costes de edicion sin calibrar.")
+    entradas_prior, entradas_bigramas = canal.cargar_prior(textos_bigramas=textos)
+    if entradas_prior:
+        print(f"  canal ruidoso: {entradas_prior:,} unigramas, "
+              f"{entradas_bigramas:,} bigramas, entrenado={canal.entrenado()}")
 
     return candidatos.CONTEO
 

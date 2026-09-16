@@ -55,4 +55,12 @@ METRICAS = SALIDAS / "metricas"                       # evaluacion/metricas.py
 # el catalogo de sintomas de la fase 4 lo consume lexico.py
 CATALOGO_SINTOMAS = PROYECTO / "embedding" / "datos" / "catalogo_sintomas.json"
 
+# fase 6 - normalizacion conceptual (E5.7); GAZETTEER_DISTEMIST_TSV es el TSV
+# crudo descargado por recursos/descargar.py (code/language/term/semantic_tag/
+# mainterm, CC-BY-4.0), distinto de datos/lexicos/gazetteer_distemist.txt
+# (E3.4, formas sueltas sin codigo, para el corrector)
+GAZETTEER_DISTEMIST_TSV = PAQUETE / "recursos_externos" / "DISTEMIST_gazetteer" / "content"
+FASE6_SALIDAS = SALIDAS / "fase6"                     # fase6_conceptos/*.py
+INDICE_CONCEPTOS_NIVEL1 = FASE6_SALIDAS / "indice_conceptos_sapbert.npz"  # nivel1.py
+
 SALIDAS.mkdir(exist_ok=True)
