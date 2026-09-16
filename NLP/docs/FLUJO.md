@@ -453,8 +453,8 @@ sintética y verificable.
 **Entrada**: `columna_juicio` (igual que la fase 4). **Salida**: `texto_embedding`
 y `motivo_llm`; combina su señal de descarte con la de la fase 4 en
 `motivo_descarte` (`procesar.py:465-469`, unidas con `" | "`). Módulos:
-`reduccion/reduccion.py` (864 líneas, reglas), `reduccion/frases.py` (358 líneas,
-clasificador de tramos) y `reduccion/extractor.py` (593 líneas, modelo de
+`reduccion/reduccion.py` (697 líneas, reglas), `reduccion/frases.py` (303 líneas,
+clasificador de tramos) y `reduccion/extractor.py` (474 líneas, modelo de
 lenguaje local, fase 5b).
 
 **Artefactos que consume**:
@@ -468,29 +468,36 @@ lenguaje local, fase 5b).
 
 | Constante | Valor | Archivo:línea |
 |---|---|---|
-| `PALABRAS_ORACION_LARGA` | `8` | `reduccion.py:89` |
-| `DENSIDAD_MINIMA` | `0.40` | `reduccion.py:90` |
-| `TOPE_PALABRAS` | `60` | `reduccion.py:438` |
-| `LONGITUD_MINIMA` | `1` | `reduccion.py:437` |
+| `PALABRAS_ORACION_LARGA` | `8` | `reduccion.py:38` |
+| `DENSIDAD_MINIMA` | `0.40` | `reduccion.py:39` |
+| `TOPE_PALABRAS` | `60` | `reduccion.py:355` |
+| `LONGITUD_MINIMA` | `1` | `reduccion.py:354` |
 | `MAX_LONGITUD` / `UMBRAL_BUROCRATICO` | `64` / `0.85` | `frases.py` (ficha en `ARQUITECTURA.md` §2.7) |
-| `LONGITUD_MINIMA` (extractor) | `1` | `extractor.py:80` — ve todas las notas, no solo las largas |
-| `FRACCION_MAXIMA` / `FRACCION_CLINICA_MINIMA` | `0.85` / `0.50` | `extractor.py:98,118` |
+| `LONGITUD_MINIMA` (extractor) | `1` | `extractor.py:28` — ve todas las notas, no solo las largas |
+| `FRACCION_MAXIMA` / `FRACCION_CLINICA_MINIMA` | `0.85` / `0.50` | `extractor.py:46,53` |
 | `QUITAR_GLOSA` | `False` (E5.1) | `reduccion.py` — si `True`, `recortar()` quita también `(...)` de la fase 3; sin efecto si el texto ya llega sin ella (`normalizacion.SEPARAR_CONCEPTO=True`) |
 
-**Subpasos**, en el orden de `recortar()` (`reduccion.py:667-697`): pasada
-**agresiva** — `_quitar_clasificador` (tramos que `frases.py` marca
-administrativos, salvo que su densidad clínica los proteja) → `_quitar_institucional`
-(oraciones con marcador institucional, u oraciones largas de baja densidad
-clínica) → quitar encabezados → quitar antecedentes en prosa, pluripatología,
-examen físico, conducta, acompañante, modo de llegada, lugares → (solo agresivo)
-trámite, verbo de reporte, preámbulo temporal, ficha demográfica → pulir. Si el
-resultado crea una "costura" (`crea_costura()`, junta dos palabras que no estaban
-juntas), se reintenta con la pasada **suave** (sin trámite/reporte/temporal/
-demográfico); si tampoco sirve, se devuelve el texto original
+**Subpasos**, en el orden de `_recortar()` (`reduccion.py:594-639`), llamada por
+`recortar()`: pasada **agresiva** — `_quitar_clasificador` (tramos que `frases.py`
+marca administrativos, salvo que su densidad clínica los proteja) →
+`_quitar_institucional` (oraciones con marcador institucional, u oraciones largas
+de baja densidad clínica) → quitar encabezados → quitar antecedentes en prosa,
+pluripatología, examen físico, conducta, acompañante, modo de llegada, lugares →
+(solo agresivo) trámite, verbo de reporte, preámbulo temporal, ficha demográfica →
+pulir. Si el resultado crea una "costura" (`crea_costura()`, junta dos palabras que
+no estaban juntas), se reintenta con la pasada **suave** (sin trámite/reporte/
+temporal/demográfico); si tampoco sirve, se devuelve el texto original
 (`sin_reducir()`). Si `USAR_LLM`, el extractor (fase 5b) sustituye el recorte por
 su propia extracción, verificada literalmente contra la nota, o marca
 `MOTIVO_SIN_CONTEXTO` si concluye que no hay motivo de consulta; cualquier otro
 resultado del modelo deja mandar al recorte por reglas.
+
+**Qué se conserva**: la negación viaja dentro del texto (un cuadro descrito como
+resuelto tiene que llegarle así al modelo; viaja también aparte, como campo
+estructurado — cada copia sirve para algo distinto) y la anotación entre paréntesis
+que añadió la fase 3 tampoco se quita por defecto (`QUITAR_GLOSA = False`): para
+quien lee la nota duplica lo que la sigla ya dice, pero es la única pista de qué
+significa una sigla para el modelo de embeddings.
 
 **Decisiones enlazadas**:
 - `decisiones/2026-09-15-artefactos-y-version-corrector.md` — sin
@@ -502,6 +509,22 @@ resultado del modelo deja mandar al recorte por reglas.
   pérdida 11 → 7 (muestra de 100 notas reparadas, 2026-09-15).
 - `decisiones/2026-09-15-modelo-generativo.md` — por qué el extractor solo copia
   texto literal verificado y nunca reescribe (5,5 tokens/s medidos en esta CPU).
+- `decisiones/2026-09-16-reduccion-extractor-umbrales.md` — por qué
+  `LONGITUD_MINIMA` (extractor) pasó a ver todas las notas y qué mide
+  `FRACCION_CLINICA_MINIMA`.
+- `decisiones/2026-09-16-reduccion-clasificador-cobertura.md` — por qué el
+  clasificador se usa además de los patrones (400 tramos sin regla: 110
+  administrativos, 144 clínicos, 146 en zona gris).
+- `decisiones/2026-09-16-reduccion-acompanante-llegada.md` — por qué se quita el
+  acompañante y el modo de llegada (1.301 y 1.107 notas).
+- `decisiones/2026-09-16-reduccion-bloques-nota-larga.md` — examen físico,
+  conducta y antecedentes en prosa (15,9 % del corpus pasa de 30 palabras).
+- `decisiones/2026-09-16-reduccion-costuras.md` — `crea_costura()` (189 notas,
+  70 % de los fallos del recorte).
+- `decisiones/2026-09-16-reduccion-institucional-todo-o-nada.md` — devolver la
+  nota entera cuando no queda ninguna oración útil (229 de 8.000 notas).
+- `decisiones/2026-09-16-frases-codificador.md` — roberta-clínico frente a
+  bge-m3 y por qué `probabilidades()` cachea por tramo.
 
 **Ejemplo (nota A)**, salida real — muestra una costura no resuelta:
 
@@ -527,8 +550,9 @@ La nota entera es una sola frase separada por comas (sin `.` ni `;`), así que
 `_quitar_institucional()` la trata como una única "oración": contiene marcadores
 institucionales (`"entidad promotora"`, `"urgencia vital"`) y no tiene periodos
 donde cortar solo esa parte, así que por la regla documentada en
-`reduccion.py:609-627` ("si no queda nada, se devuelve la nota entera") el bloque
-institucional sobrevive completo. Solo la pasada agresiva (`RE_TRAMITE`) alcanza a
+`reduccion.py:460-491` ("si no queda nada, se devuelve la nota entera";
+medición en `decisiones/2026-09-16-reduccion-institucional-todo-o-nada.md`) el
+bloque institucional sobrevive completo. Solo la pasada agresiva (`RE_TRAMITE`) alcanza a
 quitar el tramo `"trae orden de remision... prioritaria,"` porque ese sí es un
 patrón de tramo, no de oración.
 

@@ -271,7 +271,7 @@ clínico, comparando por raíz contra el léxico curado. `evaluar` → (útil, m
 
 ### 2.7 `reduccion/`
 
-**`reduccion.py`** (884) `[G]` — Fase 5 por reglas: quita bloques que no son motivo de
+**`reduccion.py`** (697) `[G]` — Fase 5 por reglas: quita bloques que no son motivo de
 consulta (institucional, trámite, examen físico, conducta, antecedentes, acompañante,
 lugares, preámbulo temporal, demografía). `recortar(texto, agresivo)` (pasada agresiva
 y suave; acepta la que no deja costuras), `cargar_lexico`, `cargar_lugares`,
@@ -280,26 +280,33 @@ del clasificador). `PALABRAS_ORACION_LARGA = 8`, `DENSIDAD_MINIMA = 0.40`,
 `TOPE_PALABRAS = 60`, `FUENTES_CURADAS`. Mantiene su propio `_LEXICO` y `_es_clinica`
 leyendo `lexico_clinico.json` directamente (duplica `recursos/lexico.py`; ver §5).
 Freno por densidad al clasificador: `decisiones/2026-09-15-clasificador-freno-clinico.md`.
+Por qué se usa el clasificador además de los patrones (no en su lugar):
+`decisiones/2026-09-16-reduccion-clasificador-cobertura.md`.
 `QUITAR_GLOSA = False` (E5.1) — si `True`, `recortar()` quita también la anotación entre
 paréntesis que dejó la fase 3 (`RE_PARENTESIS`); apagada por defecto, no interfiere con
 `normalizacion.SEPARAR_CONCEPTO`. Ver `decisiones/2026-09-16-E5.1-glosas.md`.
 `USAR_CLASIFICADOR = True` (E5.5) — si `False`, `_quitar_clasificador()` no toca el
 texto aunque haya clasificador entrenado; sirve para medir con y sin el freno de
-`frases.py` sobre las mismas notas. Ver `decisiones/2026-09-16-E5.5.md`.
+`frases.py` sobre las mismas notas. Ver `decisiones/2026-09-16-E5.5.md` (referencia no
+encontrada en `docs/decisiones/` al momento de E1.5; ver discrepancias).
 
-**`extractor.py`** (593) `[G]` — Fase 5b: pide a Ollama (`qwen2.5:3b-instruct`) que
+**`extractor.py`** (474) `[G]` — Fase 5b: pide a Ollama (`qwen2.5:3b-instruct`) que
 copie los fragmentos que son motivo y verifica que existan literalmente en la nota.
 `extraer`, `disponible`, `localizar`, `verificar`, `conserva_lo_clinico`.
 `LONGITUD_MINIMA = 1` (ve todas las notas), `TIMEOUT = 120`, `TEMPERATURA = 0.0`,
 `FRACCION_MAXIMA = 0.85`, `FRACCION_CLINICA_MINIMA = 0.50`. Decisión sobre modelos
-generativos: `decisiones/2026-09-15-modelo-generativo.md`.
+generativos: `decisiones/2026-09-15-modelo-generativo.md`. Umbral `LONGITUD_MINIMA` y
+criterio `FRACCION_CLINICA_MINIMA`: `decisiones/2026-09-16-reduccion-extractor-umbrales.md`.
 
-**`frases.py`** (358) — Clasificador de tramos (RoBERTa clínico congelado + regresión
-logística). `segmentos`, `burocraticos`, `probabilidades`, `etiquetar_debil`,
-`construir_datos` (**regenera `datos/frases_etiquetadas.csv`, curado a mano**),
-`entrenar` (usar este para reentrenar), `main` (construye y entrena: destruye la
-curación). `MAX_LONGITUD = 64`, `UMBRAL_BUROCRATICO = 0.85`. Escribe
-`CLASIFICADOR_FRASES`.
+**`frases.py`** (303) — Clasificador de tramos (RoBERTa clínico congelado + regresión
+logística). `segmentos`, `burocraticos`, `probabilidades`, `etiquetar_debil`
+(etiqueta de entrenamiento por regla débil: `reduccion.py` decide 'burocratico', el
+léxico clínico decide 'clinico'; donde coinciden o ninguna se moja, el tramo queda sin
+etiqueta), `construir_datos` (**regenera `datos/frases_etiquetadas.csv`, curado a
+mano**), `entrenar` (usar este para reentrenar), `main` (construye y entrena: destruye
+la curación). `MAX_LONGITUD = 64`, `UMBRAL_BUROCRATICO = 0.85`. Escribe
+`CLASIFICADOR_FRASES`. Por qué roberta-clínico y no bge-m3, y por qué
+`probabilidades()` cachea por tramo: `decisiones/2026-09-16-frases-codificador.md`.
 
 ### 2.8 `recursos/`
 
@@ -469,7 +476,8 @@ porque `normalizacion.disponible()` solo responde tras llamar a `cargar()`),
 `cargar_frecuencias` (BD, para contar sobre un corpus grande y distinguir mejor una
 palabra rara de una errata; el CSV como respaldo si la BD no responde), `comparar`,
 `escribir_informe`, `informar` (agrupa las pérdidas por término distinto, no por nota:
-sobre miles de notas los términos que se repiten son unas pocas decenas y un término
+sobre 9.311 notas reparadas, un 4 % (~370) son avisos de pérdida y no se leen uno a
+uno, pero los términos distintos que se repiten son unas pocas decenas y un término
 basta para juzgar si la pérdida importa), `main` (`--limite`, `--aplicar`, `--con-llm`,
 `--csv`). Por defecto no pisa nada: escribe `triage_reparado.csv` e
 `informe_reparacion.csv` (rutas definidas aquí, no en `rutas.py`; ver §5) y solo

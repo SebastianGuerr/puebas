@@ -140,7 +140,12 @@ def comparar(df_viejo, df_nuevo):
 
     Devuelve una lista de (oid, categoria, detalle, texto_viejo, texto_nuevo).
     """
-    viejo = df_viejo.set_index(procesar.LLAVE).to_dict("index")
+    # El OID no es unico: PLAN.md §7 lo dice ("no se exige unico; gana la
+    # ultima aparicion") y el CSV tiene 55 OID repetidos en 110 filas. Sin
+    # deduplicar, to_dict("index") aborta la corrida entera al final, despues
+    # de horas de trabajo. Se conserva la ultima, como manda el contrato.
+    viejo = (df_viejo.drop_duplicates(subset=procesar.LLAVE, keep="last")
+             .set_index(procesar.LLAVE).to_dict("index"))
     salida = []
     for _, fila in df_nuevo.iterrows():
         oid = fila[procesar.LLAVE]
