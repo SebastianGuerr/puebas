@@ -261,11 +261,6 @@ def es_sigla(token):
     return clase(token) == SIGLA
 
 
-def es_nombre_propio(token):
-    """True si el corpus escribe el token habitualmente con inicial mayúscula."""
-    return clase(token) == NOMBRE
-
-
 def siglas(dominancia=None):
     """
     Conjunto de siglas aprendidas del corpus. Complementa al diccionario de

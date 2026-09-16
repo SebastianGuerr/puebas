@@ -459,15 +459,6 @@ def _es_expansion(escrita, candidato):
     return all(letra in it for letra in e)
 
 
-def es_sospechosa(izquierda, palabra, derecha):
-    """
-    True si lo escrito resulta improbable en ese hueco. Es un filtro de coste,
-    no una decisión: marca a qué palabras vale la pena buscarles candidatos.
-    """
-    lp = logprob_medio(izquierda, palabra, derecha)
-    return lp is not None and lp < UMBRAL_SOSPECHA
-
-
 # ==========================================================
 # DECISIÓN
 # ==========================================================

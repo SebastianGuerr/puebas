@@ -31,9 +31,12 @@ LAS CUATRO FUENTES, Y QUÉ CASO RESUELVE CADA UNA
                       'general').
 
 LO QUE NO SE GENERA
-    Nada que no esté en alguna de esas fuentes. Si una palabra está mal escrita
-    y su forma correcta no aparece ni en el léxico ni en las notas del hospital,
-    el sistema se abstiene.
+    Nada que no esté en alguna de esas fuentes -- pero esa es la garantía de
+    ESTE módulo, no la del corrector completo. Si la capa de contexto (la única
+    que consume estas fuentes) no encuentra aquí una forma correcta, se
+    abstiene; LanguageTool y SymSpell corrigen antes, por su cuenta, sin pasar
+    por este módulo y sin esta garantía (evidencia y alcance real:
+    docs/bitacora/2026-09-16-E6.3.md).
 """
 
 import re

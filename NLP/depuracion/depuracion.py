@@ -591,11 +591,6 @@ def evaluar(texto, sintomas=None):
     return False, SIN_TERMINOLOGIA
 
 
-def util(texto, sintomas=None):
-    """Atajo booleano de evaluar(), para filtrar sin desempaquetar el motivo."""
-    return evaluar(texto, sintomas)[0]
-
-
 def resumen(motivos):
     """
     Cuenta los motivos de descarte de una corrida y los devuelve ordenados de

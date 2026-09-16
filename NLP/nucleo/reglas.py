@@ -34,7 +34,6 @@ from rapidfuzz.distance import DamerauLevenshtein
 
 from NLP import rutas
 from NLP.nucleo import linguistica
-from NLP.nucleo import morfologia
 from NLP.recursos import casing
 from NLP.nucleo.morfologia import (  # reexportado: el resto del paquete los usa como reglas.X
     LETRAS_RAIZ,
@@ -52,6 +51,7 @@ from NLP.nucleo.morfologia import (  # reexportado: el resto del paquete los usa
 )
 
 RUTA_SIGLAS = rutas.DICCIONARIO_SIGLAS
+RUTA_SIGLAS_PROTEGIDAS = rutas.DATOS / "lexicos" / "siglas_protegidas.txt"
 
 LONGITUD_MINIMA = 5          # tokens mas cortos solo via correcciones directas
 DISTANCIA_MAXIMA = 2         # ediciones permitidas entre original y candidato
@@ -64,6 +64,11 @@ USAR_SPACY = True
 PROTEGER_POR_VOCABULARIO = True
 PROTEGER_ENTIDADES = True
 
+# E3.2: segunda via de proteccion para siglas de triage, independiente de
+# diccionario_siglas.json (ver docs/decisiones y bitacora/2026-09-16-E3.2.md).
+# Tras bandera para poder medir con y sin ella (PLAN.md §3, principio 8).
+PROTEGER_SIGLAS_LISTA_MANUAL = True
+
 # Contenido del diccionario, poblado por cargar(). Son estructuras de módulo
 # porque se consultan desde varios motores dentro del bucle de corrección.
 SIGLAS = set()
@@ -74,6 +79,10 @@ EXPANDIBLES = {}
 NO_RESTAURAR = set()
 DIRECTAS = {}
 PATRONES = []
+
+# E3.2: lista independiente de siglas_protegidas.txt, cargada aparte del
+# diccionario para que se pueda auditar y medir por separado.
+SIGLAS_PROTEGIDAS_MANUAL = set()
 
 RE_PALABRA = re.compile(r"[a-záéíóúüñ]+")
 RE_MAYUSCULA_INICIAL = re.compile(r"\b[A-ZÁÉÍÓÚÑ][a-záéíóúüñ]{2,}")
@@ -175,7 +184,26 @@ def cargar(ruta=RUTA_SIGLAS):
             # grupo temático como lista simple de términos protegidos
             SIGLAS.update(x.lower() for x in valor)
 
+    cargar_siglas_protegidas()
     return SIGLAS
+
+
+def cargar_siglas_protegidas(ruta=RUTA_SIGLAS_PROTEGIDAS):
+    """
+    Lee `datos/lexicos/siglas_protegidas.txt` (E3.2): una forma por línea,
+    comentarios con `#`. Deja el resultado en `SIGLAS_PROTEGIDAS_MANUAL` y lo
+    devuelve. Si el archivo no existe, deja el conjunto vacío sin fallar.
+    """
+    SIGLAS_PROTEGIDAS_MANUAL.clear()
+    ruta = Path(ruta)
+    if not ruta.exists():
+        return SIGLAS_PROTEGIDAS_MANUAL
+    for linea in ruta.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith("#"):
+            continue
+        SIGLAS_PROTEGIDAS_MANUAL.add(linea.lower())
+    return SIGLAS_PROTEGIDAS_MANUAL
 
 
 # ==========================================================
@@ -275,6 +303,8 @@ def esta_protegido(token, protegidos=()):
     if not token:
         return True
     if token in SIGLAS or token in protegidos:
+        return True
+    if PROTEGER_SIGLAS_LISTA_MANUAL and token in SIGLAS_PROTEGIDAS_MANUAL:
         return True
     return any(p.search(token) for p in PATRONES)
 

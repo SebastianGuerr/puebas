@@ -155,6 +155,12 @@ def peso(palabra):
     if token in reglas.SIGLAS:
         return PESOS["diccionario"], "diccionario"
 
+    # E3.2: segunda via de proteccion (siglas_protegidas.txt), independiente
+    # del diccionario, para que la capa de contexto (la mas agresiva; ver
+    # ortografia.aplicar_contexto) tambien la respete. Bandera en reglas.py.
+    if reglas.PROTEGER_SIGLAS_LISTA_MANUAL and token in reglas.SIGLAS_PROTEGIDAS_MANUAL:
+        return PESOS["diccionario"], "sigla_protegida_manual"
+
     if morfologia.parece_farmaco(token):
         return PESOS["farmaco"], "farmaco"
 

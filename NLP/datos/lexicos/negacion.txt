@@ -1,0 +1,286 @@
+# negacion.txt -- disparadores de negacion en espanol clinico, para el
+# alcance de negacion en notas de triage (E3.7, NLP/docs/PLAN.md S8).
+#
+# FUENTE PRINCIPAL: NegEx-MES (PlanTL-GOB-ES / Secretaria de Estado para el
+# Avance Digital), Zenodo, DOI 10.5281/zenodo.2542567. Licencia MIT
+# (https://opensource.org/licenses/MIT). Registro:
+# https://zenodo.org/records/2542567 -- descargado 2026-09-16 via
+# https://zenodo.org/records/2542567/files/PlanTL/NegEx-MES-v1.0.1.zip?download=1
+# (localizada con la API de Zenodo, zenodo.org/api/records/2542567: la URL del
+# registro original de E3.1 apuntaba a la pagina del deposito, no al archivo).
+# sha256 del zip: de381e5954e94ccdd160c97bab08a8bb04a2acd4a0a5361562d78c6c47ccb6af
+# (NLP/datos/recursos_manifiesto.json). Subconjunto usado:
+# smn/config_files/spa/without_lemma/{neg-phrases,post-neg-phrases,
+# pseudo-neg-phrases,conjunctions}.txt de NegEx-MES-v1.0.1.zip. Se omite a
+# proposito smn/main/smn.jar (codigo Java compilado; PLAN.md S6.3 no admite
+# ejecutables) y la variante with_lemma (el pipeline no lematiza; E5.4
+# pendiente). Las formas se copian tal cual las da la fuente, incluidas las
+# que suenan a traduccion literal del ingles (p. ej. 'gobierna al paciente'):
+# no se filtran a mano porque una frase de varias palabras que no aparece en
+# el corpus no genera falsos positivos, solo peso muerto en el automata.
+#
+# COMPLEMENTO PROPIO (bloques marcados 'propia' abajo), anadido el 2026-09-16
+# porque NegEx-MES, minado de literatura clinica en ingles y traducido, no
+# cubre formas frecuentes en la nota de triage colombiana ('no refiere',
+# 'descarta', 'salvo'). Es la unica lista importable de disparadores de
+# negacion del repositorio: evaluacion/pares.py define hoy su propio conjunto
+# NEGACION (nueve palabras sueltas, sin categorias ni alcance) por falta de
+# esta fuente -- deberia importar de aqui en un item futuro (ver bitacora
+# 2026-09-16-E3.7.md, seccion 'Pendientes que deja').
+#
+# FORMATO: una forma por linea, en minusculas, sin tildes normalizadas por el
+# modulo que la usa (nucleo/negacion.py registra ambas variantes). Cuatro
+# categorias, cada una marcada con un comentario '# categoria: <nombre>
+# (<fuente>)':
+#   pre         precede al hallazgo negado ('niega dolor', 'sin fiebre')
+#   post        sigue al hallazgo ('la prueba fue negativa', 'dolor descartado')
+#   pseudo      contiene una palabra disparadora pero NO es negacion real
+#               ('sin embargo' no niega; 'gram negativo' no niega); se
+#               excluyen antes de aplicar 'pre' o 'post'
+#   terminador  cierra el alcance de una negacion abierta (conjuncion
+#               adversativa). La puntuacion que cierra oracion (. ; : ! ?
+#               salto de linea) tambien termina el alcance siempre, y no esta
+#               aqui porque no es una 'forma' sino una regla fija del
+#               algoritmo (nucleo/negacion.py).
+
+# categoria: pre (negex-mes)
+ausencia de
+no pueden ver
+no poder
+revisado para
+rechazado
+declina
+negado
+niega
+negando
+evaluar por
+no revela
+libre de
+negativo para
+nunca desarrollado
+nunca tuve
+no
+no anormal
+ninguna causa de
+sin quejas de
+sin evidencia
+ninguna nueva evidencia
+ninguna otra evidencia
+ninguna evidencia para sugerir
+sin hallazgos de
+no hay hallazgos para indicar
+no hay evidencia mamográfica de
+nada nuevo
+ninguna evidencia radiográfica de
+ninguna señal de
+no significativo
+sin signos de
+ninguna sugerencia de
+no sospechoso
+no aparece
+no apreciar
+no asociado con
+no me quejo de
+no demostrar
+no exhibir
+no sentir
+no tenía
+no tengo
+no saber de
+no se sabe que tiene
+no revelar
+no ver
+no ser
+paciente no era
+más bien que
+resuelto
+hacer una prueba por
+excluir
+nada especial para
+con ningún
+sin ninguna evidencia de
+sin indicación de
+sin signo de
+sin
+descartar para
+descartarlo por
+descartarla por
+descartar al paciente por
+descartarlo
+descartarla
+descartar
+r / o
+ro
+descartar al paciente
+excluye
+lo descarta
+la excluye
+expulsó al paciente por
+gobierna al paciente
+lo descartó contra
+la descartó contra
+lo descartó
+la descartó
+descartado contra
+descartó al paciente contra
+descartaron para
+descartaron contra
+descartó
+lo descartaron por
+lo descartaron en contra
+lo descartaron
+la descartaron por
+descartaron al paciente contra
+descartaron al paciente por
+descartó al paciente
+puede descartar
+puede descartar contra
+puede descartarlo por
+puede descartarlo en contra
+puede descartarlo
+puede descartarla por
+puede descartarla contra
+puede descartarla
+puede descartar al paciente por
+puede descartar al paciente contra
+puede descartar al paciente
+adecuado para descartar
+adecuado para descartarlo por
+adecuado para descartarlo
+adecuado para descartarla por
+adecuado para descartarla
+adecuado para descartar al paciente por
+adecuado para descartar al paciente contra
+adecuado para descartar al paciente
+suficiente para descartar
+suficiente para descartarlo por
+suficiente para descartarlo en contra
+suficiente para descartarlo
+suficiente para descartarla por
+suficiente para descartarla en contra
+suficiente para descartarla
+suficiente para descartar al paciente por
+suficiente para descartar al paciente contra
+suficiente para descartar al paciente
+lo que debe descartarse es
+
+# categoria: pre (propia)
+no refiere
+descarta
+no presenta
+no evidencia de
+no manifiesta
+
+# categoria: post (negex-mes)
+debe descartarse para
+debe ser descartado para
+puede ser descartado para
+podría ser descartado por
+será descartado por
+se puede descartar por
+debe ser descartado por
+ser descartado por
+improbable
+libre
+fue descartado
+está descartado
+están descartadas
+han sido descartadas
+ha sido descartado
+siendo descartado
+debe descartarse
+debe ser descartado
+puede ser descartado
+podría descartarse
+podría ser descartado
+será descartado
+se puede descartar
+ser descartado
+se descarta
+
+# categoria: post (propia)
+negativo
+negativa
+descartado
+
+# categoria: pseudo (negex-mes)
+sin aumento
+ningún cambio
+sin cambios sospechosos
+ningún cambio significativo
+sin cambio de intervalo
+sin cambio definitivo
+no se extiende
+no causa
+no drena
+cambio de intervalo no significativo
+no estoy seguro si
+no estoy seguro de si
+gram negativo
+sin dificultad
+no necesariamente
+no solo
+duda
+tengo dudas
+dudo
+
+# categoria: terminador (negex-mes)
+pero
+sin embargo
+todavía
+aunque
+a pesar de que
+aparte de
+excepto
+secundario a
+como la causa de
+como fuente de
+como la razón de
+como la etiología de
+como el origen de
+como la causa secundaria de
+como la fuente secundaria de
+como la razón secundaria de
+como la etiología secundaria de
+como el origen secundario de
+como la fuente secundaria para
+como la razón secundaria para
+como la etiología secundaria para
+como el origen secundario para
+como causa de
+como una razón de
+como una etiología de
+como una razón para
+como una etiología para
+como una causa secundaria de
+como una fuente secundaria de
+como una razón secundaria de
+como una etiología secundaria de
+como un origen secundario de
+como una causa secundaria para
+como una fuente secundaria para
+como una razón secundaria para
+como una etiología secundaria para
+como un origen secundario para
+causa de
+motivo de
+causas de
+fuente de
+fuente para
+fuentes de
+fuentes para
+razón de
+razón para
+razones de
+razones para
+etiología de
+etiología para
+desencadenar evento para
+origen de
+origen para
+orígenes de
+orígenes para
+otras posibilidades de
+
+# categoria: terminador (propia)
+salvo

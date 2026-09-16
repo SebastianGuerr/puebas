@@ -30,6 +30,9 @@ CUÁNDO SE APLICA UNA SUGERENCIA
 
 Requiere symspellpy. Si no está instalado, el módulo se desactiva y la fase
 ortográfica sigue funcionando con sus otras defensas.
+
+`DISTANCIA_POR_TRAMOS` y `FRECUENCIA_MINIMA_CANDIDATO` (E4.2): banderas
+apagadas por defecto; medición en docs/decisiones/2026-09-16-E4.2.md.
 """
 
 import re
@@ -51,6 +54,23 @@ LONGITUD_MINIMA = 5           # tokens mas cortos no pasan por aqui
 LONGITUD_DISTANCIA_3 = 10     # a partir de esta longitud se permite distancia 3
 FRECUENCIA_TYPO = 2           # hasta aqui el original se considera error de digitacion
 RATIO_MINIMO = 10             # si el original es comun, cuanto debe superarlo la sugerencia
+
+# E4.2 (docs/decisiones/2026-09-16-E4.2.md): distancia maxima por tramos de
+# longitud, alternativa a LONGITUD_DISTANCIA_3. Apagado por defecto: la
+# medicion no encontro diferencia frente al tope fijo sobre los pares
+# juzgados, asi que no se cambia el comportamiento por defecto (principio 8).
+DISTANCIA_POR_TRAMOS = False
+TRAMO_CORTO_MAXIMO = 5        # 4-5 letras
+TRAMO_MEDIO_MAXIMO = 9        # 6-9 letras
+DISTANCIA_TRAMO_CORTO = 1
+DISTANCIA_TRAMO_MEDIO = 2
+DISTANCIA_TRAMO_LARGO = 3
+
+# E4.2: apariciones minimas que debe tener la forma propuesta en el corpus
+# para aceptarla. En 0 (el valor de siempre) no hay piso: un candidato puede
+# proponerse aunque no aparezca en ninguna nota. Ver la decision para la
+# medicion que sostiene subirlo.
+FRECUENCIA_MINIMA_CANDIDATO = 0
 
 # Letras iniciales que un original raro debe compartir con su correccion para
 # aceptar una distancia de 2. Un typo de digitacion conserva el arranque de la
@@ -165,7 +185,15 @@ def sugerir(palabra):
         return None
 
     plano = sin_tildes(palabra)
-    distancia = 3 if len(palabra) >= LONGITUD_DISTANCIA_3 else 2
+    if DISTANCIA_POR_TRAMOS:
+        if len(palabra) <= TRAMO_CORTO_MAXIMO:
+            distancia = DISTANCIA_TRAMO_CORTO
+        elif len(palabra) <= TRAMO_MEDIO_MAXIMO:
+            distancia = DISTANCIA_TRAMO_MEDIO
+        else:
+            distancia = DISTANCIA_TRAMO_LARGO
+    else:
+        distancia = 3 if len(palabra) >= LONGITUD_DISTANCIA_3 else 2
 
     try:
         sugerencias = _SYM.lookup(plano, Verbosity.CLOSEST, max_edit_distance=distancia)
@@ -195,9 +223,17 @@ def sugerir(palabra):
     if not terminologia.admite(palabra, forma):
         return None
 
-    # distancia 0: la misma palabra, solo le faltaban las tildes
+    # distancia 0: la misma palabra, solo le faltaban las tildes. No pasa por
+    # el piso de frecuencia: restaurar un acento no depende de cuanto se
+    # repita la forma acentuada, y exigirlo aqui volveria a dejar 'medico'
+    # sin su tilde en el mismo hueco que describe FRECUENCIA_JERGA en pesos.py.
     if mejor.distance == 0:
         return forma
+
+    if FRECUENCIA_MINIMA_CANDIDATO and frecuencia(forma) < FRECUENCIA_MINIMA_CANDIDATO:
+        terminologia.anotar_abstencion(
+            palabra, f"'{forma}' no alcanza la frecuencia minima del candidato")
+        return None
 
     freq_original = frecuencia(palabra)
 

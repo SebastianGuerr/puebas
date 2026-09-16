@@ -24,10 +24,15 @@ LOS UMBRALES, Y QUÉ EVITA CADA UNO
                            el corpus tiene que respaldar el cambio.
     FRECUENCIA_DESEMPATE   y RATIO_DESEMPATE: ante varios candidatos igual de
                            cercanos, uno debe dominar claramente.
+    DISTANCIA_POR_TRAMOS   E4.2, apagado por defecto: tope de distancia de
+                           edición por tramos de longitud del original.
 
 Cuando ningún candidato reúne evidencia suficiente, el módulo se abstiene y
 deja constancia en el registro de abstenciones. Elegir sin evidencia no mejora
 el texto: inventa información.
+
+Medición de E4.2 (`DISTANCIA_POR_TRAMOS`, valores probados de
+`FRECUENCIA_CANDIDATO`): docs/decisiones/2026-09-16-E4.2.md.
 """
 
 from collections import Counter
@@ -52,7 +57,30 @@ FACTOR_TERMINO = 5            # y su correccion debe ser N veces mas frecuente
 # palabra corriente por otra.
 FACTOR_RESPALDO = 2
 
+# E4.2 (docs/decisiones/2026-09-16-E4.2.md): tope de distancia de edicion por
+# tramos de longitud, alternativa a no limitar la distancia (hoy este modulo
+# no descarta ningun candidato de LanguageTool por lejano que este de
+# `original`, solo por las reglas de forma/frecuencia/guardian). Apagado por
+# defecto: la medicion no encontro pares afectados en el conjunto juzgado.
+DISTANCIA_POR_TRAMOS = False
+TRAMO_CORTO_MAXIMO = 5        # 4-5 letras
+TRAMO_MEDIO_MAXIMO = 9        # 6-9 letras
+DISTANCIA_TRAMO_CORTO = 1
+DISTANCIA_TRAMO_MEDIO = 2
+DISTANCIA_TRAMO_LARGO = 3
+
 CONTEO = Counter()
+
+
+def _tope_distancia(longitud_original):
+    """Distancia maxima admitida para un original de esa longitud (E4.2)."""
+    if not DISTANCIA_POR_TRAMOS:
+        return None
+    if longitud_original <= TRAMO_CORTO_MAXIMO:
+        return DISTANCIA_TRAMO_CORTO
+    if longitud_original <= TRAMO_MEDIO_MAXIMO:
+        return DISTANCIA_TRAMO_MEDIO
+    return DISTANCIA_TRAMO_LARGO
 
 
 def construir_lexico(textos):
@@ -108,6 +136,7 @@ def elegir(original, sugerencias, protegidos=()):
     #    resuelve antes el peso clinico, y lo que pesa se aparta en el
     #    enmascarado y no llega hasta aqui.
     exige_respaldo = reglas.es_palabra_conocida(original)
+    tope_distancia = _tope_distancia(len(original))
 
     viables = []
     for cand in sugerencias[:MAX_CANDIDATOS]:
@@ -118,11 +147,13 @@ def elegir(original, sugerencias, protegidos=()):
             continue
         if frecuencia(norm) < FRECUENCIA_CANDIDATO:
             continue
+        distancia = DamerauLevenshtein.distance(original, norm)
+        if tope_distancia is not None and distancia > tope_distancia:
+            continue
         # el guardian clinico tiene la ultima palabra sobre el criterio ortografico
         if not terminologia.admite(original, norm):
             continue
-        viables.append((DamerauLevenshtein.distance(original, norm),
-                        -frecuencia(norm), cand))
+        viables.append((distancia, -frecuencia(norm), cand))
 
     if not viables:
         terminologia.anotar_abstencion(original, "ningun candidato admisible")

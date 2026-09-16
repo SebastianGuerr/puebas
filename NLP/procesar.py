@@ -481,6 +481,7 @@ def main():
     registros, aplica las tres fases, escribe el CSV y el reporte de cambios, y
     resume por pantalla lo que hay que revisar.
     """
+    terminologia.alarmas.reiniciar()  # E2.0: sin esto, dos corridas en el mismo proceso acumulan
     global LIMITE_REGISTROS, USAR_LLM
 
     ap = argparse.ArgumentParser(description="Fases 1-5 del pipeline de triage.")

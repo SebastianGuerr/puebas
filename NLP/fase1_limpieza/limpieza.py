@@ -10,7 +10,7 @@ Interfaz del módulo:
 
     limpiar(texto)                      texto normalizado en minúsculas
     limpiar_conservando_original(texto) además, el original con sus mayúsculas
-    tokenizar, normalizar_token         utilidades de token
+    tokenizar                           utilidad de token
     es_vacio, analizar                  control de calidad del lote
 
 CRITERIOS QUE NO SON EVIDENTES
@@ -213,11 +213,6 @@ def limpiar_conservando_original(texto):
 def tokenizar(texto):
     """Palabras en minúscula, sin números ni puntuación. Para contar frecuencias."""
     return RE_TOKEN.findall(str(texto).lower())
-
-
-def normalizar_token(token):
-    """Recorta la puntuación de los bordes de un token, conservando el interior."""
-    return token.strip(PUNTUACION + " /%°-").lower()
 
 
 def es_vacio(texto):

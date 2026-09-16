@@ -83,7 +83,12 @@ FRECUENCIA_MINIMA_ESTRICTA = 5
 # E3.3: una forma que el corpus escribe al menos estas veces cuenta como
 # vocabulario propio del hospital aunque ningun diccionario la recoja.
 RESPALDO_POR_CORPUS = True
-FRECUENCIA_RESPALDO_CORPUS = 20
+# 5 y no 20: medido en E3.3 sobre las 94.226 notas de la base de datos, los
+# umbrales 2, 5, 10 y 20 dan el mismo resultado sobre los pares juzgados
+# (13/34 de daño deshecho, 1/83 buena perdida), y 5 protege 647 formas mas de
+# vocabulario propio. Ante el empate manda la asimetria del principio 2: no
+# corregir cuesta poco, destruir una palabra cuesta mucho.
+FRECUENCIA_RESPALDO_CORPUS = 5
 
 # La salida por errata de teclado solo vale cuando el original NO era una
 # palabra. Medido sobre datos/evaluacion/pares_juzgados.csv: una sola edicion

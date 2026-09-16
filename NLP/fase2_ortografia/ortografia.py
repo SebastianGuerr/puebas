@@ -47,15 +47,12 @@ import threading
 
 import language_tool_python
 
-from NLP.fase1_limpieza.limpieza import tokenizar
 from NLP.fase2_ortografia import candidatos
 from NLP.fase2_ortografia import contexto
 from NLP.fase2_ortografia import enmascarado
 from NLP.fase2_ortografia import pesos
 from NLP.fase2_ortografia import sugerencias
-from NLP.fase2_ortografia import terminologia
 from NLP.fase2_ortografia import vocabulario
-from NLP.nucleo import linguistica
 from NLP.nucleo import lt_compat
 from NLP.nucleo import reglas
 from NLP.recursos import casing
@@ -63,6 +60,23 @@ from NLP.recursos import lexico
 
 CATEGORIAS_PERMITIDAS = {"TYPOS"}
 USAR_VOCABULARIO = True
+
+# Ninguna correccion puede cambiar las CIFRAS de un token. pesos.py ya declara
+# "nada con un digito se toca jamas" (PESOS["numero"] = 1.00), pero esa
+# proteccion solo se consulta cuando el token ya venia en la lista de
+# protegidos de la nota; la rama que aplica las sugerencias de LanguageTool no
+# la mira. Medido sobre salidas/pares_correccion.csv el 2026-09-16: cinco pares
+# dividen una cifra por diez, entre ellos '1000cc' -> '100cc' y
+# '1000mg' -> '100mg'. En una nota clinica eso es una dosis cambiada.
+# Ver decisiones/2026-09-16-cifras.md.
+PROTEGER_CIFRAS = True
+
+RE_CIFRAS = re.compile(r"\d+")
+
+
+def mismas_cifras(original, reemplazo):
+    """True si el reemplazo conserva exactamente las cifras del original."""
+    return RE_CIFRAS.findall(str(original)) == RE_CIFRAS.findall(str(reemplazo))
 RESTAURAR_MAYUSCULAS = True
 
 # La capa de contexto. Es lo unico del pipeline que puede arreglar una palabra
@@ -642,6 +656,10 @@ def corregir(texto, texto_original=None):
 
         reemplazo = candidatos.elegir(original, sugerencias, protegidos)
         if reemplazo is None:
+            continue
+
+        # las cifras no se tocan: 'dolro' -> 'dolor' si, '1000cc' -> '100cc' no
+        if PROTEGER_CIFRAS and not mismas_cifras(original, reemplazo):
             continue
 
         texto = texto[:inicio] + reemplazo + texto[fin:]

@@ -88,14 +88,6 @@ def _cargar():
     return _NLP
 
 
-def iniciar():
-    """
-    Fuerza la carga del modelo antes de empezar a procesar, para que el coste
-    no recaiga sobre la primera nota. Devuelve el pipeline o None.
-    """
-    return _cargar()
-
-
 # ==========================================================
 # VOCABULARIO
 # ==========================================================

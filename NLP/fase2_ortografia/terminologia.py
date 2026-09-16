@@ -57,7 +57,6 @@ from NLP.nucleo.morfologia import (
     familia_sufijo,
     invierte_significado,
     parece_farmaco,
-    prefijos,
 )
 
 # ==========================================================

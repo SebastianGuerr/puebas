@@ -89,6 +89,15 @@ FUENTES_CURADAS = ("diccionario", "catalogo", "externo")
 PALABRAS_ORACION_LARGA = 8
 DENSIDAD_MINIMA = 0.40
 
+# Bandera de E5.1 (docs/decisiones/2026-09-16-E5.1-glosas.md). Por defecto no
+# cambia nada: la anotacion entre parentesis que agrego la fase 3 se conserva
+# en texto_embedding, como documenta 'LO QUE NO SE TOCA' arriba. Con
+# QUITAR_GLOSA=True, recortar() la quita tambien, para medir o usar la opcion
+# (b) de la ficha sin tocar fase3_normalizacion.py. Si fase3 ya corrio con
+# normalizacion.SEPARAR_CONCEPTO=True esta bandera no tiene nada que hacer,
+# porque el texto que le llega ya no trae parentesis.
+QUITAR_GLOSA = False
+
 
 # ==========================================================
 # LUGARES
@@ -783,6 +792,8 @@ def _recortar(texto, agresivo=True):
         texto = RE_REPORTE.sub(" ", texto)
         texto = RE_TEMPORAL.sub(" ", texto)
         texto = RE_DEMOGRAFICO.sub(" ", texto)
+    if QUITAR_GLOSA:
+        texto = RE_PARENTESIS.sub(" ", texto)
     texto = _pulir(texto)
 
     palabras = _con_contenido(texto)
@@ -860,5 +871,7 @@ def diagnosticar(texto):
     t = RE_REPORTE.sub(" ", t);           pasos.append(("sin verbo de reporte", t))
     t = RE_TEMPORAL.sub(" ", t);          pasos.append(("sin preambulo temporal", t))
     t = RE_DEMOGRAFICO.sub(" ", t);       pasos.append(("sin ficha demografica", t))
+    if QUITAR_GLOSA:
+        t = RE_PARENTESIS.sub(" ", t);    pasos.append(("sin glosa (E5.1)", t))
     pasos.append(("pulido", _pulir(t)))
     return pasos

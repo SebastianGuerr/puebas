@@ -58,7 +58,14 @@ MODO = "anotar"
 
 EXPANDIR_SIGLAS = True
 NORMALIZAR_COLOQUIALISMOS = True
-EXPANDIR_ENCABEZADOS = True   # 'aa:' -> 'aa (antecedentes alergicos):' 
+EXPANDIR_ENCABEZADOS = True   # 'aa:' -> 'aa (antecedentes alergicos):'
+
+# Bandera de E5.1 (docs/decisiones/2026-09-16-E5.1-glosas.md). Por defecto no
+# cambia nada: normalizar() sigue anotando inline. Con SEPARAR_CONCEPTO=True,
+# normalizar_separado() devuelve el texto SIN la anotacion y el concepto en un
+# valor aparte, para que fase 5 y clustering/etiquetas.py puedan usar una
+# columna de concepto en vez de un parentesis dentro del texto de embedding.
+SEPARAR_CONCEPTO = False
 
 # Longitud minima de una sigla para expandirla. Las de dos letras coinciden
 # con palabras corrientes del espanol y con fragmentos de nombres propios, de
@@ -312,6 +319,30 @@ def normalizar(texto):
         return termino if MODO == "reemplazar" else f"{encontrado} ({termino})"
 
     return patron.sub(_sub, str(texto))
+
+
+# Anotacion inline que deja normalizar() en modo 'anotar': 'hta (hipertension
+# arterial)'. Se reutiliza para separarla, no para detectarla en el original.
+RE_GLOSA_INLINE = re.compile(r"\s*\(([^)]{3,80})\)")
+
+
+def normalizar_separado(texto):
+    """
+    Como normalizar(), pero con la anotacion aparte del texto en vez de
+    inline. Devuelve (texto_sin_glosa, concepto_normalizado).
+
+    Si SEPARAR_CONCEPTO es False (por defecto) no separa nada y devuelve
+    (normalizar(texto), ""), para no cambiar el comportamiento por defecto.
+    Ver decisiones/2026-09-16-E5.1-glosas.md y PLAN.md §7 (clustering/etiquetas.py
+    necesita esta segunda fuente si se le deja de dar el parentesis).
+    """
+    anotado = normalizar(texto)
+    if not SEPARAR_CONCEPTO or not anotado:
+        return anotado, ""
+    conceptos = [c.strip() for c in RE_GLOSA_INLINE.findall(anotado)]
+    sin_glosa = re.sub(r"\s+", " ", RE_GLOSA_INLINE.sub("", anotado)).strip()
+    concepto_normalizado = " ".join(dict.fromkeys(conceptos))
+    return sin_glosa, concepto_normalizado
 
 
 def encontrados(texto):

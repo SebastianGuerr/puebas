@@ -110,20 +110,26 @@
   {
     "nombre": "NegEx-MES",
     "descripcion": "Disparadores de negacion en espanol para NegEx; las reglas por defecto de medspaCy son inglesas (REFERENCIAS.md S2).",
-    "url": "https://zenodo.org/records/2542567",
+    "url": "https://zenodo.org/records/2542567/files/PlanTL/NegEx-MES-v1.0.1.zip?download=1",
     "fuente_oficial": "Zenodo, DOI 10.5281/zenodo.2542567",
     "licencia": "MIT",
     "licencia_url": "https://opensource.org/licenses/MIT",
     "obligaciones": null,
-    "sha256": null,
-    "tamano_bytes": null,
+    "sha256": "de381e5954e94ccdd160c97bab08a8bb04a2acd4a0a5361562d78c6c47ccb6af",
+    "tamano_bytes": 68833,
     "fecha_registro": "2026-09-16",
-    "fecha_descarga": null,
-    "archivos_extraer": null,
+    "fecha_descarga": "2026-09-16",
+    "archivos_extraer": [
+      "PlanTL-NegEx-MES-1a4a8d1/LICENSE",
+      "PlanTL-NegEx-MES-1a4a8d1/smn/config_files/spa/without_lemma/neg-phrases.txt",
+      "PlanTL-NegEx-MES-1a4a8d1/smn/config_files/spa/without_lemma/post-neg-phrases.txt",
+      "PlanTL-NegEx-MES-1a4a8d1/smn/config_files/spa/without_lemma/pseudo-neg-phrases.txt",
+      "PlanTL-NegEx-MES-1a4a8d1/smn/config_files/spa/without_lemma/conjunctions.txt"
+    ],
     "user_agent": null,
-    "estado": "rechazado",
+    "estado": "verificado",
     "item_del_plan": "E3.7",
-    "motivo_rechazo": "Mismo motivo que SympTEMIST_gazetteer: zenodo.org no respondio el 2026-09-16 (timeout de conexion / HTTP 504 en 4 intentos). Licencia identificada (MIT); rechazo solo por resolucion de URL. Este es uno de los dos recursos que la ficha de E3.1 sugiere para la descarga verificada de evidencia; al no resolver se uso DIVIPOLA_municipios en su lugar (ver bitacora)."
+    "motivo_rechazo": null
   },
   {
     "nombre": "CUM",
