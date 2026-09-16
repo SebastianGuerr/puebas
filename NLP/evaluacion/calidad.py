@@ -55,20 +55,28 @@ def palabras(texto):
 
 def tokens_sustituidos(antes, despues):
     """
-    Cuantos tokens cambio el corrector, alineando las dos listas.
+    Sustituciones del corrector, alineando las dos listas: (todas, sin contar
+    las que solo cambian tildes).
 
     Se cuentan solo las sustituciones: los borrados y las inserciones vienen de
     la fase 1 (simbolos, encabezados) y no son intervencion ortografica.
     Comparar por posicion inflaba la cifra: un solo borrado desalinea el resto.
+    Las dos cifras se separan porque dos tercios de lo que toca el corrector es
+    restitucion de tildes, que no cambia la palabra (ver E4.5).
     """
     import difflib
 
-    cambios = 0
+    from NLP.nucleo.morfologia import sin_tildes
+
+    todas = de_fondo = 0
     for etiqueta, i1, i2, j1, j2 in difflib.SequenceMatcher(
             a=antes, b=despues, autojunk=False).get_opcodes():
-        if etiqueta == "replace":
-            cambios += min(i2 - i1, j2 - j1)
-    return cambios
+        if etiqueta != "replace":
+            continue
+        todas += min(i2 - i1, j2 - j1)
+        de_fondo += sum(1 for x, y in zip(antes[i1:i2], despues[j1:j2])
+                        if sin_tildes(x) != sin_tildes(y))
+    return todas, de_fondo
 
 
 def _percentil(serie, q):
@@ -90,7 +98,7 @@ def medir(df):
 
         t_orig, t_emb = terminos(orig), terminos(emb)
         p_orig, p_emb, p_cor = palabras(orig), palabras(emb), palabras(cor)
-        tocados = tokens_sustituidos(p_orig, p_cor)
+        tocados, de_fondo = tokens_sustituidos(p_orig, p_cor)
 
         filas.append({
             "terminos_original": len(t_orig),
@@ -104,6 +112,7 @@ def medir(df):
             "tokens_estimados": len(p_emb) * TOKENS_POR_PALABRA,
             "tocada": tocados > 0,
             "tokens_tocados": tocados,
+            "tokens_tocados_sin_tildes": de_fondo,
             "tokens_totales": len(p_orig),
         })
 
@@ -134,18 +143,22 @@ def medir(df):
         "prop_notas_tocadas_por_corrector": prop(m["tocada"]),
         "tasa_intervencion_bruta": round(
             float(m["tokens_tocados"].sum() / max(m["tokens_totales"].sum(), 1)), 5),
+        "tasa_intervencion_sin_tildes": round(
+            float(m["tokens_tocados_sin_tildes"].sum() / max(m["tokens_totales"].sum(), 1)), 5),
+        "prop_cambios_solo_tilde": round(
+            float(1 - m["tokens_tocados_sin_tildes"].sum() / max(m["tokens_tocados"].sum(), 1)), 4),
     }
 
 
 ORDEN_INFORME = [
     ("notas", "notas en el CSV"),
     ("notas_con_terminologia", "notas con terminologia clinica en el original"),
-    ("retencion_media", "retencion media de terminologia (1 = no pierde nada)"),
+    ("retencion_media", "retencion media de terminologia (1 = no pierde nada)*"),
     ("retencion_mediana", "retencion mediana"),
     ("retencion_p10", "retencion del decil peor (p10)"),
-    ("prop_retencion_total", "proporcion que conserva TODA su terminologia"),
-    ("prop_pierden_mas_de_la_mitad", "proporcion que pierde mas de la mitad"),
-    ("prop_sin_terminologia_en_embedding", "proporcion que se queda SIN terminologia"),
+    ("prop_retencion_total", "proporcion* que conserva TODA su terminologia"),
+    ("prop_pierden_mas_de_la_mitad", "proporcion* que pierde mas de la mitad"),
+    ("prop_sin_terminologia_en_embedding", "proporcion* que se queda SIN terminologia"),
     ("reduccion_media", "recorte medio de palabras (0,60 = se queda con el 40%)"),
     ("reduccion_mediana", "recorte mediano"),
     ("notas_vacias", "notas con texto_embedding vacio"),
@@ -156,10 +169,14 @@ ORDEN_INFORME = [
     ("notas_sobre_ventana_bge", "notas que superarian la ventana de bge-m3"),
     ("prop_notas_tocadas_por_corrector", "proporcion de notas que el corrector toca"),
     ("tasa_intervencion_bruta", "tokens cambiados / tokens totales"),
+    ("tasa_intervencion_sin_tildes", "idem, sin contar los cambios de sola tilde"),
+    ("prop_cambios_solo_tilde", "de lo que cambia, cuanto es solo tilde"),
 ]
 
 
 def imprimir(metricas, otras=None, etiquetas=("actual", "comparado")):
+    """Imprime el informe. Las filas con * van sobre las notas que TIENEN
+    terminologia clinica en el original, no sobre el total del CSV."""
     ancho = max(len(t) for _, t in ORDEN_INFORME)
     if otras:
         print(f"  {'':{ancho}}  {etiquetas[0]:>12}  {etiquetas[1]:>12}  {'dif':>10}")
@@ -175,6 +192,12 @@ def imprimir(metricas, otras=None, etiquetas=("actual", "comparado")):
         elif isinstance(valor, int) and isinstance(otro, int):
             dif = f"{otro - valor:+}"
         print(f"  {titulo:{ancho}}  {str(valor):>12}  {str(otro):>12}  {dif:>10}")
+
+
+def nota_al_pie(metricas):
+    return (f"  (*) sobre las {metricas['notas_con_terminologia']:,} notas con "
+            f"terminologia clinica en el original, no sobre las "
+            f"{metricas['notas']:,} del CSV")
 
 
 def main():
@@ -208,6 +231,7 @@ def main():
     metricas_otro = medir(otro) if otro is not None else None
     imprimir(metricas, metricas_otro,
              (Path(args.csv).stem[:12], Path(args.comparar).stem[:12] if args.comparar else ""))
+    print(nota_al_pie(metricas))
 
     if args.guardar:
         carpeta = rutas.SALIDAS / "metricas"

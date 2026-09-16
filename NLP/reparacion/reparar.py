@@ -31,14 +31,20 @@ NO SE VUELVE A IMPLEMENTAR NINGUNA FASE, Y ESO ES DELIBERADO
 NO PISA NADA HASTA QUE SE LE DICE
     Por defecto escribe a `triage_reparado.csv` y a un informe, y deja el
     original intacto. `--aplicar` es el único modo que sustituye, y antes
-    guarda una copia con fecha. El informe existe para mirarlo ANTES de aplicar:
-    si trae notas en la categoría `perdio_motivo`, la reparación no está lista.
+    aparta la versión anterior con `salida.rotar()` (mismo nombre y misma purga
+    que una corrida normal con `--rehacer`). El informe existe para mirarlo
+    ANTES de aplicar: si trae notas en la categoría `perdio_motivo`, la
+    reparación no está lista.
+
+    Los CSV se escriben con `nucleo/salida.py`, igual que `triage_limpio.csv`,
+    para que una corrida normal posterior pueda continuar el archivo reparado.
+    Ver NLP/docs/PLAN.md §4.5 y la bitácora de E0.4.
 """
 
 import argparse
 import shutil
 import time
-from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 
@@ -48,13 +54,17 @@ from NLP.fase2_ortografia import ortografia
 from NLP.fase3_normalizacion import normalizacion
 from NLP.nucleo import reglas, requisitos
 from NLP.nucleo.progreso import barra, fin_barra
+from NLP.nucleo.salida import EscritorCSV, rotar
 from NLP.recursos import casing
 from NLP.reduccion import extractor, reduccion
 from NLP.reparacion import comparacion
 
 CSV_ENTRADA = rutas.TRIAGE_LIMPIO
-CSV_SALIDA = rutas.SALIDAS / "triage_reparado.csv"
-INFORME = rutas.SALIDAS / "informe_reparacion.csv"
+CSV_SALIDA = rutas.TRIAGE_REPARADO
+INFORME = rutas.INFORME_REPARACION
+
+COLUMNAS_INFORME = ["OID", "categoria", "detalle",
+                    "embedding_antes", "embedding_despues"]
 
 # Notas por bloque. Igual que en procesar.py y por lo mismo: un bloque entero
 # pasa por todas las fases antes de contarse, asi que si esto se interrumpe lo
@@ -210,14 +220,33 @@ def comparar(df_viejo, df_nuevo):
     return salida
 
 
+def escribir_csv(df, ruta, columnas=None):
+    """Escribe un DataFrame entero con EscritorCSV (utf-8-sig, CRLF, QUOTE_ALL)."""
+    escritor = EscritorCSV(ruta, columnas if columnas is not None else df.columns)
+    try:
+        escritor.agregar(df)
+    finally:
+        escritor.cerrar()
+    return Path(ruta)
+
+
+def escribir_reparado(nuevo, ruta=CSV_SALIDA):
+    """Guarda el CSV reparado con el mismo escritor y formato que triage_limpio.csv."""
+    return escribir_csv(nuevo, ruta)
+
+
 def escribir_informe(clasificaciones, ruta=INFORME):
     """Guarda el detalle nota a nota, ordenado por gravedad."""
     orden = {c: i for i, c in enumerate(comparacion.ORDEN)}
     filas = sorted(clasificaciones, key=lambda x: orden.get(x[1], 9))
-    pd.DataFrame(filas, columns=["OID", "categoria", "detalle",
-                                 "embedding_antes", "embedding_despues"]
-                 ).to_csv(ruta, index=False, encoding="utf-8-sig")
-    return ruta
+    return escribir_csv(pd.DataFrame(filas, columns=COLUMNAS_INFORME), ruta)
+
+
+def aplicar(destino, reparado):
+    """Aparta `destino` con rotar() y pone `reparado` en su lugar. Devuelve la ruta apartada."""
+    anterior = rotar(destino)
+    shutil.copy2(reparado, destino)
+    return anterior
 
 
 def informar(clasificaciones):
@@ -272,17 +301,27 @@ def informar(clasificaciones):
 
 
 def main():
+    procesar.terminologia.alarmas.reiniciar()  # E2.0: idem procesar.main()
     ap = argparse.ArgumentParser(
         description="Reprocesa triage_limpio.csv y compara con lo que habia.")
     ap.add_argument("--limite", type=int, default=None,
                     help="reparar solo las primeras N notas (para probar)")
     ap.add_argument("--aplicar", action="store_true",
-                    help="sustituir triage_limpio.csv (guarda copia antes)")
+                    help="sustituir triage_limpio.csv (aparta la version anterior con rotar)")
     ap.add_argument("--con-llm", action="store_true",
                     help="usar el extractor de Ollama en la fase 5")
     ap.add_argument("--csv", default=str(CSV_ENTRADA),
                     help="CSV de entrada (por defecto, el de salidas/)")
+    ap.add_argument("--salida-dir", default=None,
+                    help="carpeta donde escribir el CSV reparado y el informe "
+                         "(por defecto, salidas/)")
     args = ap.parse_args()
+
+    csv_salida, informe = CSV_SALIDA, INFORME
+    if args.salida_dir:
+        carpeta = Path(args.salida_dir)
+        carpeta.mkdir(parents=True, exist_ok=True)
+        csv_salida, informe = carpeta / CSV_SALIDA.name, carpeta / INFORME.name
 
     requisitos.exigir()
 
@@ -301,11 +340,11 @@ def main():
 
     nuevo, clasificaciones = reparar(df, normalizar, reducir, usar_llm)
 
-    nuevo.to_csv(CSV_SALIDA, index=False, encoding="utf-8-sig")
-    ruta_informe = escribir_informe(clasificaciones)
+    escribir_reparado(nuevo, csv_salida)
+    ruta_informe = escribir_informe(clasificaciones, informe)
     empeoraron = informar(clasificaciones)
 
-    print(f"\n  CSV reparado: {CSV_SALIDA}")
+    print(f"\n  CSV reparado: {csv_salida}")
     print(f"  Informe:      {ruta_informe}")
 
     if not args.aplicar:
@@ -318,11 +357,9 @@ def main():
         print("  Arregla la causa y vuelve a correr antes de aplicar.")
         raise SystemExit(1)
 
-    sello = datetime.now().strftime("%Y%m%d-%H%M%S")
-    copia = rutas.SALIDAS / f"triage_limpio.previo-{sello}.csv"
-    shutil.copy2(args.csv, copia)
-    shutil.copy2(CSV_SALIDA, args.csv)
-    print(f"\n  Aplicado. Copia del anterior en {copia.name}")
+    anterior = aplicar(args.csv, csv_salida)
+    print(f"\n  Aplicado. Version anterior apartada en "
+          f"{anterior.name if anterior else '(no habia)'}")
 
 
 if __name__ == "__main__":

@@ -65,6 +65,11 @@ clustering/salidas/
 # tiene que quedar en el historial con su fecha.
 patrones/salidas/
 
+# recursos externos descargados por 'python -m NLP.recursos.descargar' (E3.1):
+# pesan hasta cientos de MB y se reobtienen desde NLP/datos/recursos_manifiesto.json,
+# que SI se versiona (url, licencia, sha256, fecha, tamano; PLAN.md S4.5 y S6).
+/NLP/recursos_externos/
+
 *.parquet
 
 # exploracion de la base de datos, la genera diccionario_bd/explore_db.py

@@ -35,6 +35,7 @@ LEXICO_EXTERNO = DATOS / "lexico_externo.txt"
 REFERENCIA_CORRECCIONES = DATOS / "referencia_correcciones.json"
 FRASES_ETIQUETADAS = DATOS / "frases_etiquetadas.csv"  # reduccion/frases.py, se corrige a mano
 PDF_CIE10 = DATOS / "Clasif_Inter_Enfer_CIE_10_rev_3_ed.diag.pdf"
+GOLD_V0 = DATOS / "evaluacion" / "gold_v0.csv"  # evaluacion/metricas.py, anotado a mano (E0.6)
 
 # artefactos generados (ignorados por git, se rehacen con su script)
 LEXICO_CLINICO = SALIDAS / "lexico_clinico.json"      # recursos/lexico.py
@@ -43,10 +44,13 @@ SIGLAS_DETECTADAS = SALIDAS / "siglas_detectadas.csv"  # recursos/detectar_sigla
 TRIAGE_LIMPIO = SALIDAS / "triage_limpio.csv"         # procesar.py
 REPORTE_CAMBIOS = SALIDAS / "reporte_cambios.csv"     # procesar.py
 NOTAS_DESCARTADAS = SALIDAS / "notas_descartadas.csv"  # procesar.py, fase de depuracion
+TRIAGE_REPARADO = SALIDAS / "triage_reparado.csv"     # reparacion/reparar.py
+INFORME_REPARACION = SALIDAS / "informe_reparacion.csv"  # reparacion/reparar.py
 CLASIFICADOR_FRASES = SALIDAS / "clasificador_frases.joblib"  # reduccion/frases.py
 CACHE_CORRECCIONES = SALIDAS / "cache_correcciones.json"
 MUESTRA_REVISION = SALIDAS / "muestra_revision.csv"   # evaluacion/escaneo.py
 REFERENCIA = SALIDAS / "referencia.csv"               # evaluacion/referencia.py
+METRICAS = SALIDAS / "metricas"                       # evaluacion/metricas.py
 
 # el catalogo de sintomas de la fase 4 lo consume lexico.py
 CATALOGO_SINTOMAS = PROYECTO / "embedding" / "datos" / "catalogo_sintomas.json"

@@ -1,0 +1,18 @@
+# Politica de finales de linea (E0.4, NLP/docs/bitacora/2026-09-15-E0.4.md).
+#
+# El indice ya guarda todos los archivos de texto con LF; solo el arbol de
+# trabajo esta mezclado (core.autocrlf=true en Windows). Con eol=lf el checkout
+# deja LF tambien en Windows y desaparece el aviso "LF will be replaced by
+# CRLF". Los archivos que hoy estan con CRLF en el arbol de trabajo no se
+# reescriben hasta que git los vuelva a extraer; no se renormaliza el
+# repositorio en E0.4 (sin `git add --renormalize`).
+#
+# Los CSV generados por nucleo/salida.py llevan CRLF y viven en salidas/
+# (ignorado por git), asi que esta politica no los toca. Un CSV versionado
+# (datos/, tests/datos/) se guarda con LF: una prueba byte a byte debe generar
+# los dos archivos en el momento de la prueba, no comparar contra bytes
+# fijados en disco.
+* text=auto eol=lf
+*.pdf binary
+*.npy binary
+*.joblib binary
