@@ -43,7 +43,9 @@ CARPETA_PROYECTO = rutas.PROYECTO
 CARPETA_SALIDA = rutas.SALIDAS
 CSV_POR_DEFECTO = rutas.TRIAGE_LIMPIO
 
-COLUMNAS_TEXTO = ["texto_normalizado", "texto_corregido", "texto_limpio", "texto_original"]
+# texto_limpio no se escribe nunca en el CSV: es una columna intermedia de
+# procesar.py. Figuraba aqui y hacia creer que el contrato la admitia (E6.4).
+COLUMNAS_TEXTO = ["texto_normalizado", "texto_corregido", "texto_original"]
 COLUMNA_ID = "OID"
 
 FORMATO_JSON = True     # ademas del jsonl, escribe el array completo

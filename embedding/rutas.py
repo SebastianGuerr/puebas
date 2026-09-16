@@ -45,6 +45,12 @@ SALIDAS = PAQUETE / "salidas"
 # entrada: la deja NLP/procesar.py con la columna texto_embedding ya calculada
 TRIAGE_LIMPIO = rutas_nlp.TRIAGE_LIMPIO
 
+# El catalogo vive en embedding/datos/ pero lo declara NLP/rutas.py, que es el
+# unico sitio que lo conoce; aqui se re-exporta igual que TRIAGE_LIMPIO. Sin
+# esta linea, extraccion.py fallaba con AttributeError y estructurar.py no
+# arrancaba. Mover el archivo a NLP/datos/ es E6.4.
+CATALOGO_SINTOMAS = rutas_nlp.CATALOGO_SINTOMAS
+
 # artefactos generados por vectorizar.py
 VECTORES = SALIDAS / "vectores.f32"
 VOCABULARIO = SALIDAS / "vocabulario.parquet"
