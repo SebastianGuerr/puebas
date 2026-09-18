@@ -73,7 +73,37 @@
     "somnoliento": "somnolencia",
     "intoxicada": "intoxicación",
     "intoxicado": "intoxicación",
-    "se le paralizó la cara": "parálisis facial"
+    "se le paralizó la cara": "parálisis facial",
+    "chuzon": "dolor punzante",
+    "chuzón": "dolor punzante",
+    "chuzones": "dolor punzante",
+    "me chuza": "dolor punzante",
+    "dolor bajito": "dolor en hipogastrio",
+    "dolorcito bajito": "dolor en hipogastrio",
+    "picadas": {
+      "significado": "dolor punzante",
+      "contexto": [
+        "pecho",
+        "corazon",
+        "corazón",
+        "espalda",
+        "cabeza",
+        "estomago",
+        "estómago",
+        "vientre"
+      ]
+    },
+    "puntadas": {
+      "significado": "dolor punzante",
+      "contexto": [
+        "pecho",
+        "corazon",
+        "corazón",
+        "costado",
+        "espalda",
+        "cabeza"
+      ]
+    }
   },
   "oido_garganta_nariz": {
     "pita el oído": "tinnitus",
@@ -175,6 +205,21 @@
         "espuma",
         "desmayo"
       ]
+    },
+    "brotado": "erupción cutánea",
+    "brotada": "erupción cutánea",
+    "brote en la piel": "erupción cutánea",
+    "un colorado": "lesión eritematosa",
+    "bola de sangre": {
+      "significado": "lesión hemorrágica",
+      "contexto": [
+        "boca",
+        "encia",
+        "encía",
+        "labio",
+        "lengua",
+        "paladar"
+      ]
     }
   },
   "digestivo": {
@@ -191,7 +236,15 @@
     "hinchado del estómago": "distensión abdominal",
     "sangre en el popó": "hematoquecia",
     "popó negro": "melenas",
-    "vómito con sangre": "hematemesis"
+    "vómito con sangre": "hematemesis",
+    "popo": "deposición",
+    "popó": "deposición",
+    "no hace popo": "estreñimiento",
+    "no ha hecho popo": "estreñimiento",
+    "no puede hacer popo": "estreñimiento",
+    "sangrado en el popo": "rectorragia",
+    "sangre en el popo": "rectorragia",
+    "popo con sangre": "rectorragia"
   },
   "urinario_genital": {
     "ardor al orinar": "disuria",
@@ -211,7 +264,33 @@
     "se le reventaron las aguas": "ruptura de membranas",
     "se le rompió la fuente": "ruptura de membranas",
     "rompió fuente": "ruptura de membranas",
-    "dolores de parto": "trabajo de parto"
+    "dolores de parto": "trabajo de parto",
+    "le duele el pipi": "dolor en pene",
+    "le duele el pipí": "dolor en pene",
+    "pipi": {
+      "significado": "pene",
+      "contexto": [
+        "duele",
+        "dolor",
+        "hinchado",
+        "inflamado",
+        "rojo",
+        "ardor"
+      ]
+    },
+    "pipí": {
+      "significado": "pene",
+      "contexto": [
+        "duele",
+        "dolor",
+        "hinchado",
+        "inflamado",
+        "rojo",
+        "ardor"
+      ]
+    },
+    "hacer pipi": "micción",
+    "hacer pipí": "micción"
   },
   "neurologico_general": {
     "convulsionó": "convulsión",
@@ -220,7 +299,16 @@
     "se le tuerce la boca": "desviación de comisura labial",
     "decaído": "astenia",
     "sin fuerzas": "adinamia",
-    "sin animo": "astenia"
+    "sin animo": "astenia",
+    "entumido": "parestesias",
+    "entumida": "parestesias",
+    "entumecido": "parestesias",
+    "entumecida": "parestesias",
+    "se me durmio": "parestesias",
+    "se me durmió": "parestesias",
+    "se me durmieron": "parestesias",
+    "se le durmio": "parestesias",
+    "se le durmió": "parestesias"
   },
   "fiebre_infeccion": {
     "calentura": "fiebre",
@@ -287,7 +375,14 @@
     "me chuzaron": "herida punzante",
     "me ha dolido": "dolor",
     "le ha dolido": "dolor",
-    "se tropezó": "trauma por caída"
+    "se tropezó": "trauma por caída",
+    "cordada": "herida cortante",
+    "me corte": "herida cortante",
+    "me corté": "herida cortante",
+    "me machuque": "trauma por aplastamiento",
+    "me machuqué": "trauma por aplastamiento",
+    "machucon": "trauma por aplastamiento",
+    "machucón": "trauma por aplastamiento"
   },
   "negaciones_frecuentes": {
     "no ha vomitado": "sin emesis",

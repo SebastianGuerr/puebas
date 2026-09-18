@@ -312,6 +312,7 @@ def vecinos(palabra, distancia=2, maximo=5):
 PROTEGER_CIFRAS = True
 
 RE_CIFRAS = re.compile(r"\d+")
+RE_ESPACIO = re.compile(r"\s")
 
 
 def corregir_texto(texto, es_corregible, senalados=None):
@@ -343,8 +344,11 @@ def corregir_texto(texto, es_corregible, senalados=None):
         propuesta = sugerir(palabra)
         if not propuesta:
             return palabra
-        # las cifras no se tocan; ver decisiones/2026-09-16-cifras.md
-        if PROTEGER_CIFRAS and RE_CIFRAS.findall(palabra) != RE_CIFRAS.findall(propuesta):
+        # las cifras no se tocan, y una palabra con cifra tampoco puede salir
+        # partida en dos; ver decisiones/2026-09-17-cifras-partidas.md
+        if PROTEGER_CIFRAS and (
+                RE_CIFRAS.findall(palabra) != RE_CIFRAS.findall(propuesta)
+                or (RE_CIFRAS.search(palabra) and RE_ESPACIO.search(propuesta))):
             return palabra
         return propuesta
 

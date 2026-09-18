@@ -546,3 +546,489 @@ def _guardar(figura, ruta):
     figura.savefig(ruta, dpi=140, bbox_inches="tight", facecolor="white")
     plt.close(figura)
     return ruta
+
+
+# ==========================================================
+# EL PANORAMA: TODO EL HISTORICO EN UN EJE DE TIEMPO COMPARTIDO
+# ==========================================================
+#
+# Las figuras de arriba responden "¿como se reparte este tema en el calendario?".
+# Esta responde otra: "¿que estaba pasando a la vez?". Son cuatro paneles
+# apilados que comparten el eje x, de modo que una coincidencia se ve como una
+# COLUMNA VERTICAL -- la lluvia sube, la familia sube, en la misma abscisa.
+#
+# Un calendario no puede mostrar eso porque cada figura tiene su propia rejilla
+# y el ojo no sostiene dos rejillas a la vez. Una correlacion tampoco, porque
+# promedia los veinte meses y una racha de tres semanas se diluye.
+#
+# POR QUE LA LINEA GRUESA ES UNA MEDIA MOVIL Y LA FINA ES EL DATO
+#     La proporcion semanal de una familia de 30 notas tiene un error de
+#     muestreo de varios puntos: dibujada sola, la linea tiembla tanto que
+#     cualquier forma que se le vea es imaginada. Va el dato crudo en fino y
+#     transparente -- para que se vea cuanto tiembla, que es informacion -- y
+#     encima la media movil de tres semanas en grueso, que es lo que se lee.
+#
+#     La media movil NO se usa para calcular nada. Suavizar y despues
+#     correlacionar infla las correlaciones porque mete autocorrelacion que no
+#     estaba. Los numeros salen de panorama.rezagos(), sobre la serie sin
+#     suavizar y pre-blanqueada.
+
+VENTANA_SUAVE = 3          # semanas de la media movil que se dibuja en grueso
+ALFA_FONDO = 0.22          # el tono de las bandas de temporada, y el de su leyenda
+SIN_CLIMA = "#f2f2f2"      # el tramo final que clima_unificado.csv no alcanza
+
+
+def _tramos(etiquetas):
+    """Los tramos seguidos con la misma etiqueta: [(desde, hasta, etiqueta)]."""
+    etiquetas = etiquetas.dropna()
+    if etiquetas.empty:
+        return []
+    cambio = (etiquetas != etiquetas.shift()).cumsum()
+    tramos = []
+    for _, parte in etiquetas.groupby(cambio):
+        tramos.append((parte.index[0], parte.index[-1], parte.iloc[0]))
+    return tramos
+
+
+def _fondo_temporadas(ejes, etiquetas):
+    """Pinta las temporadas de fondo en todos los ejes. Devuelve las presentes."""
+    presentes = []
+    for desde, hasta, nombre in _tramos(etiquetas):
+        from patrones import calendario as calendario_modulo
+        escala = calendario_modulo.TEMPORADAS.get(nombre)
+        if escala is None:
+            continue
+        color = _escala(escala)(0.28)
+        for eje in ejes:
+            eje.axvspan(desde, hasta, color=color, alpha=ALFA_FONDO,
+                        lw=0, zorder=0)
+        if nombre not in presentes:
+            presentes.append(nombre)
+    return presentes
+
+
+def _hueco_sin_clima(ejes, diario, etiqueta=True):
+    """Marca en gris el tramo final sin clima. No se interpola: se ensena."""
+    con_clima = diario["precip_consenso_mm"].dropna()
+    if con_clima.empty:
+        return None
+    ultimo = con_clima.index.max()
+    fin = diario.index.max()
+    if ultimo >= fin:
+        return None
+    for eje in ejes:
+        eje.axvspan(ultimo, fin, color=SIN_CLIMA, zorder=0.5)
+        eje.axvline(ultimo, color=TENUE, lw=0.8, ls=":", zorder=1)
+    if etiqueta:
+        ejes[0].text(ultimo, ejes[0].get_ylim()[1], " sin clima ",
+                     fontsize=7, color=TENUE, va="top", ha="left")
+    return ultimo
+
+
+def _etiqueta_familia(familia, asignacion, estabilidad, maximo_temas=3):
+    """El texto de la leyenda: los temas mayores y el aviso si no es estable."""
+    miembros = asignacion[asignacion["familia"] == familia]
+    nombres = list(miembros.sort_values("notas", ascending=False)["nombre"])
+    corto = " · ".join(n.split()[0] for n in nombres[:maximo_temas])
+    if len(nombres) > maximo_temas:
+        corto += f" +{len(nombres) - maximo_temas}"
+    jaccard = estabilidad.get(familia, float("nan"))
+    aviso = ""
+    if not np.isnan(jaccard):
+        if jaccard <= 0.50:
+            aviso = "  [INESTABLE]"
+        elif jaccard < 0.75:
+            aviso = "  [dudosa]"
+    return f"F{familia} · {corto}{aviso}"
+
+
+def panorama(proporcion, diario, asignacion, estabilidad, ruta=None,
+             titulo="Motivos de triage y clima, 2025-2026"):
+    """
+    Los cuatro paneles alineados. Devuelve la figura (no la cierra).
+
+    proporcion  semana x familia, en porcentaje de las notas procesadas
+    diario      indexado por fecha, con el clima y la columna temporada
+    """
+    figura = plt.figure(figsize=(16, 10.5))
+    rejilla = figura.add_gridspec(
+        5, 1, height_ratios=[1.15, 0.85, 2.7, 1.0, 0.5], hspace=0.16)
+
+    lluvia = figura.add_subplot(rejilla[0])
+    aire = figura.add_subplot(rejilla[1], sharex=lluvia)
+    motivos = figura.add_subplot(rejilla[2], sharex=lluvia)
+    volumen = figura.add_subplot(rejilla[3], sharex=lluvia)
+    pie = figura.add_subplot(rejilla[4])
+
+    ejes = [lluvia, aire, motivos, volumen]
+
+    # ---- el fondo: temporadas climaticas y el hueco sin clima --------------
+    presentes = []
+    if "temporada" in diario.columns:
+        presentes = _fondo_temporadas(ejes, diario["temporada"])
+
+    # ---- 1. la lluvia -----------------------------------------------------
+    lluvia.bar(diario.index, diario["precip_consenso_mm"], width=1.0,
+               color="#9dc3e0", lw=0, zorder=2, label="lluvia del dia (mm)")
+    if "precip_7d" in diario.columns:
+        lluvia.plot(diario.index, diario["precip_7d"] / 7.0, color=BAJA,
+                    lw=1.6, zorder=3, label="media de 7 dias (mm/dia)")
+    lluvia.set_ylabel("lluvia\n(mm/dia)", fontsize=9, color=TINTA)
+    lluvia.legend(loc="upper left", fontsize=8, frameon=False, ncol=2)
+
+    # ---- 2. humedad y temperatura ----------------------------------------
+    # La temperatura va aqui aunque no explique nada, y va DIBUJADA para que se
+    # vea por que no explica nada: seis grados de rango en veinte meses. Es mas
+    # convincente verla plana que leer que lo esta.
+    def _media_7d(columna):
+        # calendario_diario.parquet trae 'precip_7d' ya calculada pero no las
+        # de humedad y temperatura, asi que se calculan aqui. La ventana es la
+        # misma -- 7 dias -- para que los tres paneles se lean con el mismo
+        # grado de suavizado y una racha se vea igual de ancha en los tres.
+        if columna not in diario.columns:
+            return None
+        return diario[columna].astype(float).rolling(7, min_periods=4).mean()
+
+    humedad = _media_7d("humedad_consenso")
+    if humedad is not None:
+        aire.plot(diario.index, humedad, color="#2e7d32", lw=1.4, zorder=3)
+        aire.set_ylabel("humedad\n(%, media 7d)", fontsize=9, color="#2e7d32")
+    gemelo = aire.twinx()
+    temperatura = _media_7d("temp_media_consenso")
+    if temperatura is not None:
+        gemelo.plot(diario.index, temperatura, color="#b8860b", lw=1.4,
+                    zorder=3)
+        gemelo.set_ylabel("temp (C,\nmedia 7d)", fontsize=9, color="#b8860b")
+        gemelo.tick_params(axis="y", labelsize=8, colors="#b8860b")
+        # La escala de la temperatura se abre a +-2,5 C a proposito. Dejada en
+        # automatico, matplotlib estira un rango de dos grados hasta llenar el
+        # panel y la linea parece una montana rusa. Con un rango fijo y ancho
+        # se ve lo que de verdad hace: casi nada. Esa es la informacion, y es
+        # la razon por la que la temperatura no va a explicar ningun pico.
+        if float(temperatura.max() - temperatura.min()) < 4.0:
+            centro = float(temperatura.mean())
+            gemelo.set_ylim(centro - 2.5, centro + 2.5)
+        for lado in ("top", "left", "bottom"):
+            gemelo.spines[lado].set_visible(False)
+    aire.tick_params(axis="y", labelsize=8, colors="#2e7d32")
+
+    # ---- 3. las familias de motivos --------------------------------------
+    suave = proporcion.rolling(VENTANA_SUAVE, min_periods=1, center=True).mean()
+    for i, familia in enumerate(sorted(proporcion.columns)):
+        color = CATEGORICAS[i % len(CATEGORICAS)]
+        jaccard = estabilidad.get(familia, float("nan"))
+        estilo = ":" if (not np.isnan(jaccard) and jaccard <= 0.50) else "-"
+        motivos.plot(proporcion.index, proporcion[familia], color=color,
+                     lw=0.8, alpha=0.30, zorder=2)
+        motivos.plot(suave.index, suave[familia], color=color, lw=2.4,
+                     ls=estilo, zorder=3,
+                     label=_etiqueta_familia(familia, asignacion, estabilidad))
+    # ESCALA LOGARITMICA, Y NO ES UN ADORNO
+    #     F0 vale la mitad de todas las notas y F3 vale el 5%. En escala lineal
+    #     la primera se lleva el panel entero y las otras tres quedan aplastadas
+    #     contra el eje, donde un movimiento del 40% de su propio tamano no se
+    #     ve. En logaritmica la MISMA distancia vertical significa el mismo
+    #     cambio relativo en las cuatro, que es justo lo que se viene a
+    #     comparar, y es ademas la escala coherente con el CLR con el que se
+    #     agruparon.
+    #
+    #     Precio: una semana en cero no se puede dibujar. Con estas cuentas le
+    #     pasa a las familias chicas, y esas semanas salen como un corte en la
+    #     linea fina. Es visible y es correcto: cero notas no es 'casi cero'.
+    motivos.set_yscale("log")
+    motivos.set_yticks([1, 2, 5, 10, 20, 50])
+    motivos.get_yaxis().set_major_formatter(
+        matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:g}%"))
+    motivos.set_ylabel("% de las notas procesadas de esa semana\n"
+                       "(escala logaritmica)", fontsize=9, color=TINTA)
+    motivos.legend(loc="lower left", fontsize=8.5, frameon=False, ncol=2)
+
+    # ---- 4. el denominador, que es lo que puede fabricar el patron --------
+    # Va en la figura y no en una nota al pie a proposito. Si la cobertura del
+    # motivo cae justo donde una familia sube, lo que se esta viendo es el
+    # denominador y no el hospital, y eso tiene que poder verse de un vistazo.
+    # POR SEMANA Y NO POR DIA, AL REVES QUE LOS DOS PANELES DE ARRIBA
+    #     Dia a dia esto son 615 barras y una linea que recorre el ciclo
+    #     semanal entero cada siete pixeles: no se lee nada. Y el ciclo semanal
+    #     no es lo que este panel viene a ensenar -- viene a ensenar la DERIVA,
+    #     que es de meses. Agregando por semana el ciclo se va y la deriva queda
+    #     a la vista, que es lo unico que se le pide.
+    #     Y se cortan las semanas incompletas, igual que en panorama.semanal().
+    #     La ventana termina un lunes, asi que la ultima semana tiene UN dia:
+    #     dibujada, su barra es un munon y su cobertura salta a donde caiga ese
+    #     dia -- en esta ventana, al 100%. Una deriva de nueve puntos por ano
+    #     leida con un salto de veinte al final no se lee.
+    semanalmente = dict(rule="W-MON", label="left", closed="left")
+
+    def _por_semana(columna, minimo_dias=5):
+        agrupado = diario[columna].resample(**semanalmente)
+        return agrupado.sum()[agrupado.count() >= minimo_dias]
+
+    if "procesadas" in diario.columns:
+        semanas = _por_semana("procesadas")
+        volumen.bar(semanas.index, semanas, width=6.0, color="#cfcfcf", lw=0,
+                    zorder=2, label="notas procesadas por semana")
+    if {"notas_con_motivo", "triages"} <= set(diario.columns):
+        # La cobertura como cociente de las SUMAS de la semana. El promedio de
+        # los cocientes diarios le daria el mismo peso a un domingo de veinte
+        # triages que a un lunes de doscientos.
+        con_motivo = _por_semana("notas_con_motivo")
+        triages = _por_semana("triages").reindex(con_motivo.index)
+        cobertura = volumen.twinx()
+        cobertura.plot(con_motivo.index,
+                       (con_motivo / triages.replace(0, np.nan)) * 100,
+                       color=SUBE, lw=1.8, zorder=3,
+                       label="triages con motivo escrito (%)")
+        cobertura.set_ylabel("cobertura del\nmotivo (%)", fontsize=9,
+                             color=SUBE)
+        cobertura.tick_params(axis="y", labelsize=8, colors=SUBE)
+        for lado in ("top", "left", "bottom"):
+            cobertura.spines[lado].set_visible(False)
+        cobertura.legend(loc="lower left", fontsize=8, frameon=False)
+    volumen.set_ylabel("notas\nprocesadas", fontsize=9, color=TINTA)
+    volumen.legend(loc="upper left", fontsize=8, frameon=False)
+
+    _hueco_sin_clima(ejes, diario)
+
+    for eje in ejes:
+        eje.margins(x=0.005)
+        eje.grid(axis="y", color="#f0f0f0", lw=0.8, zorder=0)
+        for lado in ("top", "right", "left"):
+            eje.spines[lado].set_visible(False)
+        eje.tick_params(axis="y", labelsize=8)
+    for eje in ejes[:-1]:
+        eje.tick_params(axis="x", labelbottom=False, length=0)
+    volumen.tick_params(axis="x", labelsize=9, colors=TINTA)
+    volumen.set_xlim(diario.index.min(), diario.index.max())
+
+    # ---- el pie: la leyenda de temporadas --------------------------------
+    pie.set_axis_off()
+    if presentes:
+        from patrones import calendario as calendario_modulo
+        ancho = 1.0 / max(len(presentes), 1)
+        for i, nombre in enumerate(presentes):
+            escala = calendario_modulo.TEMPORADAS.get(nombre, "Greys")
+            pie.add_patch(plt.Rectangle((i * ancho + 0.01, 0.45),
+                                        ancho * 0.25, 0.30,
+                                        color=_escala(escala)(0.28),
+                                        alpha=ALFA_FONDO,
+                                        transform=pie.transAxes,
+                                        clip_on=False))
+            pie.text(i * ancho + 0.01 + ancho * 0.28, 0.60, nombre,
+                     fontsize=8.5, color=TINTA, va="center",
+                     transform=pie.transAxes)
+        pie.text(0.01, 0.05,
+                 "Fondo: temporada climatica (lluvia en terciles historicos x "
+                 "temperatura). Gris al final: dias sin clima, no interpolados.",
+                 fontsize=7.5, color=TENUE, transform=pie.transAxes)
+
+    figura.suptitle(titulo, fontsize=14, color=TINTA, y=0.955)
+    figura.text(0.5, 0.925,
+                "Linea fina: la semana. Linea gruesa: media movil de "
+                f"{VENTANA_SUAVE} semanas, solo para leer -- los numeros salen "
+                "de la serie sin suavizar.",
+                fontsize=8.5, color=TENUE, ha="center")
+
+    if ruta is not None:
+        _guardar_sin_cerrar(figura, ruta)
+    return figura
+
+
+def mapa_familias(correlacion, orden, asignacion, estabilidad, ruta=None):
+    """
+    La matriz tema x tema reordenada por familia, con los bloques marcados.
+
+    Es la figura que justifica -- o no -- las lineas del panorama. Si los
+    cuadrados de la diagonal no se ven mas rojos que el resto de la matriz, las
+    familias no existen y las lineas del panorama son cuatro promedios
+    arbitrarios. Se mira esta ANTES que el panorama, no despues.
+
+    LA BARRA DE COLOR VA EN SU PROPIA COLUMNA DE LA REJILLA
+        Pedida con ax=, matplotlib le roba sitio al eje de la matriz y la
+        coloca encima de la columna de texto de la derecha. Con una columna
+        propia -- estrecha, entre las dos -- cada cosa tiene su ancho y no hay
+        nada que se solape.
+    """
+    matriz = correlacion[np.ix_(orden, orden)]
+    nombres = list(asignacion["nombre"])
+    familias_col = list(asignacion["familia"])
+    n = len(nombres)
+
+    figura = plt.figure(figsize=(14.5, 9.5))
+    rejilla = figura.add_gridspec(1, 3, width_ratios=[3.0, 0.10, 1.5],
+                                  wspace=0.06)
+    eje = figura.add_subplot(rejilla[0])
+    eje_barra = figura.add_subplot(rejilla[1])
+    lado = figura.add_subplot(rejilla[2])
+
+    # El limite de la escala sale del mayor valor FUERA de la diagonal. Con la
+    # diagonal dentro, el maximo seria siempre 1,0 -- la correlacion de cada
+    # tema consigo mismo -- y la matriz entera saldria de un gris uniforme.
+    fuera = matriz - np.eye(n)
+    limite = max(float(np.nanmax(np.abs(fuera))), 0.05)
+    imagen = eje.imshow(matriz, cmap=_divergente(),
+                        norm=TwoSlopeNorm(vmin=-limite, vcenter=0.0,
+                                          vmax=limite))
+
+    eje.set_xticks(range(n))
+    eje.set_yticks(range(n))
+    eje.set_xticklabels(nombres, rotation=90, fontsize=7, color=TINTA)
+    eje.set_yticklabels(nombres, fontsize=7, color=TINTA)
+    eje.tick_params(length=0)
+    for lado_marco in ("top", "right", "bottom", "left"):
+        eje.spines[lado_marco].set_visible(False)
+
+    # El recuadro de cada familia sobre la diagonal.
+    inicio_bloque = 0
+    for i, familia in enumerate(sorted(set(familias_col))):
+        cuantos = familias_col.count(familia)
+        color = CATEGORICAS[i % len(CATEGORICAS)]
+        eje.add_patch(plt.Rectangle((inicio_bloque - 0.5, inicio_bloque - 0.5),
+                                    cuantos, cuantos, fill=False,
+                                    edgecolor=color, lw=2.2))
+        inicio_bloque += cuantos
+
+    barra = figura.colorbar(imagen, cax=eje_barra)
+    barra.ax.tick_params(labelsize=8)
+    # Las cifras a la IZQUIERDA de la barra: a la derecha caen encima de los
+    # titulos de familia de la columna de texto.
+    barra.ax.yaxis.set_ticks_position("left")
+    # El rotulo va como titulo de la barra y no como set_label: en una columna
+    # estrecha, set_label lo escribe en vertical a la DERECHA, o sea encima de
+    # la lista de temas.
+    eje_barra.set_title("correlacion\nentre series\nsemanales\n(CLR)",
+                        fontsize=7.5, color=TENUE, pad=8)
+
+    eje.set_title("Que motivos se mueven juntos", fontsize=13, color=TINTA,
+                  pad=12)
+
+    # ---- el lado derecho: quien esta en cada familia y si es de fiar ------
+    #
+    # El paso vertical se calcula y no se fija: con 30 temas y cuatro familias
+    # son mas de cuarenta renglones, y un paso constante los saca de la figura
+    # por abajo, encima de la nota al pie. Se cuenta cuantos hay y se reparte
+    # el alto entre ellos.
+    lado.set_axis_off()
+    familias_unicas = sorted(set(familias_col))
+    renglones = len(familias_unicas) * 3 + n + 1
+    paso = min(0.026, 0.80 / max(renglones, 1))
+
+    y = 0.99
+    lado.text(0.0, y, "LAS FAMILIAS", fontsize=10, color=TINTA, va="top",
+              weight="bold")
+    y -= paso * 2.0
+
+    for i, familia in enumerate(familias_unicas):
+        color = CATEGORICAS[i % len(CATEGORICAS)]
+        miembros = asignacion[asignacion["familia"] == familia]
+        jaccard = estabilidad.get(familia, float("nan"))
+        veredicto = ("valida" if jaccard >= 0.75 else
+                     "DISUELTA" if jaccard <= 0.50 else "dudosa")
+        lado.text(0.0, y,
+                  f"F{familia}  ·  {len(miembros)} temas  ·  "
+                  f"{int(miembros['notas'].sum()):,} notas",
+                  fontsize=9, color=color, va="top", weight="bold")
+        y -= paso
+        lado.text(0.0, y, f"estabilidad Jaccard {jaccard:.2f} — {veredicto}",
+                  fontsize=8, color=TENUE, va="top")
+        y -= paso
+        for fila in miembros.sort_values("notas", ascending=False).itertuples():
+            lado.text(0.03, y, f"{fila.nombre}  ({int(fila.notas)})",
+                      fontsize=7.5, color=TINTA, va="top")
+            y -= paso
+        y -= paso * 0.6
+
+    lado.text(0.0, 0.0,
+              "Jaccard: se reagrupa con el 80% de las semanas, 200 veces.\n"
+              ">=0,75 la familia reaparece; <=0,50 es una particion del ruido\n"
+              "y su linea en el panorama no se interpreta.",
+              fontsize=7.5, color=TENUE, va="bottom")
+
+    if ruta is not None:
+        _guardar_sin_cerrar(figura, ruta)
+    return figura
+
+
+def perfil_familias(perfil, asignacion, estabilidad, ruta=None,
+                    variable="lluvia (media de 7 dias)"):
+    """
+    Correlacion de cada familia con la lluvia a cada rezago, tras pre-blanqueo.
+
+    NO SON PRUEBAS. Catorce rezagos por cuatro familias son 56 cifras sin
+    correccion por multiplicidad: que la mayor ronde p=0,05 es exactamente lo
+    que pasa cuando no hay nada. Lo que se lee es la FORMA -- sube, hace maximo
+    y baja -- porque un efecto real no aparece y desaparece de un dia al otro.
+    """
+    if perfil is None or perfil.empty:
+        return None
+
+    figura, eje = plt.subplots(figsize=(11, 5.6))
+    for i, (familia, parte) in enumerate(perfil.groupby("familia")):
+        color = CATEGORICAS[i % len(CATEGORICAS)]
+        jaccard = estabilidad.get(familia, float("nan"))
+        estilo = ":" if (not np.isnan(jaccard) and jaccard <= 0.50) else "-"
+        parte = parte.sort_values("rezago_dias")
+        eje.plot(parte["rezago_dias"], parte["correlacion"], color=color,
+                 lw=2.0, ls=estilo, marker="o", ms=3.5,
+                 label=_etiqueta_familia(familia, asignacion, estabilidad))
+
+    eje.axhline(0, color=TENUE, lw=1.0)
+    eje.set_xlabel(f"rezago en dias: la {variable} de hace N dias", fontsize=9,
+                   color=TINTA)
+    eje.set_ylabel("correlacion tras pre-blanqueo AR(7)", fontsize=9,
+                   color=TINTA)
+    eje.set_title("Forma de la relacion con la lluvia, por familia",
+                  fontsize=12.5, color=TINTA, pad=10)
+    eje.legend(fontsize=8.5, frameon=False, loc="best")
+    eje.grid(axis="y", color="#f0f0f0", lw=0.8)
+    for lado in ("top", "right"):
+        eje.spines[lado].set_visible(False)
+
+    figura.text(0.5, -0.02,
+                "Sin correccion por multiplicidad: esto NO es una prueba. La "
+                "prueba es 'python -m patrones --modelar', y lo que se pruebe "
+                "se escribe antes en datos/variables.csv.",
+                fontsize=7.5, color=TENUE, ha="center")
+
+    if ruta is not None:
+        _guardar_sin_cerrar(figura, ruta)
+    return figura
+
+
+def _guardar_sin_cerrar(figura, ruta):
+    """
+    Como _guardar pero deja la figura viva, porque puede haber que mostrarla.
+
+    _guardar cierra a proposito: las corridas completas dibujan decenas de
+    calendarios y dejarlos abiertos se come la memoria. Aqui son tres figuras y
+    la siguiente linea puede ser un plt.show().
+    """
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    figura.savefig(ruta, dpi=140, bbox_inches="tight", facecolor="white")
+    return ruta
+
+
+def abrir_ventana():
+    """
+    Cambia al backend interactivo. Hay que llamarla ANTES de crear las figuras.
+
+    Este modulo fija 'Agg' al importarse porque su trabajo normal es escribir
+    archivos y en un servidor no hay pantalla que abrir. Para mirar el panorama
+    hace falta lo contrario, y matplotlib solo deja cambiar de backend mientras
+    no haya figuras vivas -- de ahi el orden.
+
+    Devuelve True si se consiguio. Si no hay tkinter -- un Python compilado sin
+    el, o una sesion sin escritorio -- se queda en Agg y se dice, en vez de
+    reventar despues de haber calculado todo.
+    """
+    try:
+        matplotlib.use("TkAgg", force=True)
+        return True
+    except Exception as error:
+        print(f"  no se pudo abrir ventana ({error}); quedan los PNG")
+        return False
+
+
+def mostrar():
+    """Bloquea mostrando las figuras abiertas. Solo tras abrir_ventana()."""
+    plt.show()

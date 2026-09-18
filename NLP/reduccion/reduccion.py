@@ -48,6 +48,20 @@ PALABRAS_ORACION_LARGA = 8
 FRENO_CLINICO_INSTITUCIONAL = False
 DENSIDAD_MINIMA = 0.40
 
+# Con que criterio se salva un tramo que el clasificador marco administrativo.
+# Medido en docs/decisiones/2026-09-17-freno-por-aporte-unico.md sobre 1.500
+# notas comunes a los dos CSV:
+#
+#     "densidad"   umbral DENSIDAD_MINIMA sobre el tramo suelto. Salvaba
+#                  cualquier tramo con una palabra del lexico, y el lexico da
+#                  por clinicas 'salud', 'nivel' o 'atencion': el recorte cayo
+#                  de 0,1523 a 0,1242.
+#     "aporte"     se tira salvo que traiga terminologia que no este en el
+#                  RESTO de la nota. Recorte 0,1483 (el nivel del 11/09) y
+#                  retencion 0,9750, por encima de los dos sistemas.
+#     "ninguno"    sin freno: recorte 0,1523 y retencion 0,9546.
+FRENO_CLASIFICADOR = "aporte"
+
 # Bandera de E5.1 (docs/decisiones/2026-09-16-E5.1-glosas.md). Por defecto no
 # cambia nada: la anotacion entre parentesis que agrego la fase 3 se conserva
 # en texto_embedding (ver FLUJO.md seccion 7, "Que se conserva"). Con
@@ -429,8 +443,54 @@ def _protegido_por_clinica(tramo):
     trámite, diga lo que diga el clasificador. Mismo umbral y léxico que usa
     `_quitar_institucional()`, para que las dos defensas del módulo no se
     contradigan. Ver docs/decisiones/2026-09-15-clasificador-freno-clinico.md.
+
+    Solo se consulta con FRENO_CLASIFICADOR = "densidad"; el modo por defecto
+    es `_aporta_termino_propio()`.
     """
     return densidad_clinica(tramo) >= DENSIDAD_MINIMA
+
+
+def _aporta_termino_propio(tramo, resto):
+    """
+    True si `tramo` trae terminología clínica que no aparece en `resto` de la
+    nota. Es el freno por aporte único, medido en
+    docs/decisiones/2026-09-17-freno-por-aporte-unico.md.
+    """
+    return bool(_terminos(tramo) - _terminos(resto))
+
+
+def _terminos(texto):
+    """
+    Terminología clínica de un texto, con el mismo criterio doble que
+    `evaluacion/calidad.py`: el término cuenta solo si lo reconocen los dos
+    léxicos, que es lo que evita las falsas alarmas.
+    """
+    from NLP.depuracion import depuracion
+
+    return {p for p in depuracion.terminos_clinicos(str(texto or ""))
+            if _es_clinica(p)}
+
+
+def _sobran(tramos, marcados):
+    """
+    De los tramos que el clasificador marca como administrativos, los que se
+    pueden tirar según FRENO_CLASIFICADOR. Ver
+    docs/decisiones/2026-09-17-freno-por-aporte-unico.md.
+    """
+    if FRENO_CLASIFICADOR == "densidad":
+        return {t for t, malo in zip(tramos, marcados)
+                if malo and not _protegido_por_clinica(t)}
+    if FRENO_CLASIFICADOR == "ninguno":
+        return {t for t, malo in zip(tramos, marcados) if malo}
+
+    sobran = set()
+    for tramo, malo in zip(tramos, marcados):
+        if not malo or tramo in sobran:
+            continue
+        resto = " ".join(t for t in tramos if t != tramo)
+        if not _aporta_termino_propio(tramo, resto):
+            sobran.add(tramo)
+    return sobran
 
 
 def _quitar_clasificador(texto):
@@ -459,9 +519,9 @@ def _quitar_clasificador(texto):
     # juzga el tramo entero por como EMPIEZA, y un tramo que abre pareciendo
     # tramite puede terminar siendo el motivo de consulta. El tramo se tira
     # entero y no vuelve, asi que su veredicto no basta por si solo. Medicion:
-    # docs/decisiones/2026-09-15-clasificador-freno-clinico.md.
-    sobran = {t for t, malo in zip(tramos, marcados)
-              if malo and not _protegido_por_clinica(t)}
+    # docs/decisiones/2026-09-15-clasificador-freno-clinico.md y
+    # docs/decisiones/2026-09-17-freno-por-aporte-unico.md.
+    sobran = _sobran(tramos, marcados)
     if not sobran:
         return texto
     if not [t for t in tramos if t not in sobran]:

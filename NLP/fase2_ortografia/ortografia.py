@@ -74,11 +74,28 @@ USAR_VOCABULARIO = True
 PROTEGER_CIFRAS = True
 
 RE_CIFRAS = re.compile(r"\d+")
+RE_ESPACIO = re.compile(r"\s")
 
 
 def mismas_cifras(original, reemplazo):
-    """True si el reemplazo conserva exactamente las cifras del original."""
-    return RE_CIFRAS.findall(str(original)) == RE_CIFRAS.findall(str(reemplazo))
+    """
+    True si el reemplazo conserva las cifras del original Y no lo parte en dos.
+
+    Comparar solo los grupos de digitos no bastaba: LanguageTool propone
+    separar el signo de la cifra ('39+5' -> '39+ 5', '22/04/2025' ->
+    '22/ 04/ 2025', 'glasgow 15/15' -> 'glasgow 15/ 15') y ese reemplazo
+    conserva los mismos digitos, asi que pasaba el guardian. Medido sobre
+    salidas/triage_limpio.csv: 250 notas de 9.311 con la edad gestacional, la
+    escala de Glasgow, la tension o la fecha partidas en dos tokens. Ver
+    docs/decisiones/2026-09-17-cifras-partidas.md.
+    """
+    original, reemplazo = str(original), str(reemplazo)
+    if RE_CIFRAS.findall(original) != RE_CIFRAS.findall(reemplazo):
+        return False
+    # un token con cifra y sin espacios no puede salir partido en varios
+    return not (RE_CIFRAS.search(original)
+                and not RE_ESPACIO.search(original)
+                and RE_ESPACIO.search(reemplazo))
 RESTAURAR_MAYUSCULAS = True
 
 # La capa de contexto. Es lo unico del pipeline que puede arreglar una palabra

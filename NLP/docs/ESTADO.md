@@ -177,6 +177,11 @@ orquestador), `bloqueado`, `cerrado`.
 - 38,06 % de las notas llevan glosa entre paréntesis y `clustering/etiquetas.py` depende de
   ellas. → E5.1.
 - `requirements.txt` fija `scikit-learn==1.4.2`; el `.venv` tiene 1.9.1.
+- **El CSV en disco no lleva los arreglos del 17/09** (freno por aporte y guardián de
+  cifras). Los dos cambian `texto_embedding`, así que aplican el gate de `PLAN.md` §7.
+- **3,1 pp de recorte que no son de la fase 5**: el CSV del 11/09 recorta el 18,68 % y la
+  fase 5 del 11/09, sobre la entrada de hoy, el 15,55 %. La diferencia está en las fases
+  1–3 y no se ha investigado.
 - `embedding/corpus.py` lee el CSV sin `encoding=`. → E7.2.
 - `nucleo/clinico.py` (256 líneas) carga spaCy + medspaCy y solo se usan sus dos tablas.
   → E6.3.
@@ -184,6 +189,24 @@ orquestador), `bloqueado`, `cerrado`.
   clasificador: es precisamente el comando prohibido. → corregir en E6.3.
 - `sugerencias.py` afirma en su documentación que nunca propone una forma que el corpus no
   escriba, y 409 pares demuestran lo contrario. → E4.2 y E6.3.
+
+### 3.4 Comparación contra el CSV del 11/09 (2026-09-17, 6.501 notas comunes)
+
+Primera comparación nota a nota entre `triage_limpio_antiguo.csv` y
+`salidas/triage_limpio.csv` sobre las notas con el mismo `OID` y el mismo `texto_original`.
+2.011 (30,9 %) difieren en `texto_embedding`. Corriendo cada versión de la fase 5 sobre la
+misma entrada:
+
+| Versión de la fase 5 | retención | sin terminología | recorte | costura |
+|---|---|---|---|---|
+| 11/09 | 0,9598 | 1,73 % | 0,1555 | 3,49 % |
+| 16/09 (freno por densidad) | 0,9736 | 1,21 % | 0,1249 | 5,80 % |
+| **17/09 (freno por aporte)** | **0,9806** | **0,66 %** | **0,1504** | 3,88 % |
+
+Detalle y localización de la regresión en
+`decisiones/2026-09-17-freno-por-aporte-unico.md`. El segundo fallo de la comparación, el
+guardián de cifras que dejaba partir `39+5` en `39+ 5` (250 notas de 9.311), en
+`decisiones/2026-09-17-cifras-partidas.md`.
 
 ## 6. Próximas acciones
 
@@ -206,3 +229,4 @@ orquestador), `bloqueado`, `cerrado`.
 | 2026-09-15 | previo al plan | Primera versión |
 | 2026-09-15 | E0.1 | §2 reescrita (commit `ba63bfc`, árbol limpio); E0.1 a `cerrado` |
 | 2026-09-16 | oleada de ejecución | §2 con los seis commits; §3 con la línea base de calidad y la medición del corrector; §4 reescrita con los estados de E0–E7; §5 con licencias, caché, `jerga_frecuente` y documentación falsa; §6 reordenada |
+| 2026-09-17 | comparación 11/09 | §3.4 con la comparación nota a nota contra el CSV antiguo; §5 con el CSV desalineado y los 3,1 pp de recorte sin explicar |

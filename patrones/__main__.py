@@ -16,6 +16,8 @@ Punto de entrada unico de la fase 8. Un comando, del agrupamiento a los patrones
     python -m patrones --modelar         solo el analisis principal
     python -m patrones --comparar        solo los tres agrupamientos
     python -m patrones --vistas          solo las figuras
+    python -m patrones --panorama        el historico entero en un eje
+    python -m patrones --ventana         y ademas lo abre en pantalla
     python -m patrones --sin-base        no consulta DIM_TRIAGE
 
 EL ORDEN NO ES ARBITRARIO Y ES LA IDEA CENTRAL DEL PAQUETE
@@ -75,6 +77,9 @@ def _argumentos(argv=None):
                         help=f"unidad de tiempo del analisis "
                              f"(por defecto: {tablero.BLOQUE}; ver tablero.py "
                              f"para por que no es 'dia' todavia)")
+    parser.add_argument("--ventana", action="store_true",
+                        help="abrir el panorama en una ventana ademas de "
+                             "escribirlo. Implica --panorama")
     parser.add_argument("--sin-base", action="store_true",
                         help="no consultar DIM_TRIAGE; usar solo lo que ya "
                              "dejo 'python -m clustering --serie'")
@@ -88,7 +93,9 @@ def _argumentos(argv=None):
             ("asociar", "busqueda exploratoria con rezagos"),
             ("modelar", "el analisis principal"),
             ("comparar", "los tres agrupamientos de bloques"),
-            ("vistas", "solo las figuras")]:
+            ("vistas", "solo las figuras"),
+            ("panorama", "el historico entero en un eje de tiempo, con los "
+                         "temas agrupados por como se mueven")]:
         pasos.add_argument(f"--{nombre}", action="store_true", help=ayuda)
 
     return parser.parse_args(argv)
@@ -97,8 +104,10 @@ def _argumentos(argv=None):
 def _pasos_pedidos(args):
     """Que pasos se piden. Si no se pide ninguno, todos."""
     nombres = ["calendario", "tablero", "potencia", "temporadas", "asociar",
-               "modelar", "comparar", "vistas"]
+               "modelar", "comparar", "vistas", "panorama"]
     pedidos = {n for n in nombres if getattr(args, n.replace("-", "_"), False)}
+    if args.ventana:
+        pedidos.add("panorama")
     return set(nombres) if not pedidos else pedidos
 
 
@@ -259,8 +268,104 @@ def main(argv=None):
         print("  lo que se vea en ellos se anota como hipotesis para probar")
         print("  contra datos que no sean estos.")
 
+    # ------------------------------------------------------------------
+    # EL PANORAMA VA AL FINAL Y ES LO PRIMERO QUE SE MIRA
+    #     Al final porque necesita el calendario ya unificado. Lo primero que
+    #     se mira porque las cifras de arriba dicen si algo sobrevive a la
+    #     correccion, y ninguna de ellas dice QUE mirar. Eso lo dice la figura.
+    if "panorama" in pasos:
+        titulo("9. EL PANORAMA")
+        texto = _panorama(serie, diario, ventana=args.ventana)
+        if texto:
+            partes.append(texto)
+
     _escribir(partes, pasos, args.bloque)
+
+    # El plt.show() va DESPUES de escribir el informe: bloquea hasta que se
+    # cierre la ventana, y dejar el informe a medias mientras alguien mira una
+    # figura durante veinte minutos es como se pierde una corrida.
+    if args.ventana and _VENTANA_LISTA:
+        from patrones import vistas
+        print()
+        print("Ventana abierta. Se cierra y el comando termina.")
+        vistas.mostrar()
+
     return 0
+
+
+_VENTANA_LISTA = False
+
+
+def _panorama(serie, diario, ventana=False):
+    """
+    Las familias de motivos y las tres figuras del panorama. Devuelve el informe.
+
+    EL CAMBIO DE BACKEND TIENE QUE PASAR AQUI Y NO DENTRO DE vistas
+        vistas.py fija 'Agg' al importarse porque su trabajo normal es escribir
+        PNG. matplotlib solo deja cambiar de backend mientras no exista ninguna
+        figura, asi que el cambio va antes de dibujar la primera y no despues.
+    """
+    global _VENTANA_LISTA
+
+    from patrones import panorama as panorama_modulo
+    from patrones import rutas, vistas
+
+    if ventana:
+        _VENTANA_LISTA = vistas.abrir_ventana()
+
+    try:
+        agrupadas = panorama_modulo.familias(serie)
+    except SystemExit as error:
+        print(f"  no se pudo agrupar por forma: {error}")
+        return None
+
+    asignacion = agrupadas["asignacion"]
+    proporcion, notas, _ = panorama_modulo.series_familias(serie, asignacion)
+    print(f"  {len(asignacion)} temas -> {agrupadas['n_familias']} familias "
+          f"sobre {len(proporcion)} semanas")
+
+    try:
+        perfil = panorama_modulo.rezagos(serie, diario, asignacion)
+    except Exception as error:
+        print(f"  sin perfil de rezagos: {error}")
+        perfil = None
+
+    for ruta in panorama_modulo.guardar(agrupadas, proporcion, perfil):
+        print(f"  {ruta}")
+
+    # El diario que necesita la figura lleva tres columnas mas que el del
+    # analisis: cuantas notas se procesaron ese dia, cuantos triages hubo y
+    # cuantos traian motivo escrito. Van DIBUJADAS, en su propio panel, porque
+    # son las que pueden fabricar un patron que no existe -- si la cobertura
+    # cae justo donde una familia sube, lo que se esta viendo es el
+    # denominador. Se pasan en crudo y no ya divididas para que la figura pueda
+    # agregarlas por semana como cociente de sumas.
+    dibujo = diario.set_index("fecha").copy()
+    por_dia = serie.drop_duplicates("fecha").set_index("fecha")
+    for columna in ("procesadas", "notas_con_motivo", "triages"):
+        dibujo[columna] = por_dia[columna].reindex(dibujo.index)
+
+    estabilidad = agrupadas["estabilidad"]
+    hechas = []
+    hechas.append(vistas._guardar_sin_cerrar(
+        vistas.panorama(proporcion, dibujo, asignacion, estabilidad),
+        rutas.FIGURAS / "panorama.png"))
+    hechas.append(vistas._guardar_sin_cerrar(
+        vistas.mapa_familias(agrupadas["correlacion"], agrupadas["orden"],
+                             asignacion, estabilidad),
+        rutas.FIGURAS / "panorama_familias.png"))
+    figura = vistas.perfil_familias(perfil, asignacion, estabilidad)
+    if figura is not None:
+        hechas.append(vistas._guardar_sin_cerrar(
+            figura, rutas.FIGURAS / "panorama_rezagos.png"))
+
+    for ruta in hechas:
+        print(f"  {ruta}")
+
+    texto = panorama_modulo.informe(agrupadas, proporcion, notas, perfil)
+    print()
+    print(texto)
+    return texto
 
 
 def _dibujar(serie, diario, temas, asociaciones, variables):
@@ -351,7 +456,7 @@ def _escribir(partes, pasos=None, bloque=None):
 
     from patrones import rutas
 
-    completo = pasos is None or len(pasos) >= 7
+    completo = pasos is None or len(pasos) >= 9
     cabecera = [
         "FASE 8 -- PATRONES ENTRE MOTIVOS DE TRIAGE Y CALENDARIO",
         f"generado {datetime.datetime.now():%Y-%m-%d %H:%M}",

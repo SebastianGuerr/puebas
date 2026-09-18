@@ -56,6 +56,18 @@ QUE HAY EN salidas/
                          de tamano de efecto.
     agrupamiento.csv     a que grupo cayo cada bloque segun cada uno de los
                          algoritmos comparados.
+    familias.csv         un renglon por tema con la familia en que cayo al
+                         agruparlo por la FORMA de su serie semanal. Es el
+                         agrupamiento de series de panorama.py, y no tiene
+                         nada que ver con agrupamiento.csv: alli las filas
+                         son bloques de tiempo y aqui son temas.
+    series_familias.csv  una fila por semana y una columna por familia, con
+                         el porcentaje de las notas procesadas de esa semana
+                         que fueron de esa familia. Es lo que se dibuja en
+                         el panorama.
+    rezagos_familias.csv correlacion de cada familia con la lluvia a cada
+                         rezago, tras pre-blanqueo. FORMA, no prueba: no
+                         lleva correccion por multiplicidad.
     comparacion.csv      las metricas que ponen a esos algoritmos en la misma
                          mesa: silueta, Davies-Bouldin, Calinski-Harabasz y
                          sobre todo la estabilidad por remuestreo.
@@ -111,6 +123,9 @@ ASOCIACION = SALIDAS / "asociacion.csv"
 MODELOS = SALIDAS / "modelos.csv"
 AGRUPAMIENTO = SALIDAS / "agrupamiento.csv"
 COMPARACION = SALIDAS / "comparacion.csv"
+FAMILIAS = SALIDAS / "familias.csv"
+SERIES_FAMILIAS = SALIDAS / "series_familias.csv"
+REZAGOS_FAMILIAS = SALIDAS / "rezagos_familias.csv"
 INFORME = SALIDAS / "informe.txt"
 
 # datos/ se edita a mano

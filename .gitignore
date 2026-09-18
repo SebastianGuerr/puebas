@@ -20,6 +20,13 @@ __pycache__/
 .idea/
 *.log
 
+# configuracion local de Claude Code: skills instaladas, permisos y ajustes de
+# sesion. Es herramienta de trabajo, no parte del pipeline, y su procedencia y
+# licencias quedan documentadas en .claude/skills/README.md. Si algun dia se
+# quiere que las skills viajen con el repositorio, hay que quitar esta linea y
+# versionar solo .claude/skills/, nunca .claude/settings.local.json.
+/.claude/
+
 # credenciales: la conexion a DWSES usa autenticacion integrada de Windows y no
 # guarda secretos, pero si algun dia se pasa a usuario y contrasena tiene que
 # ser por variable de entorno, nunca en el codigo

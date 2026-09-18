@@ -61,6 +61,39 @@ migra gratis, ver esa decisión, sección "Migración de caché"). Lee BD y
 `CACHE_CORRECCIONES`; escribe `TRIAGE_LIMPIO`, `REPORTE_CAMBIOS`, `NOTAS_DESCARTADAS`,
 `CACHE_CORRECCIONES`.
 
+**`prompt_normalizacion.py`** (145) — Fase 7 (extracción por modelo local, en
+evaluación). Texto único del prompt que reescribe una nota de triage como motivo de
+consulta normalizado, más `VERSION` y `construir(nota)`. `VERSION` etiqueta la columna
+`corrida` de los CSV de resultado: al cambiar el prompt hay que subirla, y las corridas
+nuevas se escriben debajo de las viejas sin pisarlas. `construir` inserta antes de la
+nota el bloque que devuelve `glosario.bloque()`. El docstring guarda el historial medido
+de v1 a v1.3 y por qué se descartó cada variante. Importa `glosario`. Ver
+`HANDOFF.md` §11.
+
+**`glosario.py`** (150) — Fase 7. Busca, para una nota concreta, qué entradas de
+`datos/diccionario_siglas.json` y `datos/diccionario_coloquial.json` aparecen en ella, y
+devuelve solo esas. `buscar` (equivalencias, nombres propios, erratas), `bloque` (el
+trozo de prompt ya formateado), `_aparece` (coincidencia por palabra completa, sin
+tildes; el límite de palabra evita que `pop` case dentro de `popo`). Respeta las
+políticas que declaran los propios diccionarios: solo expande `_grupos_expandibles`,
+bloquea `_siglas_ambiguas` y honra las listas `contexto`. Se pasa solo lo que aparece en
+la nota, nunca el glosario entero: está medido que el modelo copia cualquier palabra que
+lea en el prompt (`HANDOFF.md` §11). Sin dependencias internas.
+
+**`correr_modelo.py`** (200) — Fase 7. Motor de las corridas de comparación de modelos.
+`correr(modelo, etiqueta)` lee `banco_triage_50.csv`, llama a Ollama en localhost nota a
+nota y escribe `resultado_<etiqueta>.csv` **abriendo y cerrando el archivo en cada
+nota**, para que una corrida interrumpida conserve lo hecho y pueda reanudarse.
+`_verificar` falla antes de empezar si el modelo no está instalado y lista los que sí;
+`_migrar` añade las columnas `corrida` y `fecha` a un CSV anterior marcando sus filas
+como `v1`, con copia `.bak`; `_limpiar` quita el bloque `<think>` de los modelos que
+razonan en voz alta. No toca la base de datos. Configuración: `OLLAMA_HOST`,
+`num_ctx = 4096`, `temperature = 0`, `seed = 7`.
+
+**`correr_qwen3_8b.py`** (12) — Fase 7. Lanzador del modelo elegido: define `MODELO =
+"qwen3:8b"` y llama a `correr_modelo.correr`. `python -m NLP.correr_qwen3_8b`. Existió
+un archivo igual por cada modelo evaluado; se borraron al elegir (`HANDOFF.md` §11).
+
 ### 2.2 `nucleo/`
 
 **`morfologia.py`** (326) — Capa más baja: todo lo que se decide por la forma de la
@@ -1007,3 +1040,4 @@ las etapas (`PLAN.md` §4.2).
 | 2026-09-16 | E4.8 | Verificación sin cambios de código: `CATEGORIAS_PERMITIDAS = {"TYPOS"}` confirmada correcta sobre 600 notas (`AGREEMENT_NOUNS` se dispara 15 veces y 0 llegan al corrector). Decisión en `decisiones/2026-09-16-E4.8.md`, bitácora `bitacora/2026-09-16-E4.8.md` |
 | 2026-09-16 | E6.1 | Decisión de arquitectura: no se mueven paquetes a `fases/` en este refactor (dos de los seis quedan fuera de alcance del ítem); E6.2 divide archivos grandes dentro de su carpeta actual. `decisiones/2026-09-16-E6.1-arquitectura.md` |
 | 2026-09-16 | E6.0, E6.2 | Unificados los envoltorios idénticos de `sin_tildes` (`fase2_ortografia/contexto.py`, `fase3_normalizacion/normalizacion.py`) y el plegado en línea de `reduccion/reduccion.py:_es_clinica`, los tres llamando ahora a `nucleo/morfologia.sin_tildes` (orden de riesgo cero de `bitacora/2026-09-16-E6.3.md` §6). `evaluacion/auditoria.py` (851 líneas) dividido en `auditoria.py` (265, orquestador), `auditoria_constantes.py` (98, nueva ficha), `auditoria_medicion.py` (346, nueva ficha) y `auditoria_dano.py` (150, nueva ficha); líneas de §3 actualizadas. `NLP/tests -q` sigue en 38/38 tras cada paso. Bitácora `bitacora/2026-09-16-E6.2.md` |
+| 2026-09-17 | §2.1 | Fichas de `prompt_normalizacion.py`, `glosario.py`, `correr_modelo.py` y `correr_qwen3_8b.py` (fase 7, extraccion por modelo local; ver `HANDOFF.md` §11) |

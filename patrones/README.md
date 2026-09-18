@@ -15,6 +15,8 @@ python -m patrones                     # todo
 python -m patrones --potencia          # solo: ¿alcanza para algo?
 python -m patrones --bloque dia        # por dia en vez de por semana
 python -m patrones --comparar          # solo los tres agrupamientos
+python -m patrones --panorama          # el historico entero en un eje de tiempo
+python -m patrones --ventana           # y ademas abierto en pantalla
 python -m patrones --sin-base          # sin consultar DIM_TRIAGE
 ```
 
@@ -28,7 +30,8 @@ python -m patrones --sin-base          # sin consultar DIM_TRIAGE
 | `modelos.py` | el analisis principal: diseno cruzado por estratos de tiempo |
 | `agrupamiento.py` | K-Prototypes, HDBSCAN y jerarquico sobre bloques de tiempo |
 | `comparacion.py` | los pone en la misma mesa: estabilidad, ARI/AMI, forma |
-| `vistas.py` | los calendarios alineados y las matrices |
+| `panorama.py` | agrupa los TEMAS por la forma de su serie semanal y arma el panorama |
+| `vistas.py` | los calendarios alineados, las matrices y el panorama |
 | `rutas.py` | unico sitio que sabe donde vive cada archivo |
 
 ## La fecha se inyecta AQUI y no antes, y esa fue la decision correcta
@@ -227,6 +230,84 @@ es como se fabrica un resultado falso con todas las de la ley. Por eso
 unico archivo de `salidas/` y `datos/` que se versiona: su valor depende de
 haber sido escrito antes de ver los resultados, asi que tiene que quedar en el
 historial con su fecha.
+
+## El panorama: un eje de tiempo, cuatro familias de motivos
+
+Los calendarios de `vistas.py` son ocho figuras separadas, cada una con su escala.
+Para ver si un motivo sube cuando llueve hay que recordar una figura mientras se
+mira la siguiente, y el ojo no hace eso. El panorama pone todo en **un solo eje
+de tiempo compartido** —la lluvia arriba, la humedad y la temperatura debajo, los
+motivos en medio, el volumen de triage y la cobertura del motivo abajo— con las
+temporadas climáticas pintadas de fondo atravesando los cuatro paneles. Una
+coincidencia aparece entonces como una columna vertical.
+
+```bash
+python -m patrones --panorama --sin-base    # escribe las tres figuras
+python -m patrones --panorama --ventana     # y las abre para navegarlas
+# salidas/figuras/panorama.png            los cuatro paneles alineados
+# salidas/figuras/panorama_familias.png   qué motivos se mueven juntos
+# salidas/figuras/panorama_rezagos.png    la forma de la relación con la lluvia
+```
+
+### Se agrupan los temas antes de dibujarlos, y no es cosmético
+
+El tema mayor son 672 notas en 88 semanas: 7,5 por semana. Una línea de siete
+notas semanales es casi toda ruido de muestreo. Juntar los temas que **se mueven
+juntos** es la única palanca que sube la cuenta por serie sin esperar a la
+extracción completa: la familia mayor queda en 29 notas/semana.
+
+La idea es el modo *perfil (correlación)* del Time Series Clustering de ArcGIS
+—agrupar series que suben y bajan a la vez, sin importar su tamaño— pero aplicada
+a los **temas** y no a lugares. Esa herramienta agrupa celdas de un mapa y aquí
+hay un solo lugar: el hospital. Se aprovecha el criterio, no el producto, y así
+el cálculo se queda dentro del repositorio y es reproducible.
+
+Tres trampas y cómo se esquiva cada una, en `panorama.py`:
+
+| trampa | qué pasaría | qué se hace |
+| --- | --- | --- |
+| la tendencia del denominador | la cobertura cae 9 puntos/año: sobre conteos **todos** los temas bajan a la vez y sale una familia única que significa «el año va pasando» | se agrupa sobre la **proporción** respecto a las notas procesadas de esa semana |
+| la composición | las proporciones de una semana suman uno, así que un tema que sube obliga a los demás a bajar: correlaciones negativas fabricadas por la aritmética | **log-ratio centrado** (CLR) de Aitchison, con el resto de la composición incluido como una parte más |
+| el ciclo semanal | es la señal mayor de toda la serie y haría que todo correlacione con todo | el bloque es la **semana**: cada bloque tiene exactamente un lunes y un domingo |
+
+### Y lo primero que dice el resultado es que no se lo crea
+
+El criterio no es la silueta: es la **estabilidad**, igual que en
+`comparacion.py`. Se recalculan las correlaciones con el 80% de las semanas, 200
+veces, y se mira con Jaccard si cada familia reaparece. Se remuestrean las
+*semanas* y no los temas porque lo escaso —lo que hace frágil la correlación— son
+las 88 semanas.
+
+Sobre el corpus actual: **1 de 4 familias reaparece** (F2, 0,78). Las otras tres
+se disuelven (0,42, 0,43 y 0,37). Las disueltas se dibujan con línea punteada y
+marcadas `[INESTABLE]` en la leyenda, y su línea **no se interpreta**: no es un
+hallazgo débil, es una partición del ruido que el algoritmo devolvió porque se le
+pidió devolver algo.
+
+Hay una segunda señal de lo mismo, y conviene tenerla escrita: al quitar **una
+sola semana** incompleta del final, la partición pasó de 12/10/4/4 temas a
+10/9/8/3. Un agrupamiento que se reordena entero por una semana no está midiendo
+la estructura de los motivos.
+
+### Lo que hoy se ve en las figuras
+
+- **La cobertura del motivo domina el panel de abajo**: baja de ~85% a ~75% a lo
+  largo de la ventana. Es la razón de que ninguna serie de conteos sirva.
+- **La temperatura es una recta.** Va dibujada con escala fija de ±2,5 °C justo
+  para que se vea: es más convincente verla plana que leer que lo está.
+- **El perfil de rezagos no tiene forma.** Las cuatro familias zigzaguean entre
+  −0,12 y +0,12 sin subir, hacer máximo y bajar, que es como se vería un efecto
+  real. Con 56 cifras sin corregir, que la mayor ronde p=0,005 es lo que pasa
+  cuando no hay nada.
+- **Hay un cambio de nivel a mediados de 2025** en la composición: F2 pasa de ~5%
+  a ~18% entre julio y septiembre y no vuelve. No coincide con nada del panel de
+  lluvia. Antes de buscarle explicación climática hay que descartar que sea de la
+  tubería —un cambio en el agrupamiento de la fase 7 o en cómo se escribe el
+  motivo—, y eso se mira en `clustering/salidas/validacion.txt`, no aquí.
+
+Nada de esto es una prueba y no gasta ninguna. El orden sigue siendo mirar
+primero y probar después, contra datos que no se usaron para mirar: lo que se vea
+aquí se escribe en `datos/variables.csv` **antes** de correr `--modelar`.
 
 ## Lo que falta, en orden
 
