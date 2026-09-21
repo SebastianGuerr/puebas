@@ -36,11 +36,30 @@ EL NOMBRE NO BASTA, TAMBIEN VA UN EJEMPLO
 """
 
 import re
+import unicodedata
 
 import numpy as np
 
-from NLP.nucleo import morfologia
 from clustering import rutas
+
+# Plegado de acentos. Vivia en NLP/nucleo/morfologia.py, que se retiro al
+# sustituir el pipeline de fases por el modelo; es lo unico que se usaba de
+# alli, asi que se trae aqui en vez de mantener la dependencia.
+_CENTINELA_ENE = "\x00"
+
+
+def sin_tildes(palabra):
+    """
+    Pliega los acentos conservando la eñe, que en castellano es una letra
+    distinta y no una vocal acentuada.
+
+        'clavícula' -> 'clavicula'
+        'año'       -> 'año'
+    """
+    texto = str(palabra).replace("ñ", _CENTINELA_ENE).replace("Ñ", _CENTINELA_ENE * 2)
+    plano = "".join(c for c in unicodedata.normalize("NFD", texto)
+                    if not unicodedata.combining(c))
+    return plano.replace(_CENTINELA_ENE * 2, "Ñ").replace(_CENTINELA_ENE, "ñ")
 
 # Cuantas palabras forman el nombre. Tres es lo que cabe en una leyenda y en
 # una columna de CSV sin dejar de decir algo.
@@ -67,7 +86,7 @@ def palabras_vacias():
     for linea in ruta.read_text(encoding="utf-8").splitlines():
         linea = linea.strip()
         if linea and not linea.startswith("#"):
-            vacias.add(morfologia.sin_tildes(linea.lower()))
+            vacias.add(sin_tildes(linea.lower()))
     return vacias
 
 
@@ -85,7 +104,7 @@ def partir(texto, vacias):
     es la que nombra bien el cluster, y la coloquial es la que explica por que
     quedaron juntas frases que no comparten terminologia.
     """
-    plano = morfologia.sin_tildes(str(texto).lower())
+    plano = sin_tildes(str(texto).lower())
     return [p for p in RE_PALABRA.findall(plano) if p not in vacias]
 
 

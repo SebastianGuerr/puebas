@@ -822,7 +822,7 @@ def externa(textos, etiquetas, catalogo=None):
                  in enumerate(contenido.get("_prioridad_categorias", []))}
 
     # Las variantes se prueban de mas larga a mas corta: 'dolor abdominal' debe
-    # ganarle a 'dolor', igual que hace FlashText en extraccion.py.
+    # ganarle a 'dolor', igual que hace FlashText.
     variantes = sorted(
         ((texto.lower(), datos["categoria"])
          for datos in contenido["sintomas"].values()
@@ -885,31 +885,29 @@ def truncamiento(limite=None):
     un texto cortado se vectoriza a medias y cae en el grupo equivocado sin que
     nada avise.
 
-    EL DOCSTRING DE embedding/modelo.py JUSTIFICA 128 CON UN NUMERO QUE NO ES
-        Dice que la mediana es 6 palabras y el maximo 60, 'con 128 tokens entra
-        el peor caso entero y sobra sitio'. El error esta en confundir palabras
-        con tokens: sobre este corpus bge-m3 gasta 1,99 tokens por palabra -- el
-        vocabulario espanol clinico se parte mucho -- asi que 60 palabras son
-        unos 120 tokens y el margen que se creia tener no existe.
+    CONTAR PALABRAS NO ES CONTAR TOKENS, Y AQUI YA SE FALLO DOS VECES
+        La primera con bge-m3: se justifico la ventana diciendo 'maximo 60
+        palabras, luego 60 tokens', cuando gastaba 1,99 tokens por palabra.
+        La segunda con SapBERT-es: se dijo 'maximo 24 palabras' mirando una
+        muestra de 257 filas, y con 541 el maximo real era 113 palabras.
 
-        Medido sobre el vocabulario real: mediana 13 tokens, percentil 99 en 95
-        y maximo 170. Se truncan 10 textos de 5.020 (0,20%), que son 10 notas
-        de 6.751 (0,15%), y el peor pierde 42 tokens.
+        Estimar tokens multiplicando palabras es lo que produce el error, asi
+        que aqui no se estima: se le pregunta al tokenizador del modelo que
+        este configurado. Los numeros de referencia viven en el almacen
+        (columna 'tokens'), no en este parrafo.
 
-    LA CONCLUSION IGUAL AGUANTA, PERO POR POCO Y HAY QUE VIGILARLA
-        0,15% de las notas es despreciable y la decision de 128 se sostiene. Lo
-        que no se sostiene es el razonamiento escrito, y por eso esto se mide en
-        cada corrida en vez de confiar en el: los textos largos son las notas de
-        ingreso con antecedentes, el tipo de nota que mas crece cuando se sumen
-        servicios nuevos al corpus.
+    NO SE LEE EL ALMACEN A MANO
+        Antes este validador abria el vocabulario y el indice por su cuenta.
+        Ahora pide la terna a embedding.almacen, que es el unico que sabe como
+        esta guardado.
     """
-    import pandas as pd
-
-    from embedding import modelo, rutas as rutas_emb
+    from embedding import almacen, modelo
 
     limite = limite or modelo.LONGITUD_MAXIMA
-    if not rutas_emb.VOCABULARIO.exists():
-        return {"error": "todavia no hay vocabulario"}
+    try:
+        textos, _, indice = almacen.cargar()
+    except SystemExit as error:
+        return {"error": str(error)}
 
     try:
         from transformers import AutoTokenizer
@@ -917,17 +915,11 @@ def truncamiento(limite=None):
     except Exception as error:
         return {"error": f"no se pudo cargar el tokenizador: {error}"}
 
-    vocabulario = pd.read_parquet(rutas_emb.VOCABULARIO)
-    indice = pd.read_parquet(rutas_emb.INDICE)
-
     largos = np.asarray(tokenizador(
-        vocabulario["texto"].tolist(),
+        textos["texto"].tolist(),
         add_special_tokens=True, return_length=True)["length"])
 
-    notas_por_fila = indice.groupby("fila").size()
-    pesos = np.array([notas_por_fila.get(fila, 0)
-                      for fila in range(len(vocabulario))])
-
+    pesos = textos["n_notas"].to_numpy()
     cortados = largos > limite
     return {
         "limite": int(limite),
@@ -939,7 +931,7 @@ def truncamiento(limite=None):
         "notas_cortadas": int(pesos[cortados].sum()),
         "notas": int(pesos.sum()),
         "tokens_por_palabra": float(np.mean(
-            largos / vocabulario["texto"].str.split().str.len().to_numpy())),
+            largos / textos["texto"].str.split().str.len().to_numpy())),
     }
 
 

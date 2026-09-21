@@ -1,90 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Prompt unico de normalizacion de motivos de consulta.
+"""Prompt de normalizacion de motivos de consulta. Lo consume NLP/procesar.py.
 
-Lo importan todos los `correr_*.py`, de modo que los modelos se comparan
-cambiando solo el modelo y nada mas.
+Antes de cada nota se le inyectan, via NLP/glosario.py, unicamente las entradas
+de los cuatro diccionarios de NLP/recursos/ que aparecen en ESA nota, y la regla
+15 le dice que esa lista manda sobre su propia interpretacion.
 
-VERSION marca la corrida. Los resultados se escriben DEBAJO de los anteriores en
-el mismo CSV, con su version al lado, para poder comparar que hacia el modelo
-antes y despues.
+LA REGLA QUE GOBIERNA CUALQUIER RETOQUE DE ESTE TEXTO
+    Cualquier palabra clinica concreta que se escriba en el prompt acaba
+    apareciendo en las respuestas, se ponga como ejemplo o como prohibicion.
 
-ESTADO ACTUAL: v1.4. Es v1.3 mas el acceso contextual a DIVIPOLA y al catalogo
-de sintomas del proyecto.
-Antes de cada nota se le inyectan, via NLP/glosario.py, unicamente las entradas de
-diccionario_siglas.json, diccionario_coloquial.json, lugares_colombia.csv y
-catalogo_sintomas.json que aparecen en ESA nota, y
-de correcciones_directas, y la regla 15 le dice que esa lista manda sobre su
-propia interpretacion. Solo lo que aparece en la nota, nunca el glosario entero:
-el modelo copia cualquier palabra que lea en el prompt.
+    Se aprendio probando: una version que quitaba los ejemplos volvio locuaz al
+    modelo y empezo a inventar diagnosticos; otra que destacaba "no inventes una
+    localizacion" hizo que respondiera justamente la localizacion que el propio
+    prompt nombraba como ejemplo de lo que NO habia que responder.
 
-En v1.3 se amplio el diccionario coloquial con 43 expresiones caldenses que no
-estaban (chuzones, entumida, brotada, popo, pipi, dolor bajito, cordada, picadas,
-un colorado...) y correcciones_directas con 8 erratas (motrada, cdolor, vitla,
-onculta, pacientre, meintra, vomiro, mordeura). Eso arregla dos cosas a la vez:
-el modelo recibe la equivalencia, y el corrector ortografico deja de estropear
-estas palabras, porque el diccionario es tambien su lista de no tocar. Hoy
-convierte `entumida` en `entubada` y `picadas` en `picaduras`.
+    Por eso el glosario se inyecta por nota y nunca entero, y por eso las reglas
+    10 a 14 hablan de categorias (una parte del cuerpo, un lado, una causa) sin
+    nombrar ningun termino clinico.
 
-AVISO SOBRE LA MEDICION: varias de esas equivalencias las propuso Claude y son
-las mismas que estan puestas como salida_esperada en el banco. Mientras un
-clinico no las valide, esas notas no miden si el modelo acierta, sino si sabe
-copiar del glosario. Las dudosas son dolor bajito, chuzones, picadas y un
-colorado.
-
-v1.1. Es v1 —el prompt con el que se evaluaron los siete modelos y
-se eligio qwen3:8b— con cinco reglas anadidas al final y una frase mas en la regla
-2. Las nueve reglas originales no se tocaron.
-
-Lo anadido sale de los fallos medidos en la corrida de v1 sobre las 50 notas:
-  - reglas 10 y 11, contra la invencion de anatomia y de mecanismo: T-40 "le duele
-    el pipi" salio como "dolor lumbar bilateral relacionado con micciones", donde
-    ni el sitio, ni el lado, ni la funcion estaban en la nota.
-  - regla 12, contra invertir lo que paso: en T-44 el paciente se cae DESDE un
-    triturador y la respuesta fue "trauma por trituracion de plastico".
-  - regla 13, contra el falso descarte: T-35 y T-39 tenian dolencia y salieron como
-    "sin motivo clinico", que borra al paciente de la cuenta diaria. En T-39 ademas
-    no respeto el texto exacto.
-  - la frase de la regla 2 y la regla 14, contra dejar el colombianismo crudo
-    (T-38, T-42).
-
-Al retocar este texto conviene recordar lo que costo aprender en v2, v3 y v4:
-cualquier palabra clinica concreta que se escriba en el prompt acaba apareciendo en
-las respuestas, se ponga como ejemplo o como prohibicion. Por eso las reglas nuevas
-hablan de categorias (una parte del cuerpo, un lado, una causa) y no nombran ningun
-termino clinico.
-
---- historial de lo que se probo y por que se descarto ----------------------
-
-v1 -> el que esta activo. Reglas numeradas y cuatro pares de ejemplo
-      "entrada -> salida". Respuestas cortas y contenidas. Sobre las 30 notas con
-      qwen3:8b acerto lo esencial en la mayoria; sus fallos conocidos son que
-      copio el ejemplo "trauma por aplastamiento en dedo" en T-04 (que habla de un
-      balon), invento lateralidad en T-03 y T-04, "pie" en T-22, una hernia activa
-      en T-27 (que es un postoperatorio) y "dificultad para dormir" en T-26.
-
-v2 -> se quitaron todos los pares de ejemplo y se explico el rol, el contexto y
-      para que sirve el texto de salida. Gano donde se esperaba (T-20 paso de
-      "sangrado nasal" a "epistaxis" y solto el bloque de la EPS; T-09 conservo el
-      adenocarcinoma; desaparecio la copia de ejemplos), pero volvio locuaz al
-      modelo, y al alargarse invento: "posible fractura de brazo izquierdo" en una
-      nota que solo dice ME CAI, "parto de pretermino" en una gestante de 38
-      semanas. Ademas rompio la consistencia entre T-02 y T-30, que v1 si tenia.
-
-v3 -> v2 con la brevedad de v1 recuperada y una revision final explicita. Quito
-      las invenciones grandes de v2 y conservo sus ganancias, pero siguio
-      inventando de forma concentrada: cinco de siete alucinaciones eran rellenar
-      una localizacion anatomica que la nota no daba. La revision final que pedia
-      el prompt no se ejecutaba.
-
-v4 -> seccion destacada contra la localizacion inventada, con la regla de que cada
-      palabra tiene que proceder de la nota. Salio peor: T-07 "ESTOY BROTADA" paso
-      a "dolor abdominal" y T-09 perdio el adenocarcinoma.
-
-La leccion que dejan v2, v3 y v4, y que conviene no olvidar al retocar este texto:
-**cualquier palabra concreta que aparezca en el prompt acaba en la salida, se
-ponga como ejemplo o como prohibicion.** En v1 el modelo copio los ejemplos, en v2
-se pego a "sin especificar" y en v4 a "dolor abdominal", que estaba escrito
-justamente como lo que NO habia que responder.
+El razonamiento de cada regla esta en NLP/docs/PROMPT.md.
 """
 
 from NLP import glosario

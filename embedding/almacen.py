@@ -1,277 +1,374 @@
 """
-El almacen de vectores. Guarda lo ya calculado y sabe decir que falta.
+El almacen: la tabla `embedding` de la base compartida.
 
-EL PROBLEMA QUE RESUELVE
-    triage_limpio.csv va a crecer agregando renglones, no rehaciendose entero.
-    Sin GPU, volver a vectorizar de cero en cada corrida es tirar horas para
-    obtener exactamente los mismos numeros. Este modulo es lo que hace que una
-    segunda corrida solo pague por lo que llego nuevo.
+EL ESQUEMA ENTERO SON DOS TABLAS
+    nota_triage   OID (PK)         la escribe NLP/, aqui solo se lee
+                  fecha_triage     HCTFECTRI, la fecha real del triage
+                  frase_original   HCTMOTCON sin tocar
+                  frase_procesada  lo que devolvio el modelo generador
 
-LA LLAVE ES EL TEXTO, NO EL OID
-    Podria guardarse un vector por OID, pero seria peor por dos motivos.
+    embedding     OID (PK, FK)     -> nota_triage.OID
+                  huella           sha256[:16] de la frase que se vectorizo
+                  modelo           con que modelo se calculo este vector
+                  tokens           cuantos tokens gasto la frase
+                  vector           FLOAT[768], normalizado a norma 1
 
-    El primero es el ahorro: el mismo motivo de consulta se repite muchisimo
-    ('dolor abdominal', 'fiebre'), y sobre la corrida de 28.095 notas habia
-    19.821 textos distintos. Guardando por texto se vectoriza un 30% menos.
+EL OID ES UNA COLUMNA, NO ENTRA AL VECTOR
+    Esa es la pregunta que este paquete existe para contestar bien. El texto
+    que se le da al modelo es la frase y nada mas: meter el OID dentro seria
+    ruido sin significado en un espacio semantico. Pero la FILA si lleva el
+    OID, asi que cada vector se identifica con una columna y la fecha se
+    consigue con un JOIN:
 
-    El segundo es la correccion. Si NLP/ mejora y una nota vieja pasa a tener
-    otro texto_embedding, con llave por OID el vector guardado quedaria pegado
-    a ese OID y seguiria usandose aunque ya no corresponda al texto. Con llave
-    por texto, un texto distinto es una huella distinta y se vectoriza sola: es
-    imposible que un vector quede desalineado de la frase que representa.
+        SELECT n.fecha_triage, e.vector
+        FROM embedding e JOIN nota_triage n USING (OID)
 
-    La huella es sha1 y no el hash() de Python, que va salteado por proceso y
-    daria un valor distinto en cada corrida.
+QUE HACE 'huella' Y POR QUE NO SOBRA
+    Es la unica columna que no se explica sola, asi que aqui va entera.
 
-QUE PASA SI SE CORTA A MEDIAS
-    El orden de escritura es siempre el mismo: primero los vectores al final
-    del binario, y solo despues el vocabulario que dice cuantos hay. Asi, un
-    corte deja como mucho vectores de sobra al final del archivo, nunca un
-    vocabulario que promete filas que no existen. abrir() detecta esa cola
-    suelta y la recorta, y lo que se perdio se recalcula en la corrida
-    siguiente porque su huella vuelve a faltar.
+    Guarda el sha256 de la frase CON LA QUE SE CALCULO ese vector. Sirve para
+    dos cosas, y las dos son cosas que sin ella no se pueden hacer:
+
+    1. DETECTAR UN VECTOR CADUCO. Si NLP/ reprocesa una nota y el modelo
+       devuelve otra frase, el vector guardado deja de corresponderle. Sin la
+       huella eso es invisible: la fila tiene su OID, tiene su vector, y nada
+       dice que el vector es de un texto que ya no existe. Con ella es una
+       comparacion:
+
+           WHERE e.huella <> sha256(n.frase_procesada)
+
+    2. NO VECTORIZAR DOS VECES LO MISMO. El mismo motivo de consulta se repite
+       muchisimo: sobre 596 notas hay 479 frases distintas. Antes de llamar al
+       modelo se agrupan las notas pendientes por huella, se codifica cada
+       texto distinto UNA vez y el mismo vector se escribe en todas las filas
+       que lo comparten. El vector se guarda repetido -- 768 float32 son 3 KB
+       por fila, y el corpus completo ocupa unos 290 MB -- pero se CALCULA una
+       sola vez, que es lo que cuesta.
+
+    Antes esto eran dos tablas (`frases` + `triage_frase`) para no repetir el
+    vector. Se quitaron: ahorraban disco, que sobra, a cambio de una tabla y un
+    JOIN de mas en todas las consultas.
+
+POR QUE LA POSICION YA NO ES LA LLAVE DE NADA
+    El diseno de antes del 2026-09-21 guardaba la matriz en un binario plano
+    sin cabecera y la correspondencia en archivos aparte. La llave era la
+    POSICION: el vector n empezaba en el byte n * dimension * 4. Nada dentro
+    del binario decia a que texto pertenecia cada vector, asi que una
+    desincronizacion era INDETECTABLE: se leian 4.096 bytes perfectamente
+    validos que eran de otra frase.
+
+    cargar() sigue devolviendo una columna 'fila' porque el clustering trabaja
+    con matrices, pero se calcula en cada lectura y no se guarda nunca. Una
+    posicion es una comodidad valida en memoria; como llave de persistencia es
+    lo que causo el problema.
 """
 
 import hashlib
-import json
-import os
-from datetime import datetime
 
 import numpy as np
-import pandas as pd
 
-from embedding import rutas
+from embedding import modelo, rutas
 
 
 def huella(texto):
     """
-    Identificador estable de un texto. Se recorta a 16 caracteres porque con
-    ese largo la probabilidad de choque sobre unos cientos de miles de frases
-    es despreciable, y el archivo pesa la mitad que con el sha1 completo.
+    La llave de contenido de una frase: sha256 de su texto, 16 hex.
+
+    Se trunca porque 64 bits sobran: con 40.000 frases la probabilidad de
+    colision es del orden de 1e-11.
+
+    Es sha256 y no el hash() de Python, que va salteado por proceso y daria una
+    llave distinta en cada ejecucion.
     """
-    return hashlib.sha1(texto.encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256(texto.encode("utf-8")).hexdigest()[:16]
 
 
-class Almacen:
-    """
-    Los tres archivos de salidas/ tratados como una sola cosa.
+# ==========================================================
+# ABRIR
+# ==========================================================
 
-    Se usa asi:
+def abrir(solo_lectura=False):
+    """Devuelve una conexion con el esquema ya creado."""
+    import duckdb
 
-        almacen = Almacen.abrir(dimension, modelo.identidad())
-        faltan = [t for t in textos if almacen.huella_de(t) not in almacen]
-        almacen.agregar(faltan, matriz)
-    """
-
-    def __init__(self, dimension, identidad, huellas, textos):
-        self.dimension = dimension
-        self.identidad = identidad
-        self.huellas = huellas      # lista, en el orden de las filas
-        self.textos = textos        # lista, alineada con huellas
-        self.fila = {h: i for i, h in enumerate(huellas)}
-        self.agregados = 0
-
-    # ------------------------------------------------------
-    # apertura y reparacion
-    # ------------------------------------------------------
-
-    @classmethod
-    def abrir(cls, dimension, identidad, rehacer=False):
-        """
-        Levanta el almacen de disco, o crea uno vacio si no habia.
-
-        Se niega a continuar si el manifiesto guardado dice que la matriz se
-        lleno con otro modelo u otros parametros: esos vectores no viven en el
-        mismo espacio que los que se van a calcular ahora, y apendarlos daria
-        una matriz mitad y mitad que ningun clustering puede interpretar. Para
-        ese caso esta --rehacer, que empieza de cero a proposito.
-        """
-        if rehacer or not rutas.MANIFIESTO.exists():
-            return cls(dimension, identidad, [], [])
-
-        manifiesto = json.loads(rutas.MANIFIESTO.read_text(encoding="utf-8"))
-        guardada = manifiesto.get("identidad", {})
-        if guardada != identidad:
-            raise SystemExit(
-                "El almacen existente se lleno con otros parametros.\n"
-                f"  guardado : {guardada}\n"
-                f"  actual   : {identidad}\n"
-                "Los vectores no son comparables entre si. Corre con --rehacer "
-                "para empezar de cero, o devuelve embedding/modelo.py a los "
-                "valores anteriores.")
-
-        if manifiesto.get("dimension") != dimension:
-            raise SystemExit(
-                f"El almacen tiene vectores de {manifiesto.get('dimension')} "
-                f"dimensiones y el modelo produce {dimension}. Usa --rehacer.")
-
-        # Manifiesto sin vocabulario: una corrida que registro su identidad pero
-        # no llego a vectorizar nada. Pasa de verdad, y no es un error: si se
-        # lanza esto contra un triage_limpio.csv que todavia no tiene notas
-        # -- porque NLP/procesar.py aun no ha cerrado su primer bloque -- no hay
-        # ni un texto que guardar. El almacen simplemente esta vacio.
-        if not rutas.VOCABULARIO.exists():
-            return cls(dimension, identidad, [], [])
-
-        vocabulario = pd.read_parquet(rutas.VOCABULARIO)
-        huellas = vocabulario["huella"].tolist()
-        textos = vocabulario["texto"].tolist()
-
-        # Cola suelta de una corrida cortada a la mitad: hay vectores escritos
-        # que el vocabulario todavia no reclama.
-        #
-        # Recortarla es solo higiene, no correccion: quien lee pide siempre
-        # len(huellas) filas y nunca mira mas alla, y quien apende escribe en la
-        # posicion exacta que le toca y pisa la cola. Por eso el recorte es un
-        # intento y no un requisito: en Windows falla si alguien tiene un memmap
-        # abierto sobre el archivo, y en ese caso seguir es perfectamente sano.
-        bytes_por_fila = dimension * np.dtype(np.float32).itemsize
-        en_disco = (rutas.VECTORES.stat().st_size // bytes_por_fila
-                    if rutas.VECTORES.exists() else 0)
-        if en_disco > len(huellas):
-            sobran = en_disco - len(huellas)
-            try:
-                with open(rutas.VECTORES, "r+b") as binario:
-                    binario.truncate(len(huellas) * bytes_por_fila)
-                print(f"  se recortaron {sobran:,} vectores de una corrida "
-                      f"interrumpida; se recalculan si hacen falta")
-            except PermissionError:
-                print(f"  quedaron {sobran:,} vectores sueltos de una corrida "
-                      f"interrumpida; se ignoran y se sobrescriben")
-        elif en_disco < len(huellas):
-            # No deberia ocurrir con el orden de escritura de agregar(), pero si
-            # alguien borro el binario a mano el vocabulario miente. Se recorta
-            # el vocabulario para que vuelvan a faltar esas huellas.
-            print(f"  el vocabulario prometia {len(huellas):,} filas y el "
-                  f"binario tiene {en_disco:,}; se ajusta al binario")
-            huellas = huellas[:en_disco]
-            textos = textos[:en_disco]
-
-        return cls(dimension, identidad, huellas, textos)
-
-    # ------------------------------------------------------
-    # consulta
-    # ------------------------------------------------------
-
-    def __contains__(self, huella_texto):
-        return huella_texto in self.fila
-
-    def __len__(self):
-        return len(self.huellas)
-
-    def matriz(self):
-        """
-        La matriz completa como memmap de solo lectura: se pagina desde disco en
-        vez de cargarse entera en RAM, que con la tabla completa serian cientos
-        de megas para nada.
-        """
-        if not self.huellas:
-            return np.empty((0, self.dimension), dtype=np.float32)
-        return np.memmap(
-            rutas.VECTORES, dtype=np.float32, mode="r",
-            shape=(len(self.huellas), self.dimension))
-
-    # ------------------------------------------------------
-    # escritura
-    # ------------------------------------------------------
-
-    def agregar(self, textos_nuevos, matriz):
-        """
-        Apenda vectores al final y actualiza el vocabulario.
-
-        El orden importa y es el que describe el docstring del modulo: primero
-        el binario y con fsync, despues el vocabulario. Al reves, un corte entre
-        las dos escrituras dejaria un vocabulario reclamando filas inexistentes.
-
-        Se escribe buscando la posicion exacta y no en modo "ab", que agregaria
-        DESPUES de una posible cola suelta y dejaria un hueco de basura en medio
-        de la matriz. Con seek, la fila que toca cae donde el vocabulario dice
-        que cae, haya o no cola, y de paso la pisa.
-        """
-        if len(textos_nuevos) != len(matriz):
-            raise ValueError(
-                f"{len(textos_nuevos)} textos contra {len(matriz)} vectores")
-        if not len(matriz):
-            return
-
-        crudo = np.ascontiguousarray(matriz, dtype=np.float32).tobytes()
-        inicio = len(self.huellas) * self.dimension * np.dtype(np.float32).itemsize
-
-        if not rutas.VECTORES.exists():
-            rutas.VECTORES.touch()
-        with open(rutas.VECTORES, "r+b") as binario:
-            binario.seek(inicio)
-            binario.write(crudo)
-            try:
-                binario.truncate()   # se lleva la cola sobrante, si la habia
-            except OSError:
-                pass                 # higiene, no correccion; ver abrir()
-            binario.flush()
-            os.fsync(binario.fileno())
-
-        for texto in textos_nuevos:
-            h = huella(texto)
-            self.fila[h] = len(self.huellas)
-            self.huellas.append(h)
-            self.textos.append(texto)
-
-        self.agregados += len(textos_nuevos)
-        self._guardar_vocabulario()
-
-    def _guardar_vocabulario(self):
-        pd.DataFrame({"huella": self.huellas, "texto": self.textos}).to_parquet(
-            rutas.VOCABULARIO, index=False)
-
-    def guardar_manifiesto(self, extra=None):
-        """
-        Deja constancia de con que se lleno la matriz. Sin esto no hay forma de
-        saber si dos corridas son comparables, ni de detectar que alguien movio
-        un parametro entre una y otra.
-        """
-        manifiesto = {
-            "identidad": self.identidad,
-            "dimension": self.dimension,
-            "textos_distintos": len(self.huellas),
-            "actualizado": datetime.now().isoformat(timespec="seconds"),
-        }
-        manifiesto.update(extra or {})
-        rutas.MANIFIESTO.write_text(
-            json.dumps(manifiesto, ensure_ascii=False, indent=2), encoding="utf-8")
-        return manifiesto
-
-
-def cargar(oids=None):
-    """
-    Punto de entrada para quien CONSUME los embeddings (la fase de clustering).
-
-    Devuelve la pareja (indice, matriz), donde indice es un DataFrame con OID,
-    huella y fila, y matriz es el memmap completo. Para tener un vector por OID,
-    en el mismo orden del indice:
-
-        indice, matriz = almacen.cargar()
-        vectores = matriz[indice["fila"].to_numpy()]
-
-    Ese paso es el que reparte la fila unica de un texto repetido entre todos
-    los OID que lo comparten. Con oids se filtra a un subconjunto.
-    """
-    if not rutas.MANIFIESTO.exists():
+    if solo_lectura and not rutas.BASE_DATOS.exists():
         raise SystemExit(
-            "No hay embeddings todavia. Corre antes 'python -m embedding.vectorizar'.")
+            f"No existe {rutas.BASE_DATOS}.\n"
+            f"La crea 'python -m NLP.procesar'; los vectores los anade "
+            f"'python -m embedding.vectorizar'.")
 
-    manifiesto = json.loads(rutas.MANIFIESTO.read_text(encoding="utf-8"))
-    dimension = manifiesto["dimension"]
-    total = manifiesto["textos_distintos"]
+    try:
+        con = duckdb.connect(str(rutas.BASE_DATOS), read_only=solo_lectura)
+    except Exception as error:
+        # El caso tipico: la extension de DuckDB en VS Code tiene el archivo.
+        # Sin este mensaje el error de DuckDB queda enterrado en una traza y
+        # parece un fallo del pipeline, que es lo que paso el 2026-09-21.
+        if "already open in" in str(error):
+            culpable = next((linea.strip() for linea in str(error).splitlines()
+                             if ".exe" in linea), "otra aplicacion")
+            raise SystemExit(
+                f"{rutas.BASE_DATOS.name} la tiene tomada:\n"
+                f"    {culpable}\n\n"
+                f"DuckDB admite un solo escritor. Cierra esa conexion y vuelve "
+                f"a intentar.\n"
+                f"En VS Code: Ctrl+Shift+P -> 'DuckDB: Detach Database'.")
+        raise
+    if not solo_lectura:
+        _crear_esquema(con)
+    return con
 
-    indice = pd.read_parquet(rutas.INDICE)
-    if oids is not None:
-        indice = indice[indice["OID"].isin(set(oids))].reset_index(drop=True)
 
-    # np.memmap no admite un archivo de cero filas, y encima puede que el
-    # binario ni exista: es el estado normal de un almacen que registro su
-    # identidad pero todavia no tiene ningun texto.
-    if total == 0 or not rutas.VECTORES.exists():
-        return indice, np.empty((0, dimension), dtype=np.float32)
+def _crear_esquema(con):
+    # nota_triage la crea NLP/, pero embedding/ no importa NLP/ y la necesita
+    # para su clave foranea. CREATE IF NOT EXISTS es idempotente y deja la
+    # misma definicion; si NLP/ ya corrio, esto no hace nada.
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS nota_triage (
+            OID              BIGINT PRIMARY KEY,
+            fecha_triage     TIMESTAMP,
+            frase_original   VARCHAR,
+            frase_procesada  VARCHAR
+        );
+    """)
+    con.execute(f"""
+        CREATE TABLE IF NOT EXISTS embedding (
+            OID     BIGINT PRIMARY KEY REFERENCES nota_triage(OID),
+            huella  VARCHAR NOT NULL,
+            modelo  VARCHAR NOT NULL,
+            tokens  INTEGER,
+            vector  FLOAT[{modelo.DIMENSION}] NOT NULL
+        );
+    """)
 
-    matriz = np.memmap(rutas.VECTORES, dtype=np.float32, mode="r",
-                       shape=(total, dimension))
-    return indice, matriz
+
+# ==========================================================
+# IDENTIDAD DEL MODELO
+# ==========================================================
+
+def comprobar_identidad(con):
+    """
+    Se niega a continuar si la tabla ya tiene vectores de otro modelo.
+
+    Mezclar vectores de dos modelos produce una matriz mitad y mitad: no da
+    ningun error, y el unico sintoma es que el clustering sale mal sin que nada
+    diga por que. Es el fallo que mas cuesta encontrar, asi que se bloquea.
+
+    La comprobacion no necesita una tabla de metadatos aparte: la identidad
+    esta en la columna `modelo` de cada fila, que es donde pertenece.
+    """
+    guardados = [fila[0] for fila in con.execute(
+        "SELECT DISTINCT modelo FROM embedding").fetchall()]
+    ajenos = [m for m in guardados if m != modelo.MODELO]
+    if ajenos:
+        raise SystemExit(
+            f"La tabla `embedding` ya tiene vectores de otro modelo:\n"
+            f"    guardado(s): {ajenos}\n"
+            f"    actual:      {modelo.MODELO}\n\n"
+            f"Mezclarlos daria vectores de dos espacios distintos en la misma "
+            f"tabla.\nPara empezar de cero: "
+            f"python -m embedding.vectorizar --rehacer")
+
+
+# ==========================================================
+# ESCRIBIR
+# ==========================================================
+
+def pendientes(con, utiles):
+    """
+    Las notas que hay que vectorizar: las que no tienen vector, y las que lo
+    tienen calculado sobre una frase que ya no es la suya.
+
+    `utiles` trae OID, texto y huella. Se compara la huella de ahora contra la
+    guardada; ese es el trabajo de esa columna.
+    """
+    import pyarrow as pa
+
+    tabla = pa.table({"OID": pa.array([int(o) for o in utiles["OID"]],
+                                      type=pa.int64()),
+                      "huella": pa.array(utiles["huella"].tolist(),
+                                         type=pa.string())})
+    con.execute("CREATE OR REPLACE TEMP TABLE quiero AS SELECT * FROM tabla")
+    filas = con.execute("""
+        SELECT q.OID FROM quiero q
+        LEFT JOIN embedding e USING (OID)
+        WHERE e.OID IS NULL OR e.huella <> q.huella
+    """).fetchall()
+    faltan = {fila[0] for fila in filas}
+    return utiles[utiles["OID"].isin(faltan)]
+
+
+def guardar(con, oids, huellas, matriz, tokens=None):
+    """
+    Mete o actualiza vectores en una sola transaccion.
+
+    O entran todos o no entra ninguno: no existe el estado a medias que el
+    diseno anterior tenia que prevenir con un orden de escritura y fsync.
+    """
+    import pyarrow as pa
+
+    if len(oids) == 0:
+        return 0
+    if not (len(oids) == len(huellas) == len(matriz)):
+        raise ValueError("oids, huellas y matriz tienen que ir alineados")
+
+    matriz = np.ascontiguousarray(matriz, dtype=np.float32)
+    vectores = pa.FixedSizeListArray.from_arrays(
+        pa.array(matriz.reshape(-1), type=pa.float32()), modelo.DIMENSION)
+    nuevas = pa.table({
+        "OID": pa.array([int(o) for o in oids], type=pa.int64()),
+        "huella": pa.array(list(huellas), type=pa.string()),
+        "modelo": pa.array([modelo.MODELO] * len(oids), type=pa.string()),
+        "tokens": pa.array(list(tokens) if tokens is not None
+                           else [None] * len(oids), type=pa.int32()),
+        "vector": vectores,
+    })
+
+    con.execute("BEGIN TRANSACTION")
+    try:
+        # DO UPDATE y no DO NOTHING: si la nota cambio de frase, el vector
+        # viejo tiene que irse. Con DO NOTHING se quedaria pegado a un texto
+        # que ya no existe, en silencio.
+        con.execute("""
+            INSERT INTO embedding (OID, huella, modelo, tokens, vector)
+            SELECT OID, huella, modelo, tokens, vector FROM nuevas
+            ON CONFLICT (OID) DO UPDATE SET
+                huella = excluded.huella,
+                modelo = excluded.modelo,
+                tokens = excluded.tokens,
+                vector = excluded.vector
+        """)
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    return len(oids)
+
+
+def limpiar_huerfanos(con):
+    """
+    Borra vectores de notas que ya no estan en nota_triage.
+
+    No deberia pasar -- la clave foranea lo impide al borrar -- pero si alguna
+    vez se limpia la tabla de notas por otra via, esto lo deja consistente.
+    """
+    return con.execute("""
+        DELETE FROM embedding
+        WHERE OID NOT IN (SELECT OID FROM nota_triage)
+    """).fetchall()
+
+
+# ==========================================================
+# LEER
+# ==========================================================
+
+def cargar(minimo_notas=1, con=None):
+    """
+    Devuelve la terna (textos, vectores, indice) que consume el clustering.
+
+    textos    un renglon por FRASE DISTINTA: fila, huella, texto, n_notas.
+    vectores  matriz float32 alineada con textos, ya normalizada.
+    indice    OID -> huella -> fila, para devolverle su grupo a cada nota.
+
+    SE AGRUPA POR FRASE DISTINTA AUNQUE LA TABLA GUARDE UNA FILA POR NOTA
+        HDBSCAN agrupa por densidad. Dos notas con la misma frase producen dos
+        puntos en la MISMA coordenada, a distancia cero: un pico de densidad
+        infinita que no corresponde a ninguna estructura del corpus sino a que
+        esa frase se repite. Las frases muy frecuentes se volverian nucleos
+        artificiales y las raras caerian como ruido a su alrededor.
+
+        Por eso se agrupa por huella aqui, en la LECTURA. El vector es
+        identico en todas las filas que comparten huella, asi que any_value()
+        es exacto y no una aproximacion.
+
+    'fila' se genera aqui y no se guarda en ninguna parte: es el renglon de la
+    matriz que se acaba de construir, valido solo para esta lectura.
+    """
+    import pyarrow as pa
+
+    propia = con is None
+    if propia:
+        con = abrir(solo_lectura=True)
+    try:
+        arrow = con.execute("""
+            SELECT e.huella,
+                   any_value(n.frase_procesada) AS texto,
+                   count(*)                     AS n_notas,
+                   any_value(e.vector)          AS vector
+            FROM embedding e
+            JOIN nota_triage n USING (OID)
+            GROUP BY e.huella
+            HAVING count(*) >= ?
+            ORDER BY e.huella
+        """, [minimo_notas]).arrow()
+        if isinstance(arrow, pa.RecordBatchReader):
+            arrow = arrow.read_all()
+
+        if arrow.num_rows == 0:
+            raise SystemExit(
+                "La tabla `embedding` esta vacia.\n"
+                "Corre 'python -m embedding.vectorizar'.")
+
+        textos = arrow.select(["huella", "texto", "n_notas"]).to_pandas()
+        textos.insert(0, "fila", np.arange(len(textos), dtype=np.int64))
+
+        plano = arrow.column("vector").combine_chunks().flatten().to_numpy(
+            zero_copy_only=False)
+        vectores = np.ascontiguousarray(
+            plano.reshape(len(textos), -1), dtype=np.float32)
+
+        indice = con.execute("SELECT OID, huella FROM embedding").df()
+        indice = indice.merge(textos[["huella", "fila"]], on="huella",
+                              how="inner")
+        return textos, vectores, indice
+    finally:
+        if propia:
+            con.close()
+
+
+def estadisticas(con=None):
+    propia = con is None
+    if propia:
+        con = abrir(solo_lectura=True)
+    try:
+        notas, frases, truncados, tokens_max, modelos = con.execute("""
+            SELECT count(*), count(DISTINCT huella),
+                   count(*) FILTER (WHERE tokens > ?), max(tokens),
+                   list(DISTINCT modelo)
+            FROM embedding
+        """, [modelo.LONGITUD_MAXIMA]).fetchone()
+        sin_vector, sin_fecha = con.execute("""
+            SELECT (SELECT count(*) FROM nota_triage n
+                    LEFT JOIN embedding e USING (OID) WHERE e.OID IS NULL),
+                   (SELECT count(*) FROM nota_triage WHERE fecha_triage IS NULL)
+        """).fetchone()
+        return {
+            "notas": notas, "frases": frases,
+            "truncados": truncados, "tokens_max": tokens_max,
+            "modelos": modelos, "notas_sin_vector": sin_vector,
+            "notas_sin_fecha": sin_fecha,
+            "megabytes": round(rutas.BASE_DATOS.stat().st_size / 1e6, 1)
+            if rutas.BASE_DATOS.exists() else 0.0,
+        }
+    finally:
+        if propia:
+            con.close()
+
+
+def vaciar():
+    """
+    Deja `embedding` vacia para que --rehacer empiece de cero.
+
+    NO borra el archivo. La base la comparte con NLP/, que guarda ahi
+    `nota_triage`: el resultado de horas de generacion contra la base clinica,
+    que no se puede rehacer sin volver a consultarla. Borrar el archivo entero
+    por comodidad tiraria eso.
+    """
+    if not rutas.BASE_DATOS.exists():
+        return {"vectores": 0}
+    con = abrir()
+    try:
+        vectores = con.execute("SELECT count(*) FROM embedding").fetchone()[0]
+        con.execute("DELETE FROM embedding")
+        return {"vectores": vectores}
+    finally:
+        con.close()

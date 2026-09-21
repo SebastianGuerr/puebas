@@ -1,0 +1,144 @@
+{
+  "cuando": "2026-09-21T11:27:51",
+  "base": "C:\\Users\\ad6708\\Documents\\puebas\\salidas\\triage.duckdb",
+  "modelo": {
+    "modelo": "BSC-NLP4BIA/SapBERT-from-roberta-base-biomedical-clinical-es",
+    "pooling": "cls",
+    "longitud_maxima": 128,
+    "dimension": 768,
+    "normalizado": true,
+    "tipo": "float32"
+  },
+  "notas": 596,
+  "1_estructura": {
+    "filas": 479,
+    "dimension": 768,
+    "dimension_esperada": 768,
+    "dimension_ok": true,
+    "dtype": "float32",
+    "nan": 0,
+    "inf": 0,
+    "norma_min": 0.9999998807907104,
+    "norma_max": 1.0000001192092896,
+    "norma_desvio_max": 1.1920928955078125e-07,
+    "vectores_nulos": 0,
+    "alineada_con_textos": true
+  },
+  "2_colapso": {
+    "vectores_distintos": 479,
+    "vectores_repetidos": 0,
+    "pares_sobre_0999": 0,
+    "ejemplos": []
+  },
+  "3_dimensiones": {
+    "varianza_cero": 0,
+    "varianza_min": 0.00044037989573553205,
+    "varianza_max": 0.004294831305742264,
+    "dimension_efectiva": 37.3,
+    "componentes_para_90pct": 102,
+    "varianza_de_la_1a_componente": 0.0959
+  },
+  "4_anisotropia": {
+    "coseno_medio": 0.2855,
+    "desviacion": 0.151,
+    "p1": -0.0049,
+    "p50": 0.2711,
+    "p99": 0.6946,
+    "rango_98pct": 0.6995,
+    "referencia_bge_m3": {
+      "media": 0.469,
+      "desviacion": 0.087
+    }
+  },
+  "5_separacion": {
+    "n_frases": 380,
+    "coseno_misma_categoria": 0.4075,
+    "coseno_distinta_categoria": 0.2937,
+    "brecha": 0.1138,
+    "pares_misma": 10440
+  },
+  "6_hubness": {
+    "k": 10,
+    "asimetria": 0.772,
+    "media": 10.0,
+    "maximo": 33,
+    "nunca_vecino": 4,
+    "mayores_hubs": [
+      [
+        "dolor abdominal y vomito",
+        33
+      ],
+      [
+        "dolor abdominal desde hace 2 dias con emesis ",
+        29
+      ],
+      [
+        "dolor abdominal, mareo, cefalea",
+        29
+      ],
+      [
+        "dolor torácico con dificultad respiratoria",
+        28
+      ],
+      [
+        "cefalea, nausea, mareo",
+        27
+      ]
+    ]
+  },
+  "7_determinismo": {
+    "frases_probadas": 24,
+    "diferencia_maxima": 0.0,
+    "identico": true
+  },
+  "veredicto": {
+    "pasadas": 11,
+    "total": 11,
+    "detalle": [
+      [
+        "dimension correcta",
+        true
+      ],
+      [
+        "sin NaN ni infinitos",
+        true
+      ],
+      [
+        "normalizados a 1",
+        true
+      ],
+      [
+        "sin vectores nulos",
+        true
+      ],
+      [
+        "sin colapso",
+        true
+      ],
+      [
+        "dimension efectiva > 10",
+        true
+      ],
+      [
+        "no degenerado: 1a componente < 50% de la varianza",
+        true
+      ],
+      [
+        "espacio con rango utilizable: desviacion > 0,05",
+        true
+      ],
+      [
+        "la clinica separa: brecha > 0,02",
+        true
+      ],
+      [
+        "hubness bajo control: asimetria < 2",
+        true
+      ],
+      [
+        "reproducible",
+        true
+      ]
+    ]
+  }
+}

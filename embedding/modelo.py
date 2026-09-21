@@ -3,50 +3,67 @@ El modelo de embeddings y sus parametros. Un solo sitio decide con que se
 vectoriza, porque de eso depende que una matriz vieja siga siendo comparable
 con una nueva.
 
-POR QUE bge-m3
-    Es multilingue de verdad (no ingles con espanol de propina), maneja bien el
-    texto corto y devuelve vectores de 1024 dimensiones normalizados, que es lo
-    que quiere el coseno del clustering.
+POR QUE SapBERT-es Y NO bge-m3
+    Se midio. Los cuatro candidatos, las mismas 787 frases, el 2026-09-21. La
+    tabla completa y el metodo estan en docs/MODELO.md; el resumen:
 
-POR QUE LONGITUD_MAXIMA = 128 Y NO LOS 8192 QUE TRAE DE FABRICA
-    Es el ajuste que mas tiempo ahorra en toda la fase. El costo de un
-    transformer crece con el cuadrado de la longitud, asi que dejar la ventana
-    en 8192 se paga aunque el texto sea de seis palabras.
+        modelo         vec1_concepto  MAP   AUC_resp  frases/s
+        sapbert_es         0.877     0.572    0.827     24.8
+        sapbert_xlmr       0.787     0.441    0.786     19.7
+        bge_m3 (antes)     0.733     0.344    0.744      6.5
+        qwen3_06b          0.656     0.315    0.674      4.4
+        (piso lexico)      0.627     0.262      --        --
 
-    Medido sobre la columna texto_embedding de la corrida de 28.095 notas:
-    mediana 6 palabras, percentil 95 en 47 y el maximo en 60. Ese margen existe
-    gracias a la fase 5 de NLP/: sobre texto_normalizado, que llega a 405
-    palabras, este numero tendria que ser bastante mas alto.
+    Gana en calidad Y en velocidad, con la cuarta parte de los parametros del
+    que sustituye. El orden sale exactamente inverso al tamano del modelo, que
+    es la senal de que aqui no manda la escala sino el ajuste a la tarea:
+    SapBERT se entrena con contraste sobre pares de sinonimos de UMLS, que es
+    literalmente el problema de este corpus -- decidir si dos frases cortas
+    nombran el mismo concepto clinico.
 
-    OJO: LO DE ARRIBA CUENTA PALABRAS Y LA VENTANA CUENTA TOKENS
-        Aqui decia que 'con 128 tokens entra el peor caso entero y sobra
-        sitio', y eso salia de leer 60 palabras como si fueran 60 tokens.
-        bge-m3 gasta 1,99 tokens por palabra sobre este corpus -- el vocabulario
-        clinico espanol se parte mucho -- asi que el margen es la mitad de lo
-        que parecia.
+    'piso lexico' es TF-IDF de n-gramas de caracteres, sin semantica ninguna.
+    Esta en la tabla porque un modelo que no le gane no esta aportando nada, y
+    porque tres de los cuatro candidatos no le ganaban en la prueba sobre datos
+    reales. Ver docs/MODELO.md, seccion sobre la fuga lexica.
 
-        Medido sobre el vocabulario real (5.020 textos): mediana 13 tokens, p99
-        en 95 y maximo 170. Se truncan 10 textos, que son 10 notas de 6.751
-        (0,15%).
+NO ES UN MODELO DE sentence-transformers
+    Su tarjeta indica tomar el token CLS de la ultima capa, no hacer media de
+    tokens. Con mean-pooling los numeros bajan y ademas no seria el modelo que
+    sus autores evaluaron. Por eso aqui se usa transformers directamente en vez
+    de SentenceTransformer.
 
-        La decision se sostiene -- 0,15% es despreciable -- pero ya no sobra
-        sitio, y los textos que se cortan son las notas de ingreso con
-        antecedentes, justo el tipo de nota que mas crece al sumar servicios.
-        'python -m clustering --validar' lo vuelve a medir en cada corrida en
-        vez de confiar en este parrafo.
+POR QUE LONGITUD_MAXIMA = 128
+    El coste de un transformer crece con el cuadrado de la longitud, asi que la
+    ventana no se deja en su maximo por si acaso.
 
-    Si algun dia se vectoriza una columna mas larga, hay que subirlo, y como
-    entra en la identidad del modelo, la matriz vieja deja de valer sola.
+    OJO: CONTAR PALABRAS NO ES CONTAR TOKENS, Y AQUI YA SE FALLO UNA VEZ
+        La version anterior de este parrafo decia "mediana 6 palabras, maximo
+        24, o sea unos 50 tokens". Medido de verdad con el tokenizador del
+        modelo sobre las 452 frases del almacen el 2026-09-21:
+
+            mediana 8 tokens | p95 20 | p99 61 | maximo 131
+
+        La mediana casi coincide, pero la cola no: el maximo real es cinco
+        veces el estimado, porque el modelo de NLP/ a veces devuelve una frase
+        larga en vez de una canonica (la mas larga tiene 113 palabras y
+        enumera seis sintomas). Estimar tokens multiplicando palabras es
+        justo lo que produce este error.
+
+    La decision se sostiene: con 128 se trunca 1 frase de 452 (0,22%), y por
+    tres tokens. Pero ya no sobra sitio, asi que la columna 'tokens' del
+    almacen guarda el largo real de cada frase y vectorizar.py avisa en cada
+    corrida cuantas se truncaron, en vez de confiar en este parrafo.
+
+    Ese margen lo da la columna, no la suerte: frase_procesada es la frase
+    canonica que genera el modelo de NLP/, no la nota. Sobre la nota entera
+    (frase_original) habria que subirlo bastante.
 
 SIN GPU
-    torch esta instalado en su version +cpu, asi que esto corre sobre los 8
-    nucleos de la maquina. No es un problema para arrancar, pero es la razon de
-    que el paquete entero este pensado para no repetir trabajo: deduplicar,
-    apender y poder reanudar no son adornos aca, son lo que hace viable correr
-    la tabla completa.
+    torch esta instalado en su version +cpu. A 24,8 frases/s medidas, las
+    ~40.000 frases distintas que se esperan del corpus completo son unos 27
+    minutos. Con bge-m3 eran 103. Eso deja de ser un obstaculo para rehacer el
+    almacen cuando haga falta, que es justo lo que permite iterar.
 """
-
-import os
 
 import numpy as np
 
@@ -54,80 +71,89 @@ import numpy as np
 # CONFIGURACION -- lo unico que hay que editar
 # ==========================================================
 
-MODELO = "BAAI/bge-m3"
+MODELO = "BSC-NLP4BIA/SapBERT-from-roberta-base-biomedical-clinical-es"
 
 # Ventana en tokens. Ver el porque en el docstring de arriba.
 LONGITUD_MAXIMA = 128
 
-# Vectores de norma 1: con eso el producto punto ES el coseno, que es la
-# metrica con la que despues se agrupan.
-NORMALIZAR = True
+# La dimension de salida. Se declara aqui porque la tabla del almacen se crea
+# con el tipo FLOAT[DIMENSION] y hay que saberla antes de cargar el modelo.
+# vectorizar.py comprueba que el modelo real coincida con este numero.
+DIMENSION = 768
 
-# Cuantos textos entran de una al modelo. Sube el uso de RAM, no el resultado.
-LOTE = 64
+# Cuantas frases por pasada del modelo. Sobre CPU, subirlo mucho no acelera y
+# si dispara la memoria por el relleno de los lotes.
+LOTE = 32
 
-# float32 en vez de float64: la mitad de disco y de RAM, y el modelo no produce
-# mas precision que esa de todos modos.
-TIPO = np.float32
+# Los vectores se guardan normalizados a norma 1, para que la similitud coseno
+# sea un producto punto y el clustering no tenga que normalizar nada.
+NORMALIZADO = True
 
 
 def identidad():
     """
-    Como se lleno la matriz. Va al manifiesto y se compara contra el de una
-    corrida anterior antes de apender.
+    Lo que tiene que coincidir para que dos vectores sean comparables.
 
-    Cambiar cualquiera de estos valores produce vectores que no viven en el
-    mismo espacio que los guardados, y mezclarlos daria clusters sin sentido.
-    Por eso vectorizar.py se niega a continuar si no coinciden, en vez de
-    confiar en que alguien se acuerde de borrar la carpeta.
+    Entra tal cual en el almacen. Si el almacen guarda una identidad distinta
+    de esta, vectorizar.py se niega a continuar en vez de mezclar vectores que
+    viven en espacios distintos y producir una matriz mitad y mitad -- un fallo
+    que no da ningun error y solo se nota en que el clustering sale raro.
     """
     return {
         "modelo": MODELO,
+        "pooling": "cls",
         "longitud_maxima": LONGITUD_MAXIMA,
-        "normalizado": NORMALIZAR,
-        "tipo": np.dtype(TIPO).name,
+        "dimension": DIMENSION,
+        "normalizado": NORMALIZADO,
+        "tipo": "float32",
     }
 
 
-def cargar():
+class Codificador:
     """
-    Trae bge-m3 a memoria y le fija la ventana. La primera vez lo descarga de
-    Hugging Face (unos 2 GB) y lo deja en la cache local; las siguientes lo lee
-    de ahi.
-
-    Devuelve la pareja (modelo, dimension).
+    El modelo cargado. Se instancia una vez y se reusa: traerlo a memoria es la
+    parte cara cuando hay pocas frases nuevas que vectorizar.
     """
-    import torch
-    from sentence_transformers import SentenceTransformer
 
-    dispositivo = "cuda" if torch.cuda.is_available() else "cpu"
-    if dispositivo == "cpu":
-        # Sin esto torch se queda en la mitad de los nucleos en algunas
-        # instalaciones de Windows.
-        torch.set_num_threads(os.cpu_count() or 4)
+    def __init__(self):
+        from transformers import AutoModel, AutoTokenizer
 
-    modelo = SentenceTransformer(MODELO, device=dispositivo)
-    modelo.max_seq_length = LONGITUD_MAXIMA
+        self.tokenizador = AutoTokenizer.from_pretrained(MODELO)
+        self.red = AutoModel.from_pretrained(MODELO).eval()
 
-    dimension = modelo.get_sentence_embedding_dimension()
-    print(f"  modelo   : {MODELO}")
-    print(f"  dispositivo: {dispositivo} ({os.cpu_count()} nucleos)")
-    print(f"  ventana  : {LONGITUD_MAXIMA} tokens | dimension: {dimension}")
-    return modelo, dimension
+        real = int(self.red.config.hidden_size)
+        if real != DIMENSION:
+            raise SystemExit(
+                f"{MODELO} devuelve {real} dimensiones y modelo.DIMENSION dice "
+                f"{DIMENSION}. Corrige la constante: la tabla del almacen se "
+                f"crea con ese tipo y no se puede cambiar sin rehacerla.")
 
+    def codificar(self, textos, al_terminar_lote=None):
+        """
+        Devuelve (matriz float32 normalizada, cuantos textos se truncaron).
 
-def codificar(modelo, textos, progreso=False):
-    """
-    Vectoriza una lista de textos y devuelve la matriz en TIPO.
+        al_terminar_lote recibe cuantos van, para poder informar del avance sin
+        que este modulo sepa nada de como se informa.
+        """
+        import torch
 
-    No deduplica ni ordena: eso ya lo hizo corpus.py. Aca solo se le pasa al
-    modelo lo que haya que pasarle.
-    """
-    matriz = modelo.encode(
-        list(textos),
-        batch_size=LOTE,
-        normalize_embeddings=NORMALIZAR,
-        show_progress_bar=progreso,
-        convert_to_numpy=True,
-    )
-    return np.ascontiguousarray(matriz, dtype=TIPO)
+        trozos, truncados = [], 0
+        with torch.no_grad():
+            for inicio in range(0, len(textos), LOTE):
+                lote = textos[inicio:inicio + LOTE]
+                entrada = self.tokenizador(
+                    lote, padding=True, truncation=True,
+                    max_length=LONGITUD_MAXIMA, return_tensors="pt")
+                truncados += sum(
+                    1 for texto in lote
+                    if len(self.tokenizador.encode(texto)) > LONGITUD_MAXIMA)
+                salida = self.red(**entrada).last_hidden_state
+                # CLS, no media de tokens: lo dice la tarjeta del modelo.
+                trozos.append(salida[:, 0, :].numpy())
+                if al_terminar_lote:
+                    al_terminar_lote(min(inicio + LOTE, len(textos)))
+
+        matriz = np.vstack(trozos).astype(np.float32)
+        if NORMALIZADO:
+            matriz /= np.linalg.norm(matriz, axis=1, keepdims=True) + 1e-12
+        return np.ascontiguousarray(matriz, dtype=np.float32), truncados

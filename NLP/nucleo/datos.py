@@ -13,6 +13,18 @@ def filtro_no_vacio(columna):
     return f"{columna} IS NOT NULL AND LTRIM(RTRIM({columna})) <> ''"
 
 
+def solo_columnas(engine, tabla, columnas):
+    """
+    Baja unas pocas columnas de la tabla entera, sin filtro ni limite.
+
+    Existe para la fecha del triage: son dos columnas de trece y no necesitan
+    al modelo, asi que rehacer notas con el LLM solo para conseguirla seria
+    tirar horas. Lo usa 'python -m NLP.procesar --fechas'.
+    """
+    campos = ", ".join(columnas)
+    return pd.read_sql(f"SELECT {campos} FROM {tabla}", engine)
+
+
 def muestra(engine, tabla, columnas, filtro, limite=None, disperso=True,
             llave="OID", excluir=None):
     """

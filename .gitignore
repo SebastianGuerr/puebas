@@ -51,10 +51,29 @@ __pycache__/
 # siglas_detectadas.csv
 NLP/salidas/
 
-# fase 6: vectores.f32, vocabulario.parquet, indice.parquet, manifiesto.json
-# y sin_texto.csv. Se rehacen con 'python -m embedding.vectorizar', aunque sin
-# GPU eso cueste horas: por eso el paquete apende en vez de recalcular.
+# LA BASE COMPARTIDA. Desde el 2026-09-21 la salida de NLP/ y la de embedding/
+# viven en el mismo archivo, en la raiz: NLP/ escribe la tabla `triage` y
+# embedding/ escribe `frases` y `triage_frase`. Esta en la raiz y no dentro de
+# uno de los dos paquetes porque meterla dentro de cualquiera haria falsa la
+# propiedad del otro.
+#
+# OJO: esto NO es como las otras salidas. `frases` se regenera en minutos, pero
+# `triage` son horas de generacion contra la base clinica y NO se puede rehacer
+# sin volver a consultarla, cosa que solo puede hacer el propietario. Si hay que
+# borrar algo, usar 'python -m embedding.vectorizar --rehacer', que vacia los
+# vectores y deja `triage` en paz. Nunca borrar el archivo a mano.
+salidas/
+
+# fase 6: banco_frases.csv, el set congelado con el que se comparan modelos.
 embedding/salidas/
+
+# Los resultados del banco de pruebas de modelos. Viven en la raiz del paquete
+# a peticion expresa -- se quieren ver los cuatro de un vistazo, al lado del
+# codigo que los produjo -- y no en salidas/, que es la regla general. Se
+# rehacen con 'python -m embedding.comparar_modelos --modelo X'. Lo que SI se
+# versiona es la lectura de esos numeros, que esta en embedding/docs/MODELO.md:
+# el JSON es el dato crudo, el documento es el argumento.
+embedding/resultado_*.json
 
 # fase 7: asignacion.parquet, clusters.csv, notas.csv, proyeccion.parquet,
 # mapa.png, informe.txt y barrido.csv. Se rehacen con 'python -m clustering'
@@ -71,11 +90,6 @@ clustering/salidas/
 # valor depende de haber sido escrito ANTES de ver los resultados, asi que
 # tiene que quedar en el historial con su fecha.
 patrones/salidas/
-
-# recursos externos descargados por 'python -m NLP.recursos.descargar' (E3.1):
-# pesan hasta cientos de MB y se reobtienen desde NLP/datos/recursos_manifiesto.json,
-# que SI se versiona (url, licencia, sha256, fecha, tamano; PLAN.md S4.5 y S6).
-/NLP/recursos_externos/
 
 *.parquet
 
@@ -99,25 +113,18 @@ _[!_]*
 # =========================================================
 # Lo que SI se versiona, aunque parezca generado
 # =========================================================
-# Los diccionarios se editan a mano y son la fuente de verdad del proyecto.
-!NLP/datos/diccionario_siglas.json
-!NLP/datos/diccionario_coloquial.json
+# Los cuatro diccionarios que alimentan al modelo se editan a mano y son la
+# fuente de verdad del proyecto: ningun script los regenera.
+!NLP/recursos/siglas.json
+!NLP/recursos/coloquialismos.json
+!NLP/recursos/lugares.csv
+!NLP/recursos/terminologia_clinica.json
 !embedding/datos/catalogo_sintomas.json
 
 # Los calendarios son investigacion propia, no salida de un script.
 !calendarios/desastres_manizales_2020_2026.csv
 !calendarios/eventos_manizales_2020_2026.csv
 !calendarios/vigilancia_salud_manizales_caldas.csv
-
-# La medicion de la version anterior del pipeline no se puede regenerar una vez
-# que triage_limpio.csv se sobreescribe: es el unico registro del punto de
-# partida contra el que se comparan las mejoras. Por eso vive en datos/ y no en
-# salidas/, aunque lo escriba un script.
-!NLP/datos/linea_base.json
-
-# Las correcciones hechas a mano SI se versionan: son trabajo humano que no se
-# puede regenerar, y son la unica vara para medir el corrector.
-!NLP/datos/referencia_correcciones.json
 
 # Las anclas son la IDENTIDAD de los temas: definen las unidades con las que se
 # cuenta la serie diaria. Las escribe un script, pero si se pierden, las series

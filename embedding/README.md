@@ -1,112 +1,136 @@
-# Paquete embedding — fase 6
+# Paquete `embedding`
 
-Convierte la columna `texto_embedding` de `NLP/salidas/triage_limpio.csv` en
-vectores de `bge-m3`, identificables por su `OID`. Eso es todo lo que hace.
+Convierte la columna `frase_procesada` de la tabla `nota_triage` en vectores de
+**SapBERT-es**, identificables por su `OID`. Eso es todo lo que hace.
 
-No limpia, no corrige ortografia, no expande siglas y no recorta la nota: todo
-eso ya paso en `NLP/` y llega hecho en esa columna. Tampoco agrupa ni visualiza:
-el clustering es la fase siguiente y vive fuera de aqui, para que probar un
-parametro de agrupamiento no obligue a volver a vectorizar.
+No limpia, no corrige ortografía, no expande siglas y no recorta la nota: todo
+eso ya pasó en `NLP/` y llega hecho en esa columna. Tampoco agrupa ni visualiza:
+el clustering es la fase siguiente y vive fuera de aquí, para que probar un
+parámetro de agrupamiento no obligue a volver a vectorizar.
 
 ```bash
-# desde la raiz del repositorio
+# desde la raíz del repositorio
 python -m embedding.vectorizar
 python -m embedding.vectorizar --limite 500      # prueba corta
-python -m embedding.vectorizar --csv "D:\ruta\a\otro_triage_limpio.csv"
-python -m embedding.vectorizar --rehacer         # tira lo guardado y empieza
+python -m embedding.vectorizar --estado          # qué hay guardado, sin tocar nada
+python -m embedding.vectorizar --rehacer         # tira los vectores y empieza
+python -m embedding.centinela                    # vectoriza según crece la tabla
+python -m embedding.diagnostico                  # control de calidad antes de agrupar
 ```
 
-| archivo | que hace |
+| archivo | qué hace |
 | --- | --- |
-| `vectorizar.py` | orquesta la fase: lee el CSV, vectoriza lo que falta y escribe las salidas |
-| `corpus.py` | lee el CSV, valida la columna, aparta los vacios y decide que falta |
-| `modelo.py` | el modelo y sus parametros: cual, que ventana, que precision |
-| `almacen.py` | guarda lo ya calculado y sabe decir que es nuevo |
-| `rutas.py` | unico sitio que sabe donde vive cada archivo |
+| `vectorizar.py` | orquesta la fase: lee la tabla, vectoriza lo que falta y escribe `embedding` |
+| `fuente.py` | lee `nota_triage`, valida la columna, aparta las vacías y calcula huellas |
+| `diagnostico.py` | las 7 pruebas de calidad de la matriz, antes de agrupar |
+| `modelo.py` | el modelo y sus parámetros: cuál, qué ventana, qué pooling |
+| `almacen.py` | la base DuckDB: guardar, saber qué falta y entregarlo al clustering |
+| `centinela.py` | mantiene el almacén al día mientras `NLP/` sigue escribiendo |
+| `comparar_modelos.py` | el banco de pruebas con el que se eligió el modelo |
+| `rutas.py` | único sitio que sabe dónde vive cada archivo |
 
-## Correr esto dos veces no cuesta nada
+## La documentación está en `docs/`
 
-Es la propiedad que sostiene todo el diseno. `triage_limpio.csv` va a crecer
-apendando notas, y sin GPU (`torch` esta instalado en su version `+cpu`)
-revectorizar de cero cada vez seria tirar horas para obtener los mismos numeros.
-
-La llave del almacen es **el texto**, no el `OID`. Eso da dos cosas a la vez:
-
-- **Ahorro.** El mismo motivo de consulta se repite muchisimo. Sobre la corrida
-  de 28.095 notas habia 19.821 textos distintos: un 30% menos de trabajo.
-- **Correccion.** Si `NLP/` mejora y una nota vieja cambia de texto, cambia su
-  huella, y se vectoriza sola. Con llave por `OID` el vector viejo seguiria
-  pegado a esa nota aunque ya no le corresponda.
-
-La segunda corrida sobre los mismos datos ni siquiera carga el modelo: encuentra
-todas las huellas y solo rehace el indice.
-
-## Que hay en `salidas/`
-
-Misma regla que en `NLP/`: `datos/` se edita a mano y se versiona, `salidas/` lo
-escribe un script y esta ignorado por git.
-
-| archivo | contenido |
+| | |
 | --- | --- |
-| `vectores.f32` | la matriz en crudo, `float32`, un vector por texto distinto |
-| `vocabulario.parquet` | que texto es cada fila de la matriz |
-| `indice.parquet` | `OID` → fila, un renglon por nota del CSV |
-| `manifiesto.json` | con que modelo y parametros se lleno la matriz |
-| `sin_texto.csv` | los `OID` que quedaron fuera por venir sin texto |
+| [`docs/MODELO.md`](docs/MODELO.md) | qué modelo, contra qué otros se midió, con qué números y qué **no** prueba esa medición |
+| [`docs/ALMACEN.md`](docs/ALMACEN.md) | el esquema, las garantías de integridad y el contrato con `clustering/` |
+| [`docs/CALIDAD.md`](docs/CALIDAD.md) | el control de calidad de los vectores y su último resultado |
+| [`docs/DECISIONES.md`](docs/DECISIONES.md) | bitácora de lo descartado y por qué |
+| [`docs/HANDOFF.md`](docs/HANDOFF.md) | qué se decidió en la última sesión y qué quedó pendiente |
 
-`vectores.f32` es un binario plano y no un `.npy` porque este paquete **apende**:
-cada corrida agrega solo lo nuevo al final, y a un `.npy` no se le puede agregar
-una fila sin reescribirlo entero. Se lee con `np.memmap`, sin cargarlo en RAM.
+## Este paquete es autónomo
 
-## Como se consume
+No importa `NLP/`. Antes sí lo hacía, y el día que `NLP/` se reorganizó,
+`embedding/` dejó de poder importarse siquiera. La frontera ahora es explícita
+y de una sola dirección:
+
+```
+NLP/         escribe la tabla `nota_triage` en salidas/triage.duckdb
+embedding/   lee esa tabla y escribe la tabla `embedding` en la misma base
+clustering/  pide la matriz con embedding.almacen.cargar(), y nada más
+```
+
+Comparten el **archivo**, no el código: cada paquete es dueño de sus tablas y
+ninguno escribe las del otro. Lo único común es la ruta, una constante en cada
+`rutas.py`. Ver [`docs/ALMACEN.md`](docs/ALMACEN.md).
+
+## El OID no entra en el vector, y aun así no se pierde
+
+Es la pregunta que este paquete existe para contestar bien. El `OID` **nunca**
+forma parte del texto que se vectoriza — metería ruido y no significa nada en
+un espacio semántico. Vive en una tabla aparte y se une por llave:
 
 ```python
 from embedding import almacen
 
-indice, matriz = almacen.cargar()          # o cargar(oids=[...])
-vectores = matriz[indice["fila"].to_numpy()]   # un vector por nota, en orden
+textos, vectores, indice = almacen.cargar()
+#  textos    fila, huella, texto, n_notas   (una fila por frase viva)
+#  vectores  (n, 768) float32, ya normalizada
+#  indice    OID, huella, fila              (una fila por nota)
 ```
 
-Ese paso es el que reparte la fila unica de un texto repetido entre todos los
-`OID` que lo comparten. La fecha (`HCTFECTRI`) no vive aca a proposito: se junta
-por `OID` cuando haga falta, en la fase de clustering.
+La tabla tiene **una fila por nota**, con el `OID` como clave primaria. Y una
+columna más, `huella`, que es el `sha256` de la frase con la que se calculó ese
+vector. Hace dos cosas:
+
+- **Detecta un vector caduco.** Si `NLP/` reprocesa una nota y devuelve otra
+  frase, la huella deja de coincidir y se revectoriza sola. Sin ella el vector
+  viejo seguiría pegado a la nota, en silencio.
+- **Evita calcular dos veces lo mismo.** Al modelo se le pasa cada frase
+  distinta una vez y el vector se copia a todas las notas que la comparten: 596
+  notas son 479 llamadas. El vector queda repetido —disco sobra— y se calcula
+  una sola vez, que es lo que cuesta.
+
+La fecha vive en `nota_triage.fecha_triage` (`DIM_TRIAGE.HCTFECTRI`), así que
+el cruce es directo:
+
+```sql
+SELECT n.fecha_triage, n.frase_procesada, e.vector
+FROM nota_triage n JOIN embedding e USING (OID);
+```
+
+## Correr esto dos veces no cuesta nada
+
+Es la propiedad que sostiene el diseño. La tabla `nota_triage` crece apendando
+notas, y sin GPU (`torch` está instalado en su versión `+cpu`) revectorizar de cero cada
+vez sería tirar tiempo para obtener los mismos números.
+
+La segunda corrida sobre los mismos datos ni siquiera carga el modelo:
+encuentra todo al día y sale.
+
+## Qué hay en `salidas/`
+
+Misma regla que en `NLP/`: `datos/` se edita a mano y se versiona, `salidas/` lo
+escribe un script y está ignorado por git.
+
+| archivo | contenido |
+| --- | --- |
+| `banco_frases.csv` | el set congelado con el que se comparan modelos |
+
+El almacén no está aquí: vive en `salidas/triage.duckdb`, en la raíz, porque lo
+comparte con `NLP/`.
 
 ## Si se corta a la mitad
 
-El orden de escritura es siempre el mismo: primero los vectores al final del
-binario con `fsync`, y solo despues el vocabulario que dice cuantos hay. Un corte
-deja como mucho vectores de sobra al final, nunca un vocabulario prometiendo
-filas que no existen. La corrida siguiente los ignora o los pisa, y lo que se
-perdio se recalcula porque su huella vuelve a faltar. El punto de control es cada
-`BLOQUE` textos (2.000 por defecto, el mismo valor que usa `NLP/procesar.py`).
+Cada bloque entra en su propia transacción. Un corte deja el almacén en el
+último bloque completo, nunca a medias, y la corrida siguiente retoma por las
+huellas que falten. No hay que limpiar nada a mano.
+
+Esto sustituye a toda la maquinaria que hacía falta con el diseño anterior:
+orden de escritura con `fsync`, reintentos de parquets a medio escribir y
+comparación de tamaños y fechas antes y después de cada lectura.
 
 ## Si cambias el modelo
 
-`modelo.identidad()` — cual, que ventana, normalizado y precision — entra en el
-manifiesto. Si no coincide con lo guardado, `vectorizar.py` se niega a continuar
-en vez de apendar vectores que viven en otro espacio y producirian una matriz
-mitad y mitad. Para ese caso esta `--rehacer`.
+Cada fila guarda con qué modelo se calculó, en la columna `modelo`. Si la
+tabla ya tiene vectores de otro, `vectorizar.py` se niega a continuar en vez de
+mezclar dos espacios y producir una matriz mitad y mitad — un fallo que no da
+ningún error y solo se nota en que el clustering sale raro. Para ese caso está
+`--rehacer`.
 
-El ajuste que mas tiempo ahorra es `LONGITUD_MAXIMA = 128`: `bge-m3` trae 8192
-de fabrica y el costo crece con el cuadrado de la longitud. La columna
-`texto_embedding` tiene mediana de 6 palabras y maximo de 60, asi que con 128
-tokens entra el peor caso y sobra. Ese margen existe gracias a la fase 5 de
-`NLP/`; sobre `texto_normalizado`, que llega a 405 palabras, habria que subirlo.
-
-## Historia
-
-Este paquete fue antes la "fase 4" de estructuracion: `estructurar.py`,
-`extraccion.py`, `negacion.py` y `texto_embedding.py` sacaban sintomas, negacion
-y una frase canonica desde `datos/catalogo_sintomas.json`. Esa idea se descarto
-cuando el recorte de la nota se resolvio mejor dentro de `NLP/` (fase 5, columna
-`texto_embedding`), y la carpeta se reoriento a lo que hace hoy.
-
-Ese codigo sigue en el historial de git. Vale la pena recordarlo cuando llegue el
-momento de **ponerle nombre a cada cluster**: el lector de catalogo de
-`extraccion.py` es justo lo que hace falta para etiquetar un grupo por su sintoma
-dominante.
-
-`datos/catalogo_sintomas.json` no era parte de esa idea descartada y se queda: lo
-leen `NLP/recursos/lexico.py` y `NLP/depuracion/depuracion.py`. Como sus unicos
-consumidores estan en `NLP/`, su sitio natural es `NLP/datos/`, y moverlo alli
-eliminaria lo unico que hoy hace que `NLP/` dependa de esta carpeta.
+Y antes de cambiarlo, mídelo: `python -m embedding.comparar_modelos --tabla`
+compara contra los cuatro que ya se probaron, sobre las mismas frases. Los
+`resultado_*.json` de esa comparación siguen en la raíz del paquete; los pesos
+de los tres modelos descartados se borraron de la caché el 2026-09-21 y
+volver a correrlos los descarga de nuevo (unos 6,5 GB).

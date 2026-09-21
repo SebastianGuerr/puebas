@@ -177,42 +177,50 @@ UMBRAL_GENERICA = 0.95
 # CREAR
 # ==========================================================
 
-def administrativas(textos, indice):
+# Como queda marcada una nota que no dice nada del paciente. La escribe el
+# modelo de NLP/ (regla 13 de NLP/prompt.py). embedding/fuente.py la trata
+# como nota vacia y NO la vectoriza, asi que hoy no deberia llegar hasta aqui;
+# la constante se conserva porque el texto sigue estando en triage_limpio.csv
+# y porque la segunda marca es de corridas anteriores.
+MARCAS_SIN_CONTENIDO = ("sin motivo clinico", "sin contenido clinico")
+
+
+def administrativas(textos, indice=None):
     """
-    Cuantas notas de cada texto senalo NLP/ como que no dicen nada del paciente.
+    Cuantas notas de cada texto no dicen nada del paciente.
 
     POR QUE ESTO LLEGA HASTA AQUI
-        La fase 4 de NLP/ marca las notas que son tramite administrativo,
-        plantilla en blanco o solo antecedentes, y a proposito NO las borra: las
-        deja en el CSV y las vectoriza igual, porque un falso descarte es
-        irrecuperable y un falso senalamiento no cuesta nada.
+        NLP/ marca las notas que son tramite administrativo, plantilla en blanco
+        o solo antecedentes, y a proposito NO las borra: las deja en el CSV y se
+        vectorizan igual, porque un falso descarte es irrecuperable y un falso
+        senalamiento no cuesta nada.
 
         La consecuencia es que esas notas llegan al agrupamiento, y como se
         parecen mucho entre si forman temas propios. Medido sobre la corrida de
-        6.501 notas: 1.104 estan senaladas (17,0%), y CINCO de los 41 temas son
-        mas de la mitad tramite -- uno de ellos es 100%.
+        6.501 notas: 1.104 estaban senaladas (17,0%), y CINCO de los 41 temas
+        eran mas de la mitad tramite -- uno de ellos 100%.
 
         Un tema asi no mide salud. Su serie diaria sube y baja con como se
         llenan los formularios, no con quien llega enfermo, y cruzarla contra la
         lluvia es cruzar la lluvia contra el papeleo. Por eso se marca en el
         ancla y no se descubre despues mirando graficas raras.
 
-    Devuelve un array alineado con textos: cuantas de las notas de ese texto
-    estan senaladas. Si el CSV no existe, devuelve ceros y no rompe nada.
+    DE DONDE SALE AHORA LA MARCA
+        Antes se cruzaba por OID contra salidas/notas_descartadas.csv, que
+        escribia la fase 4 del pipeline de reglas. Ese pipeline se retiro: hoy
+        es el propio modelo el que responde 'sin motivo clinico' cuando la nota
+        solo documenta un tramite, asi que la marca viaja en el texto y no en un
+        archivo aparte.
+
+        El criterio cambio de sitio, no de intencion. Si un texto esta marcado,
+        lo estan todas las notas que representa.
+
+    Devuelve un array alineado con textos. `indice` ya no se usa; se conserva en
+    la firma para no tocar a quien llama.
     """
-    try:
-        from NLP import rutas as rutas_nlp
-    except ImportError:
-        return np.zeros(len(textos))
-
-    if not rutas_nlp.NOTAS_DESCARTADAS.exists():
-        return np.zeros(len(textos))
-
-    senaladas = pd.read_csv(rutas_nlp.NOTAS_DESCARTADAS,
-                            encoding="utf-8-sig", usecols=["OID"])
-    marcado = indice[indice["OID"].isin(set(senaladas["OID"]))]
-    por_fila = marcado.groupby("fila").size()
-    return textos["fila"].map(por_fila).fillna(0).to_numpy(dtype=float)
+    plano = textos["texto"].fillna("").astype(str).str.strip().str.lower()
+    marcado = plano.isin(MARCAS_SIN_CONTENIDO)
+    return np.where(marcado, textos["n_notas"].to_numpy(dtype=float), 0.0)
 
 
 def crear(vectores, grupos, n_notas, mapa_temas, nombres_tema=None,

@@ -1,19 +1,12 @@
 """
 Rutas del paquete NLP. Unico sitio que sabe donde vive cada archivo.
 
-POR QUE EXISTE ESTE ARCHIVO
-    Antes cada modulo calculaba sus rutas con Path(__file__).parent, asi que
-    todos daban por hecho que los .py y los datos estaban en la misma carpeta.
-    Al separar el paquete en fases eso deja de ser cierto, y repetir
-    'parents[1] / "datos"' en doce archivos convierte cualquier movimiento
-    posterior en doce ediciones.
-
-LA REGLA QUE SEPARA datos/ DE salidas/
-    datos/    se edita a mano y se versiona. Es la fuente de verdad: los
-              diccionarios, el vocabulario del CIE-10 y las correcciones de
-              referencia. Si se borra, se pierde trabajo humano.
-    salidas/  lo produce un script del proyecto y esta ignorado por git. Si se
-              borra, se regenera corriendo el script que lo escribe.
+LA REGLA QUE SEPARA recursos/ DE salidas/
+    recursos/  se edita a mano y se versiona. Son los cuatro diccionarios que
+               le dan contexto al modelo. Si se borran, se pierde trabajo
+               humano y el modelo deja de entender el habla local.
+    salidas/   lo produce `python -m NLP.procesar` y esta ignorado por git. Si
+               se borra, se regenera volviendo a correr el proceso.
 
     Cuando dudes de donde poner un archivo nuevo, preguntate si un script lo
     puede volver a crear. Si la respuesta es si, va en salidas/.
@@ -22,45 +15,51 @@ LA REGLA QUE SEPARA datos/ DE salidas/
 from pathlib import Path
 
 PAQUETE = Path(__file__).resolve().parent
-PROYECTO = PAQUETE.parent
 
-DATOS = PAQUETE / "datos"
+RECURSOS = PAQUETE / "recursos"
 SALIDAS = PAQUETE / "salidas"
 DOCS = PAQUETE / "docs"
 
-# fuentes escritas a mano (versionadas)
-DICCIONARIO_SIGLAS = DATOS / "diccionario_siglas.json"
-DICCIONARIO_COLOQUIAL = DATOS / "diccionario_coloquial.json"
-LEXICO_EXTERNO = DATOS / "lexico_externo.txt"
-REFERENCIA_CORRECCIONES = DATOS / "referencia_correcciones.json"
-FRASES_ETIQUETADAS = DATOS / "frases_etiquetadas.csv"  # reduccion/frases.py, se corrige a mano
-PDF_CIE10 = DATOS / "Clasif_Inter_Enfer_CIE_10_rev_3_ed.diag.pdf"
-GOLD_V0 = DATOS / "evaluacion" / "gold_v0.csv"  # evaluacion/metricas.py, anotado a mano (E0.6)
+# los cuatro diccionarios que se inyectan en el prompt (NLP/glosario.py)
+SIGLAS = RECURSOS / "siglas.json"
+COLOQUIALISMOS = RECURSOS / "coloquialismos.json"
+LUGARES = RECURSOS / "lugares.csv"
+TERMINOLOGIA_CLINICA = RECURSOS / "terminologia_clinica.json"
 
-# artefactos generados (ignorados por git, se rehacen con su script)
-LEXICO_CLINICO = SALIDAS / "lexico_clinico.json"      # recursos/lexico.py
-LEXICO_CASING = SALIDAS / "lexico_casing.json"        # recursos/casing.py
-SIGLAS_DETECTADAS = SALIDAS / "siglas_detectadas.csv"  # recursos/detectar_siglas.py
-TRIAGE_LIMPIO = SALIDAS / "triage_limpio.csv"         # procesar.py
-REPORTE_CAMBIOS = SALIDAS / "reporte_cambios.csv"     # procesar.py
-NOTAS_DESCARTADAS = SALIDAS / "notas_descartadas.csv"  # procesar.py, fase de depuracion
-TRIAGE_REPARADO = SALIDAS / "triage_reparado.csv"     # reparacion/reparar.py
-INFORME_REPARACION = SALIDAS / "informe_reparacion.csv"  # reparacion/reparar.py
-CLASIFICADOR_FRASES = SALIDAS / "clasificador_frases.joblib"  # reduccion/frases.py
-CACHE_CORRECCIONES = SALIDAS / "cache_correcciones.json"
-MUESTRA_REVISION = SALIDAS / "muestra_revision.csv"   # evaluacion/escaneo.py
-REFERENCIA = SALIDAS / "referencia.csv"               # evaluacion/referencia.py
-METRICAS = SALIDAS / "metricas"                       # evaluacion/metricas.py
+PROYECTO = PAQUETE.parent
 
-# el catalogo de sintomas de la fase 4 lo consume lexico.py
-CATALOGO_SINTOMAS = PROYECTO / "embedding" / "datos" / "catalogo_sintomas.json"
+# LA SALIDA DEL PROCESO: la tabla `triage` de la base compartida.
+#
+# Vive en la RAIZ y no dentro de NLP/ porque la comparten dos paquetes: aqui se
+# escribe `triage` y embedding/ escribe `frases` y `triage_frase`. Meterla
+# dentro de cualquiera de los dos haria falsa la propiedad del otro. Sigue
+# siendo una salida: la regenera un script y esta ignorada por git.
+BASE_DATOS = PROYECTO / "salidas" / "triage.duckdb"
 
-# fase 6 - normalizacion conceptual (E5.7); GAZETTEER_DISTEMIST_TSV es el TSV
-# crudo descargado por recursos/descargar.py (code/language/term/semantic_tag/
-# mainterm, CC-BY-4.0), distinto de datos/lexicos/gazetteer_distemist.txt
-# (E3.4, formas sueltas sin codigo, para el corrector)
-GAZETTEER_DISTEMIST_TSV = PAQUETE / "recursos_externos" / "DISTEMIST_gazetteer" / "content"
-FASE6_SALIDAS = SALIDAS / "fase6"                     # fase6_conceptos/*.py
-INDICE_CONCEPTOS_NIVEL1 = FASE6_SALIDAS / "indice_conceptos_sapbert.npz"  # nivel1.py
+# COPIA DE SOLO LECTURA, PARA MIRAR SIN BLOQUEAR
+#
+# DuckDB admite un solo escritor, y ademas un escritor bloquea tambien a los
+# lectores (medido el 2026-09-21: con la base abierta en lectura-escritura por
+# un proceso, otro no entra ni siquiera en modo lectura). Consecuencia: con la
+# extension de VS Code adjunta, 'python -m NLP.procesar' no puede escribir.
+#
+# Esta copia rompe ese empate a medias, y conviene saber hasta donde llega.
+# La refresca el propio escritor entre bloque y bloque.
+#
+#   LO QUE RESUELVE: con VS Code adjunto a ESTA copia, 'NLP.procesar' ya nunca
+#   se cae. Antes, tener el visor abierto rompia la corrida.
+#
+#   LO QUE NO RESUELVE: mientras el visor la tiene abierta, Windows no deja
+#   sustituir el archivo (medido: PermissionError con copyfile y con replace).
+#   Asi que la copia se queda congelada en la foto que habia al conectarse y
+#   solo avanza cuando el visor se desconecta y vuelve. No hay forma de tener
+#   un visor de archivo viendo datos que cambian; para eso esta NLP/monitor.py,
+#   que abre y cierra en cada vuelta.
+BASE_VISTA = PROYECTO / "salidas" / "triage_vista.duckdb"
+
+# El CSV que habia antes. Ya NO se escribe; se conserva la ruta para poder
+# importarlo con 'python -m NLP.procesar --importar-csv'. Ver NLP/docs/FLUJO.md.
+TRIAGE_LIMPIO = SALIDAS / "triage_limpio.csv"
 
 SALIDAS.mkdir(exist_ok=True)
+BASE_DATOS.parent.mkdir(parents=True, exist_ok=True)

@@ -10,6 +10,10 @@ joblib==1.4.2
 tqdm==4.66.1
 # lo usa pandas para leer y escribir el vocabulario y el indice de embedding/
 pyarrow==25.0.1
+# almacen de embedding/. Sustituye al par vectores.f32 + parquet: tipo FLOAT[N]
+# nativo, join OID->fecha en SQL y escritura transaccional (no hay estado a
+# medias que defender con fsync). Un archivo local, sin servidor.
+duckdb==1.5.5
 openpyxl==3.1.5
 SQLAlchemy==2.0.35
 pyodbc==5.2.0
@@ -40,6 +44,11 @@ rapidfuzz==3.14.6
 flashtext==2.7
 sentence-transformers==3.2.1
 torch==2.6.0
+# el tokenizador de XLM-R (SapBERT multilingue) es sentencepiece y no trae
+# tokenizer.json, asi que transformers lo reconstruye con protobuf. Sin estos
+# dos, cambridgeltl/SapBERT-...-from-XLMR no carga.
+protobuf==7.36.2
+sentencepiece==0.2.2
 language-tool-python==2.8.1
 
 # Solo para generar lexico_clinico.json (NLP/lexico.py). El pipeline en

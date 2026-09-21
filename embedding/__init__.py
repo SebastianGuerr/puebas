@@ -1,1 +1,1 @@
-"""Fase 4. Extraccion estructurada y texto para embeddings. Ver embedding/README.md."""
+"""Vectorizacion de las frases de triage. Ver embedding/README.md y embedding/docs/."""

@@ -7,12 +7,13 @@ no las conoce se las inventa. En vez de meterle un glosario entero en el prompt
 en el prompt termina saliendo en las respuestas— se le pasan **solo las entradas
 que de verdad aparecen en la nota que esta leyendo**.
 
-Las fuentes son las que ya usa la fase de ortografia, sin duplicar nada:
+Las cuatro fuentes viven juntas en NLP/recursos/ y son lo unico que da contexto
+al modelo:
 
-    NLP/datos/diccionario_siglas.json     siglas, abreviaturas, nombres propios
-    NLP/datos/diccionario_coloquial.json  habla popular colombiana
-    NLP/datos/lexicos/lugares_colombia.csv municipios y departamentos DIVIPOLA
-    embedding/datos/catalogo_sintomas.json variantes y términos canónicos
+    NLP/recursos/siglas.json               siglas, abreviaturas, nombres propios
+    NLP/recursos/coloquialismos.json       habla popular colombiana y caldense
+    NLP/recursos/lugares.csv               municipios y departamentos DIVIPOLA
+    NLP/recursos/terminologia_clinica.json variantes y terminos canonicos
 
 Se respetan las politicas que los propios diccionarios declaran:
   - de las siglas solo se expanden los grupos marcados `_grupos_expandibles`, y
@@ -27,13 +28,11 @@ import os
 import re
 import unicodedata
 
-RAIZ = os.path.dirname(os.path.abspath(__file__))
-SIGLAS = os.path.join(RAIZ, "datos", "diccionario_siglas.json")
-COLOQUIAL = os.path.join(RAIZ, "datos", "diccionario_coloquial.json")
-LUGARES_COLOMBIA = os.path.join(RAIZ, "datos", "lexicos", "lugares_colombia.csv")
-CATALOGO_SINTOMAS = os.path.abspath(
-    os.path.join(RAIZ, "..", "embedding", "datos", "catalogo_sintomas.json")
-)
+RECURSOS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recursos")
+SIGLAS = os.path.join(RECURSOS, "siglas.json")
+COLOQUIAL = os.path.join(RECURSOS, "coloquialismos.json")
+LUGARES_COLOMBIA = os.path.join(RECURSOS, "lugares.csv")
+CATALOGO_SINTOMAS = os.path.join(RECURSOS, "terminologia_clinica.json")
 
 
 def _sin_tildes(texto):

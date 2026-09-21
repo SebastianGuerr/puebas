@@ -1,1 +1,4 @@
-"""Nucleo transversal: morfologia, spaCy/medspaCy, reglas de proteccion y conexion a la base. No pertenece a ninguna fase; lo usan todas."""
+"""Nucleo transversal: conexion a la base, consulta de notas y escritura del CSV.
+
+No pertenece a ninguna etapa concreta; lo usa procesar.py de punta a punta.
+"""
