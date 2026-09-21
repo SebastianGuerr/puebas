@@ -1,9 +1,0 @@
-﻿corrida,fecha,ID,estrato,origen,n_chars,HCTMOTCON,salida_esperada,salida_modelo,modelo,segundos,tok_entrada,tok_salida,veredicto_propietario
-v1,,T-01,minima_coloquial,corpus:747229,6,ME CAI,caida,trauma por aplastamiento en dedo,hf.co/BioMistral/BioMistral-7B-GGUF:Q4_K_M,102.3,680,10,
-v1,,T-02,minima_coloquial,corpus:723768,12,DOLOR BAJITO,dolor en hipogastrio,DOLOR BAJITO,hf.co/BioMistral/BioMistral-7B-GGUF:Q4_K_M,10.6,684,8,
-v1,,T-03,minima_coloquial,corpus:801277,38,DESDE HACE 20 DIAS TENGO UN DOLOR AQUI,"dolor de 20 dias de evolucion, localizacion no especificada",DOLOR AQUI,hf.co/BioMistral/BioMistral-7B-GGUF:Q4_K_M,11.3,697,7,
-v1,,T-04,minima_coloquial,corpus:805170,50,ME CAYÓ UN BALON DE FUTBOL AMERICANO ENE LOS DEDOS,trauma por impacto de balon en dedos,trauma por aplastamiento en dedo,hf.co/BioMistral/BioMistral-7B-GGUF:Q4_K_M,13.6,702,10,
-v1,,T-05,colombianismo,corpus:768730,26,"MC:"" ME DIO UNOS CHUZONES""","dolor punzante, localizacion no especificada",trauma por aplastamiento en dedo,hf.co/BioMistral/BioMistral-7B-GGUF:Q4_K_M,12.3,690,10,
-v1,,T-06,colombianismo,corpus:773791,35,SE ME DURMIERON LA CARA Y LAS MANOS,parestesias en cara y manos,trauma por aplastamiento en dedo,hf.co/BioMistral/BioMistral-7B-GGUF:Q4_K_M,12.0,694,10,
-v1,,T-07,colombianismo,corpus:769702,13,ESTOY BROTADA,erupcion cutanea,MOTIVO DE CONSULTA ESTANDARIZADO: trauma por aplastamiento en dedo,hf.co/BioMistral/BioMistral-7B-GGUF:Q4_K_M,18.3,685,27,
-v1,,T-08,colombianismo,control:C-003,128,PACIENTE MASCULINO DE 67 AÑOS DE EDAD QUIEN SUFRE CORDADA EN MANO DERECHA EN BASE DE PRIMER DEDO DE MANO DERECHA EN REGIO TENAR.,herida cortante en base del primer dedo de mano derecha,trauma por aplastamiento en dedo,hf.co/BioMistral/BioMistral-7B-GGUF:Q4_K_M,17.0,739,10,

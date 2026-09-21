@@ -1,9 +1,0 @@
-﻿corrida,fecha,ID,estrato,origen,n_chars,HCTMOTCON,salida_esperada,salida_modelo,modelo,segundos,tok_entrada,tok_salida,veredicto_propietario
-v1,,T-01,minima_coloquial,corpus:747229,6,ME CAI,caida,sin motivo clinico,medgemma1.5:4b,44.7,514,5,
-v1,,T-02,minima_coloquial,corpus:723768,12,DOLOR BAJITO,dolor en hipogastrio,dolor abdominal bajo,medgemma1.5:4b,88.7,516,6,
-v1,,T-03,minima_coloquial,corpus:801277,38,DESDE HACE 20 DIAS TENGO UN DOLOR AQUI,"dolor de 20 dias de evolucion, localizacion no especificada",sin motivo clinico,medgemma1.5:4b,67.0,527,5,
-v1,,T-04,minima_coloquial,corpus:805170,50,ME CAYÓ UN BALON DE FUTBOL AMERICANO ENE LOS DEDOS,trauma por impacto de balon en dedos,trauma por aplastamiento en dedo,medgemma1.5:4b,79.3,529,10,
-v1,,T-05,colombianismo,corpus:768730,26,"MC:"" ME DIO UNOS CHUZONES""","dolor punzante, localizacion no especificada",trauma por aplastamiento en dedo,medgemma1.5:4b,94.6,521,10,
-v2,2026-09-17 15:40,T-01,minima_coloquial,corpus:747229,6,ME CAI,caida,dolencia de abdomen agudo,medgemma1.5:4b,88.5,977,200,
-v2,2026-09-17 15:42,T-02,minima_coloquial,corpus:723768,12,DOLOR BAJITO,dolor en hipogastrio,dolor en la zona baja del abdomen,medgemma1.5:4b,63.2,979,200,
-v2,2026-09-17 15:43,T-03,minima_coloquial,corpus:801277,38,DESDE HACE 20 DIAS TENGO UN DOLOR AQUI,"dolor de 20 dias de evolucion, localizacion no especificada",dolor en el abdomen,medgemma1.5:4b,68.9,990,200,

@@ -1,4 +1,0 @@
-OID,texto_original,texto_correcto,motivo_span,gravedad,anotador,comentario
-EJEMPLO-01,"PTE REFIERE DOLROR ABDOMINAL DESDE AYER, NIEGA FIEBRE","PTE REFIERE DOLOR ABDOMINAL DESDE AYER, NIEGA FIEBRE","DOLOR ABDOMINAL DESDE AYER, NIEGA FIEBRE",leve,ejemplo,"caso sintetico - typo simple (dolror->dolor); la negacion queda dentro del motivo"
-EJEMPLO-02,"MADRE REFIERE QUE EL NINO ESTA MALUCA DESDE ANTIER CON PIQUINA EN LA PIEL","MADRE REFIERE QUE EL NINO ESTA MALUCA DESDE ANTIER CON PIQUINA EN LA PIEL","MALUCA DESDE ANTIER CON PIQUINA EN LA PIEL",critico,ejemplo,"caso sintetico - colombianismos validos (maluca, antier, piquina); no se corrigen, ver docs/anotacion.md seccion 5"
-EJEMPLO-03,"AP: HTA, DM2. CONSULTA HOY POR CEFALEA DE 2 DIAS DE EVOLUCION","AP: HTA, DM2. CONSULTA HOY POR CEFALEA DE 2 DIAS DE EVOLUCION","CEFALEA DE 2 DIAS DE EVOLUCION",sin_error,ejemplo,"caso sintetico - antecedente (AP) excluido del motivo_span"

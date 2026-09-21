@@ -1,0 +1,926 @@
+{
+  "_descripcion": "Catalogo de sintomas canonicos. Cada entrada es un concepto clinico con sus variantes de escritura y la categoria a la que contribuye. Las frecuencias del corpus de 30.000 notas estan como referencia para priorizar el mantenimiento.",
+  "_estructura": "'canonico': {'categoria': ..., 'variantes': [...]}. Las variantes se buscan con FlashText, que prefiere la coincidencia mas larga: por eso 'dolor abdominal' gana sobre 'dolor'.",
+  "sintomas": {
+    "dolor abdominal": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "dolor abdominal",
+        "dolor en abdomen",
+        "dolor de estomago",
+        "dolor de estómago",
+        "dolor epigastrico",
+        "dolor epigástrico",
+        "dolor en epigastrio",
+        "dolor en hipogastrio",
+        "abdominalgia",
+        "dolor de barriga"
+      ]
+    },
+    "nausea": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "nauseas",
+        "náuseas",
+        "nausea",
+        "náusea"
+      ]
+    },
+    "emesis": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "emesis",
+        "vomito",
+        "vómito",
+        "vomitos",
+        "vómitos",
+        "vomita",
+        "emetico",
+        "emético"
+      ]
+    },
+    "diarrea": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "diarrea",
+        "deposiciones liquidas",
+        "deposiciones líquidas",
+        "deposicion liquida",
+        "enfermedad diarreica"
+      ]
+    },
+    "estrenimiento": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "estrenimiento",
+        "estreñimiento",
+        "no deposicion",
+        "no deposición"
+      ]
+    },
+    "pirosis": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "pirosis",
+        "acidez",
+        "agrieras",
+        "reflujo"
+      ]
+    },
+    "hematemesis": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "hematemesis",
+        "vomito con sangre",
+        "vómito con sangre"
+      ]
+    },
+    "melenas": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "melenas",
+        "deposicion negra",
+        "deposición negra"
+      ]
+    },
+    "distension abdominal": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "distension abdominal",
+        "distensión abdominal",
+        "llenura"
+      ]
+    },
+    "tos": {
+      "categoria": "respiratorio",
+      "variantes": [
+        "tos",
+        "tos seca",
+        "tos productiva",
+        "tos con flema"
+      ]
+    },
+    "disnea": {
+      "categoria": "respiratorio",
+      "variantes": [
+        "disnea",
+        "dificultad respiratoria",
+        "falta de aire",
+        "dificultad para respirar",
+        "ahogo",
+        "sensacion de ahogo",
+        "no lo deja respirar",
+        "no me deja respirar",
+        "no la deja respirar",
+        "no puede respirar",
+        "no puedo respirar",
+        "le cuesta respirar",
+        "me cuesta respirar",
+        "cansancio para respirar"
+      ]
+    },
+    "rinorrea": {
+      "categoria": "respiratorio",
+      "variantes": [
+        "rinorrea",
+        "secrecion nasal",
+        "secreción nasal",
+        "moco nasal"
+      ]
+    },
+    "congestion nasal": {
+      "categoria": "respiratorio",
+      "variantes": [
+        "congestion nasal",
+        "congestión nasal",
+        "nariz tapada"
+      ]
+    },
+    "odinofagia": {
+      "categoria": "respiratorio",
+      "variantes": [
+        "odinofagia",
+        "dolor de garganta",
+        "dolor faringeo",
+        "dolor faríngeo"
+      ]
+    },
+    "sibilancias": {
+      "categoria": "respiratorio",
+      "variantes": [
+        "sibilancias",
+        "silbido en el pecho",
+        "broncoespasmo"
+      ]
+    },
+    "expectoracion": {
+      "categoria": "respiratorio",
+      "variantes": [
+        "expectoracion",
+        "expectoración",
+        "flema",
+        "esputo"
+      ]
+    },
+    "epistaxis": {
+      "categoria": "respiratorio",
+      "variantes": [
+        "epistaxis",
+        "sangrado nasal",
+        "sangrado por nariz"
+      ]
+    },
+    "dolor toracico": {
+      "categoria": "cardiovascular",
+      "variantes": [
+        "dolor toracico",
+        "dolor torácico",
+        "dolor en el pecho",
+        "dolor precordial",
+        "opresion toracica",
+        "opresión torácica",
+        "dolor de pecho"
+      ]
+    },
+    "palpitaciones": {
+      "categoria": "cardiovascular",
+      "variantes": [
+        "palpitaciones",
+        "taquicardia",
+        "corazon acelerado",
+        "corazón acelerado"
+      ]
+    },
+    "edema": {
+      "categoria": "cardiovascular",
+      "variantes": [
+        "edema",
+        "hinchazon",
+        "hinchazón",
+        "edematizado",
+        "edematizada"
+      ]
+    },
+    "sincope": {
+      "categoria": "cardiovascular",
+      "variantes": [
+        "sincope",
+        "síncope",
+        "desmayo",
+        "perdida del conocimiento",
+        "pérdida del conocimiento",
+        "lipotimia",
+        "desvanecimiento",
+        "se desvanecio",
+        "vahido"
+      ]
+    },
+    "dolor precordial": {
+      "categoria": "cardiovascular",
+      "variantes": [
+        "dolor precordial"
+      ]
+    },
+    "cefalea": {
+      "categoria": "neurologico",
+      "variantes": [
+        "cefalea",
+        "dolor de cabeza",
+        "dolor en la cabeza",
+        "migrana",
+        "migraña",
+        "jaqueca"
+      ]
+    },
+    "mareo": {
+      "categoria": "neurologico",
+      "variantes": [
+        "mareo",
+        "mareado",
+        "mareada",
+        "mareos",
+        "aturdimiento",
+        "mareado"
+      ]
+    },
+    "vertigo": {
+      "categoria": "neurologico",
+      "variantes": [
+        "vertigo",
+        "vértigo",
+        "sensacion de giro",
+        "sensación de giro"
+      ]
+    },
+    "convulsion": {
+      "categoria": "neurologico",
+      "variantes": [
+        "convulsion",
+        "convulsión",
+        "convulsiones",
+        "crisis convulsiva",
+        "episodio convulsivo"
+      ]
+    },
+    "parestesias": {
+      "categoria": "neurologico",
+      "variantes": [
+        "parestesias",
+        "hormigueo",
+        "adormecimiento"
+      ]
+    },
+    "alteracion del estado de conciencia": {
+      "categoria": "neurologico",
+      "variantes": [
+        "alteracion del estado de conciencia",
+        "alteración del estado de conciencia",
+        "somnolencia",
+        "estupor",
+        "desorientacion",
+        "desorientación",
+        "confusion",
+        "confusión"
+      ]
+    },
+    "paresia": {
+      "categoria": "neurologico",
+      "variantes": [
+        "paresia",
+        "hemiparesia",
+        "monoparesia",
+        "debilidad de un lado"
+      ]
+    },
+    "disartria": {
+      "categoria": "neurologico",
+      "variantes": [
+        "disartria",
+        "habla enredada",
+        "dificultad para hablar"
+      ]
+    },
+    "focalizacion neurologica": {
+      "categoria": "neurologico",
+      "variantes": [
+        "focalizacion",
+        "focalización",
+        "deficit neurologico",
+        "déficit neurológico"
+      ]
+    },
+    "fiebre": {
+      "categoria": "infeccioso",
+      "variantes": [
+        "fiebre",
+        "calentura",
+        "alza termica",
+        "alza térmica",
+        "febril",
+        "hipertermia",
+        "alzas termicas",
+        "temperatura alta"
+      ]
+    },
+    "escalofrios": {
+      "categoria": "infeccioso",
+      "variantes": [
+        "escalofrios",
+        "escalofríos",
+        "escalofrio",
+        "escalofrío"
+      ]
+    },
+    "astenia": {
+      "categoria": "general",
+      "variantes": [
+        "astenia",
+        "debilidad general",
+        "sin fuerzas",
+        "debilidad",
+        "debil",
+        "me siento debil",
+        "sin energia",
+        "flojera"
+      ]
+    },
+    "adinamia": {
+      "categoria": "general",
+      "variantes": [
+        "adinamia",
+        "decaimiento",
+        "decaido",
+        "decaída",
+        "decaída"
+      ]
+    },
+    "malestar general": {
+      "categoria": "general",
+      "variantes": [
+        "malestar general",
+        "quebranto",
+        "malestar",
+        "me siento mal",
+        "indispuesto",
+        "quebrantado"
+      ]
+    },
+    "disuria": {
+      "categoria": "genitourinario",
+      "variantes": [
+        "disuria",
+        "ardor al orinar",
+        "dolor al orinar",
+        "sintomas irritativos urinarios",
+        "sintomas irritativos"
+      ]
+    },
+    "hematuria": {
+      "categoria": "genitourinario",
+      "variantes": [
+        "hematuria",
+        "orina con sangre",
+        "sangre en la orina"
+      ]
+    },
+    "polaquiuria": {
+      "categoria": "genitourinario",
+      "variantes": [
+        "polaquiuria",
+        "orina frecuente",
+        "ganas frecuentes de orinar"
+      ]
+    },
+    "retencion urinaria": {
+      "categoria": "genitourinario",
+      "variantes": [
+        "retencion urinaria",
+        "retención urinaria",
+        "no puede orinar"
+      ]
+    },
+    "dolor lumbar": {
+      "categoria": "genitourinario",
+      "variantes": [
+        "dolor lumbar",
+        "lumbalgia",
+        "dolor en la cintura",
+        "dolor renal"
+      ]
+    },
+    "dolor pelvico": {
+      "categoria": "obstetrico",
+      "variantes": [
+        "dolor pelvico",
+        "dolor pélvico",
+        "dolor en bajo vientre",
+        "dolor hipogastrico",
+        "dolor hipogástrico"
+      ]
+    },
+    "sangrado vaginal": {
+      "categoria": "obstetrico",
+      "variantes": [
+        "sangrado vaginal",
+        "hemorragia vaginal",
+        "sangrado genital",
+        "perdidas vaginales",
+        "pérdidas vaginales",
+        "metrorragia"
+      ]
+    },
+    "contracciones": {
+      "categoria": "obstetrico",
+      "variantes": [
+        "contracciones",
+        "actividad uterina",
+        "dolores de parto",
+        "trabajo de parto"
+      ]
+    },
+    "ruptura de membranas": {
+      "categoria": "obstetrico",
+      "variantes": [
+        "ruptura de membranas",
+        "rompio fuente",
+        "rompió fuente",
+        "ruptura prematura de membranas",
+        "salida de liquido",
+        "salida de líquido"
+      ]
+    },
+    "movimientos fetales": {
+      "categoria": "obstetrico",
+      "variantes": [
+        "movimientos fetales",
+        "movimiento fetal"
+      ]
+    },
+    "leucorrea": {
+      "categoria": "obstetrico",
+      "variantes": [
+        "leucorrea",
+        "flujo vaginal",
+        "flujo genital"
+      ]
+    },
+    "trauma": {
+      "categoria": "trauma",
+      "variantes": [
+        "trauma",
+        "politraumatismo",
+        "golpe",
+        "contusion",
+        "contusión"
+      ]
+    },
+    "caida": {
+      "categoria": "trauma",
+      "variantes": [
+        "caida",
+        "caída",
+        "se cayo",
+        "se cayó",
+        "cayo de",
+        "cayó de",
+        "trauma por caida",
+        "trauma por caída"
+      ]
+    },
+    "herida": {
+      "categoria": "trauma",
+      "variantes": [
+        "herida",
+        "laceracion",
+        "laceración",
+        "herida cortante",
+        "corte"
+      ]
+    },
+    "fractura": {
+      "categoria": "trauma",
+      "variantes": [
+        "fractura",
+        "hueso roto",
+        "deformidad osea",
+        "deformidad ósea"
+      ]
+    },
+    "esguince": {
+      "categoria": "trauma",
+      "variantes": [
+        "esguince",
+        "torcedura",
+        "se torcio",
+        "se torció"
+      ]
+    },
+    "mordedura": {
+      "categoria": "trauma",
+      "variantes": [
+        "mordedura",
+        "mordido por",
+        "lo mordio",
+        "lo mordió"
+      ]
+    },
+    "quemadura": {
+      "categoria": "trauma",
+      "variantes": [
+        "quemadura",
+        "se quemo",
+        "se quemó",
+        "escaldadura"
+      ]
+    },
+    "accidente de transito": {
+      "categoria": "trauma",
+      "variantes": [
+        "accidente de transito",
+        "accidente de tránsito",
+        "accidente en moto",
+        "atropellado",
+        "volcamiento"
+      ]
+    },
+    "prurito": {
+      "categoria": "dermatologico",
+      "variantes": [
+        "prurito",
+        "picazon",
+        "picazón",
+        "rasquina",
+        "rasquiña"
+      ]
+    },
+    "erupcion cutanea": {
+      "categoria": "dermatologico",
+      "variantes": [
+        "erupcion cutanea",
+        "erupción cutánea",
+        "brote en la piel",
+        "salpullido",
+        "rash"
+      ]
+    },
+    "urticaria": {
+      "categoria": "dermatologico",
+      "variantes": [
+        "urticaria",
+        "ronchas",
+        "roncha"
+      ]
+    },
+    "absceso": {
+      "categoria": "dermatologico",
+      "variantes": [
+        "absceso",
+        "abceso",
+        "furunculo",
+        "furúnculo",
+        "coleccion purulenta",
+        "colección purulenta"
+      ]
+    },
+    "celulitis": {
+      "categoria": "dermatologico",
+      "variantes": [
+        "celulitis"
+      ]
+    },
+    "herpes zoster": {
+      "categoria": "dermatologico",
+      "variantes": [
+        "herpes zoster",
+        "herpes zóster",
+        "culebrilla"
+      ]
+    },
+    "reaccion alergica": {
+      "categoria": "alergico",
+      "variantes": [
+        "reaccion alergica",
+        "reacción alérgica",
+        "alergia",
+        "angioedema",
+        "anafilaxia"
+      ]
+    },
+    "intoxicacion": {
+      "categoria": "toxicologico",
+      "variantes": [
+        "intoxicacion",
+        "intoxicación",
+        "envenenamiento",
+        "sobredosis",
+        "ingesta de sustancia"
+      ]
+    },
+    "picadura": {
+      "categoria": "toxicologico",
+      "variantes": [
+        "picadura",
+        "picado por",
+        "alacran",
+        "alacrán",
+        "abeja",
+        "avispa",
+        "serpiente",
+        "ofidico",
+        "ofídico"
+      ]
+    },
+    "ansiedad": {
+      "categoria": "salud_mental",
+      "variantes": [
+        "ansiedad",
+        "crisis de ansiedad",
+        "angustia",
+        "ataque de panico",
+        "ataque de pánico"
+      ]
+    },
+    "agitacion": {
+      "categoria": "salud_mental",
+      "variantes": [
+        "agitacion",
+        "agitación",
+        "agresividad",
+        "alteracion del comportamiento",
+        "alteración del comportamiento"
+      ]
+    },
+    "hipoglicemia": {
+      "categoria": "metabolico",
+      "variantes": [
+        "hipoglicemia",
+        "hipoglucemia",
+        "azucar baja",
+        "azúcar baja"
+      ]
+    },
+    "hiperglicemia": {
+      "categoria": "metabolico",
+      "variantes": [
+        "hiperglicemia",
+        "hiperglucemia",
+        "azucar alta",
+        "azúcar alta",
+        "glicemia elevada"
+      ]
+    },
+    "deshidratacion": {
+      "categoria": "metabolico",
+      "variantes": [
+        "deshidratacion",
+        "deshidratación",
+        "signos de deshidratacion"
+      ]
+    },
+    "otalgia": {
+      "categoria": "otorrino",
+      "variantes": [
+        "otalgia",
+        "dolor de oido",
+        "dolor de oído"
+      ]
+    },
+    "hipoacusia": {
+      "categoria": "otorrino",
+      "variantes": [
+        "hipoacusia",
+        "no escucha",
+        "oido tapado",
+        "oído tapado"
+      ]
+    },
+    "tinnitus": {
+      "categoria": "otorrino",
+      "variantes": [
+        "tinnitus",
+        "zumbido en el oido",
+        "zumbido en el oído",
+        "pita el oido",
+        "pita el oído"
+      ]
+    },
+    "ojo rojo": {
+      "categoria": "oftalmologico",
+      "variantes": [
+        "ojo rojo",
+        "conjuntivitis",
+        "enrojecimiento ocular"
+      ]
+    },
+    "disminucion agudeza visual": {
+      "categoria": "oftalmologico",
+      "variantes": [
+        "disminucion de agudeza visual",
+        "disminución de agudeza visual",
+        "vision borrosa",
+        "visión borrosa",
+        "no ve bien"
+      ]
+    },
+    "odontalgia": {
+      "categoria": "odontologico",
+      "variantes": [
+        "odontalgia",
+        "dolor de muela",
+        "dolor dental",
+        "absceso dental"
+      ]
+    },
+    "colico": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "colico",
+        "colico abdominal",
+        "retorcijon",
+        "retortijon",
+        "dolor tipo colico"
+      ]
+    },
+    "rectorragia": {
+      "categoria": "gastrointestinal",
+      "variantes": [
+        "rectorragia",
+        "sangrado rectal",
+        "sangrado anal",
+        "sangre en las heces",
+        "hematoquecia",
+        "sangrado en el popo",
+        "sangre en el popo",
+        "popo con sangre",
+        "sangrado por el recto",
+        "sangre por el ano"
+      ]
+    },
+    "hiporexia": {
+      "categoria": "general",
+      "variantes": [
+        "hiporexia",
+        "inapetencia",
+        "no quiere comer",
+        "falta de apetito",
+        "sin apetito"
+      ]
+    },
+    "fatiga": {
+      "categoria": "general",
+      "variantes": [
+        "fatiga",
+        "cansancio",
+        "agotamiento",
+        "muy cansado"
+      ]
+    },
+    "dolor inespecifico": {
+      "categoria": "general",
+      "variantes": [
+        "dolor",
+        "me duele",
+        "dolor generalizado",
+        "dolor en todo el cuerpo",
+        "dolor corporal"
+      ]
+    },
+    "sangrado inespecifico": {
+      "categoria": "general",
+      "variantes": [
+        "sangrado",
+        "hemorragia",
+        "sangra",
+        "sangrando"
+      ]
+    },
+    "dolor osteomuscular": {
+      "categoria": "musculoesqueletico",
+      "variantes": [
+        "dolor osteomuscular",
+        "dolor articular",
+        "artralgia",
+        "mialgia",
+        "dolor muscular",
+        "dolor en las articulaciones"
+      ]
+    }
+  },
+  "_categorias": {
+    "obstetrico": "gestacion, parto y puerperio",
+    "trauma": "lesiones por causa externa",
+    "respiratorio": "via aerea y pulmon",
+    "gastrointestinal": "digestivo",
+    "cardiovascular": "corazon y circulacion",
+    "neurologico": "sistema nervioso",
+    "genitourinario": "rinon y vias urinarias",
+    "infeccioso": "sindrome febril e infeccion",
+    "dermatologico": "piel y tejidos blandos",
+    "alergico": "reacciones de hipersensibilidad",
+    "toxicologico": "intoxicaciones, picaduras y mordeduras",
+    "salud_mental": "psiquiatrico y comportamental",
+    "metabolico": "glicemia, hidratacion y electrolitos",
+    "otorrino": "oido, nariz y garganta",
+    "oftalmologico": "ojo",
+    "odontologico": "boca y dientes",
+    "inespecifico": "sin sintoma reconocible",
+    "general": "sintomas constitucionales y transversales",
+    "musculoesqueletico": "dolor osteomuscular y articular"
+  },
+  "_prioridad_categorias": [
+    "obstetrico",
+    "trauma",
+    "toxicologico",
+    "cardiovascular",
+    "neurologico",
+    "respiratorio",
+    "metabolico",
+    "alergico",
+    "genitourinario",
+    "gastrointestinal",
+    "infeccioso",
+    "salud_mental",
+    "dermatologico",
+    "otorrino",
+    "oftalmologico",
+    "odontologico",
+    "musculoesqueletico",
+    "general"
+  ],
+  "_localizaciones_dolor": {
+    "cabeza": "cefalea",
+    "sien": "cefalea",
+    "sienes": "cefalea",
+    "frente": "cefalea",
+    "craneo": "cefalea",
+    "nuca": "cefalea",
+    "pecho": "dolor toracico",
+    "torax": "dolor toracico",
+    "seno": "dolor toracico",
+    "senos": "dolor toracico",
+    "precordio": "dolor toracico",
+    "esternon": "dolor toracico",
+    "costilla": "dolor toracico",
+    "costillas": "dolor toracico",
+    "tetilla": "dolor toracico",
+    "estomago": "dolor abdominal",
+    "barriga": "dolor abdominal",
+    "abdomen": "dolor abdominal",
+    "ombligo": "dolor abdominal",
+    "epigastrio": "dolor abdominal",
+    "vientre": "dolor abdominal",
+    "costado": "dolor abdominal",
+    "costados": "dolor abdominal",
+    "flanco": "dolor abdominal",
+    "espalda": "dolor lumbar",
+    "cintura": "dolor lumbar",
+    "lomo": "dolor lumbar",
+    "rinon": "dolor lumbar",
+    "rinones": "dolor lumbar",
+    "lumbar": "dolor lumbar",
+    "muela": "odontalgia",
+    "muelas": "odontalgia",
+    "diente": "odontalgia",
+    "dientes": "odontalgia",
+    "encia": "odontalgia",
+    "dentadura": "odontalgia",
+    "oido": "otalgia",
+    "oreja": "otalgia",
+    "oidos": "otalgia",
+    "garganta": "odinofagia",
+    "faringe": "odinofagia",
+    "amigdalas": "odinofagia",
+    "pelvis": "dolor pelvico",
+    "bajito": "dolor pelvico",
+    "hipogastrio": "dolor pelvico",
+    "utero": "dolor pelvico",
+    "matriz": "dolor pelvico",
+    "ovario": "dolor pelvico",
+    "ovarios": "dolor pelvico",
+    "vagina": "dolor pelvico",
+    "pierna": "dolor osteomuscular",
+    "piernas": "dolor osteomuscular",
+    "brazo": "dolor osteomuscular",
+    "brazos": "dolor osteomuscular",
+    "rodilla": "dolor osteomuscular",
+    "rodillas": "dolor osteomuscular",
+    "hombro": "dolor osteomuscular",
+    "hombros": "dolor osteomuscular",
+    "cuello": "dolor osteomuscular",
+    "tobillo": "dolor osteomuscular",
+    "mano": "dolor osteomuscular",
+    "manos": "dolor osteomuscular",
+    "pie": "dolor osteomuscular",
+    "pies": "dolor osteomuscular",
+    "cadera": "dolor osteomuscular",
+    "ingle": "dolor osteomuscular",
+    "musculo": "dolor osteomuscular",
+    "musculos": "dolor osteomuscular",
+    "hueso": "dolor osteomuscular",
+    "huesos": "dolor osteomuscular",
+    "articulacion": "dolor osteomuscular",
+    "articulaciones": "dolor osteomuscular",
+    "codo": "dolor osteomuscular",
+    "muneca": "dolor osteomuscular"
+  }
+}
