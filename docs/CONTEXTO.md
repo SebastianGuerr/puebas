@@ -14,6 +14,239 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-09-24 — Se reabre la competencia de modelos EN CPU: Llama 3 y otros ligeros
+
+**Decisión del propietario**: antes de dar por cerrado que el problema necesita GPU, medir
+si **Llama 3 o alguna de sus variantes** —u otro modelo ligero— resuelve lo que qwen3:8b no
+pudo, con menos recursos. No contradice el cierre de la fase de CPU: aquel era **no iterar
+más el prompt**; esto es cambiar de **modelo** con el prompt fijo.
+
+**Cómo se mide, y por qué así:**
+- **La misma sonda de 32 notas** (17 fallos verificados + 15 guardas) y **el mismo prompt
+  v1.7**, para que la única variable sea el modelo (regla 7).
+- **Dos modos**: `solo` (sin filtros ni segunda pasada, como `NLP.duelo`: mide al modelo)
+  y `cadena` (lo que iría a producción). Primero `solo` para todos; `cadena` para los
+  mejores. Con filtros dos modelos salen parecidos porque se mide a los filtros.
+- **qwen3:8b se vuelve a correr en la misma tanda**, no se compara solo contra sondas
+  viejas: el 8B no es determinista cuando duda (entrada del duelo 8B-14B).
+- **Las notas duras se repiten 3 veces** para medir la inestabilidad, que es el fallo que
+  hoy no tiene arreglo (descartes falsos que salen o no según la corrida).
+- **Se juzga leyendo, no contando**: la sonda cuenta mal (entrada «Conclusión: el 14B…»).
+- **Una sola corrida contra Ollama a la vez**; los agentes solo investigan y leen.
+
+Script de la comparación, fuera del repo (no cambia código del proyecto): el `comparar.py`
+del scratchpad de la sesión, que usa `NLP.banco`, `NLP.cadena` y `NLP.fidelidad` sin tocarlos.
+
+**Corrección del propietario, el mismo día: igualdad de condiciones.** Un modelo solo se
+compara con qwen3:8b si es **de su mismo peso** (~8B, Q4_K_M, ~5 GB). `llama3.2:3b` se midió
+primero por ser rápido, pero es un **piso**, no un rival: leído, 6/32 bien contra ~14/32 de
+qwen3:8b sin filtros. No dice nada de la familia Llama. La comparación de familia es
+`llama3.1:8b` contra `qwen3:8b`, más los **reentrenados de Llama 3.1 8B** por terceros
+(Tulu 3.1, Hermes 3, SuperNova-Lite), que tienen el mismo tamaño. Llama 3.3 (solo 70B) y
+Llama 4 (109B y 400B) no caben en 16 GB.
+
+**Sesgo que queda a favor de qwen, y cómo se compensa**: el prompt v1.7 se afinó durante días
+sobre qwen3:8b (ya le costó notas al 14B, que se abstenía de más). El mejor rival recibe
+**una vuelta de ajuste del prompt**, como la tuvo el 14B (`v1_7_14b.py`), antes de decidir.
+
+**Diseño final, fijado por el propietario y PREREGISTRADO antes de ver ningún resultado**
+(escrito cuando solo se habían leído 2 salidas de llama3.1:8b):
+
+- **Muestra de 63 notas** = la sonda (32) + una muestra **nueva** de los bancos que el prompt
+  no vio al afinarse: 16 de `fallos.csv` (2 por cada bandera fuerte, empezando por la más
+  rara) y 15 de `aciertos.csv` (2 por estrato; de `descarte_correcto` solo quedaba 1),
+  semilla 11, sin OID de la sonda. La nueva existe porque la sonda favorece a qwen: v1.7 se
+  afinó mirándola.
+- **Contendientes, mismo prompt v1.7, modo solo, Q4, temperatura 0**: qwen3:8b ·
+  llama3.1:8b · tulu3:8b (sin su mensaje de sistema) · Llama-3.1-Storm-8B · gemma3:12b ·
+  gemma4:12b-it-qat. Los dos gemma son **un escalón más pesados** (~7 GB) y se reportan
+  aparte de los 8B.
+- **Veredicto por nota, leído** (bien / parcial / mal) contra una lista de lo que la
+  respuesta correcta **debe** y **no debe** contener, escrita antes de juzgar a los modelos.
+- **Puntaje — un daño pesa el doble que un arreglo** (la regla del propietario: no vale
+  arreglar una nota y dañar otra que estaba bien):
+  - nota de `fallo`: bien **+1**, parcial **+0,5**, mal **0**
+  - nota de `acierto`: bien **0**, parcial **−1**, mal **−2**
+  - el **descarte falso** se cuenta además aparte, en cualquier banco: es el peor error.
+- **Dos lecturas**: la **estricta** (la línea que guardaría producción, `modelo.limpiar`),
+  que es la que decide; y la de **comprensión** (la respuesta final del texto completo),
+  que dice si un arreglo de formato cambiaría el orden. Motivo: llama3.1:8b razona en voz
+  alta antes de responder y la primera línea sale inservible aunque la respuesta sea buena.
+- **Sin repeticiones**: llama3.1:8b dio salidas idénticas en dos corridas; a temperatura 0
+  es determinista, y el tiempo rinde más en notas y modelos.
+- **La velocidad se mide aparte**, con la máquina quieta: esta tanda coincidió con descargas.
+
+**Primer resultado medido (sonda, 32 notas, banco corregido: 18 fallos · 14 aciertos)**. El
+revisor corrigió el banco de 13 de las 63 notas antes de juzgar: 9 «aciertos» de v1.6 estaban
+mal por las reglas de v1.7 (duda, embarazo o negación perdidos) y 4 «fallos» eran falsos
+positivos de un detector.
+
+| Modo solo, prompt v1.7 | Fallos | Aciertos | Puntaje | Descartes falsos |
+|---|---|---|---|---|
+| qwen3:8b | +5,5 | −9 | **−3,5** | 2 |
+| llama3.1:8b, lectura estricta | +5,0 | −16 | **−11** | 2 |
+| llama3.1:8b, lectura de comprensión | +6,0 | −15 | **−9** | 5 |
+| llama3.2:3b (piso) | | | −16 | 3 |
+
+Lectura: **en arreglar fallos empatan; Llama daña el doble de aciertos.** Inventa el sufijo de
+la regla 6 («en gestante de N semanas») en 6 notas, una de un varón; descarta «amarillo» y
+«control prenatal»; en el 44 % de las notas su primera línea no es la respuesta (razona en voz
+alta). Parte del daño lo induce la redacción de la regla 6, afinada para qwen, pero la lectura
+de comprensión, que ignora el formato, lo deja igual de abajo.
+
+**Estabilidad, medida por primera vez** (16 notas duras × 3 corridas): qwen3:8b cambia la
+salida en 5/16 y el **veredicto en 1/16** (la hernia discal: descarte falso en 2 de 3);
+llama3.1:8b cambia en 2/16 y 1/16. La inestabilidad de qwen es real pero estrecha: una nota,
+no una familia.
+
+**Resultado sobre las 63 notas: qwen3:8b le gana a llama3.1:8b** (medido y leído el mismo día).
+
+| Modo solo, v1.7 | Sonda | Nueva | **Total 63** | Descartes falsos |
+|---|---|---|---|---|
+| qwen3:8b | −3,5 | **+10,5** | **+7** | 2 (0 en la nueva) |
+| llama3.1:8b, comprensión | −9 | +7 | **−2** | 5 (0 en la nueva) |
+| llama3.1:8b, estricta | −11 | −8,5 | **−19,5** | 2 |
+
+Qué decide: **aun en su mejor lectura (la que ignora el formato), Llama queda 9 puntos
+abajo**, así que la salida estructurada no lo rescataría y no se le corre esa segunda ronda.
+En la muestra nueva qwen no daña ninguno de sus 11 aciertos; Llama inventa embarazos (3),
+cambia síntomas («prurito» → «dolor mamario», «ardor al orinar» → «arritmia») y deja una
+nota sin respuesta. **Llama gana solo en 3 trámites**, donde qwen copia el trámite en vez de
+«sin motivo clinico» (parcial: no inventa). Los dos fallan igual en parte del cuerpo
+inventada, «desde ayer» y negaciones: errores de la tarea, no de la familia.
+
+**Muestra nueva contra sonda**: qwen pasa de −3,5 a +10,5. La sonda son sus peores notas a
+propósito; la nueva se parece más al corpus. Las dos cifras se reportan siempre juntas.
+
+**Velocidad**: la única medición limpia hasta ahora es qwen3:8b en la nueva, 16,4 s/nota de
+mediana; llama3.1:8b es más lenta por construcción (razona en voz alta: ~100 tokens por
+nota contra ~10).
+
+**Tulu 3 8B (Llama 3.1 reentrenado por AllenAI, sin su mensaje de sistema)**: −8 solo (sonda
+−13,5, nueva +5,5), 3 descartes falsos, **0 % de fallos de formato** y el más rápido de los
+8B (15,5 s/nota de mediana, limpio). Resuelve cosas que qwen no: no descarta la hernia discal,
+descarta los 3 trámites que qwen copia, no inventa lado ni «desde ayer». Su defecto dominante
+es **inventar el sufijo de la regla 6 en 15 notas** (varón incluido): el reentrenamiento
+arregla el formato de Llama y empeora la invención.
+
+**Con los filtros de producción** (`posprocesar` de v1.7 aplicado a las salidas guardadas, sin
+segunda pasada; deterministas, no llaman al modelo): **qwen3:8b +15,5 · tulu3:8b +2,5 ·
+llama3.1:8b −9,5**. El orden no cambia. El filtro quita los 15 embarazos de Tulu, pero en 11
+queda otro error debajo; 7 de los 10 puntos que gana Llama son del filtro de trámites
+escribiendo «sin motivo clinico» sobre su relleno, no mérito del modelo.
+
+**Defectos de los filtros de producción que salieron de aquí** (valen solos, pendientes):
+1. `quitar_embarazo_inventado` **borra un embarazo real**: en una nota de «prueba positiva de
+   embarazo» quita las semanas inventadas y con ellas el embarazo; la salida queda vacía.
+2. El filtro de trámites deja restos: «derivada de la eps» → «la eps» (qwen, una nota de la
+   muestra nueva).
+3. `descarte_falso` → segunda pasada **se dispara en 2 trámites puros bien descartados** de la
+   muestra: falsos positivos del disparador; si la segunda pasada inventa, un acierto se
+   vuelve fallo. (Los OID de cada caso están en el material de la competencia, fuera del repo.)
+
+**Los dos ~12B (un escalón más pesados: ~8 GB en RAM, cabe en esta máquina con ~2 GB de
+margen, sin paginar).** Velocidad limpia, un solo modelo en memoria.
+
+| Modo solo, v1.7 | Sonda | Nueva | **Total 63** | Con filtros | Desc. falsos | RAM | s/nota |
+|---|---|---|---|---|---|---|---|
+| **gemma4:12b-it-qat** | +7,5 | +17,5 | **+25** | **+26** | 5 | 8,49 GB | 23,8 |
+| qwen3:8b | −3,5 | +10,5 | +7 | +15,5 | 2 | ~5,9 GB | 16,4 |
+| gemma3:12b | −3,5 | +10 | +6,5 | +7,5 | **0** | 8,06 GB | 21,8 |
+
+- **gemma4:12b resuelve casi todo lo que ningún 8B pudo**: oídos tapados e hipo completos;
+  duda → certeza 4/4; negaciones 4/4; la agresión de la pareja; «antier»; no inventa lado,
+  parte del cuerpo ni embarazo. En la muestra nueva no daña ningún acierto. **Su único error
+  sistemático es el descarte falso (5, todos en la sonda)**: «congestionado», la hernia
+  discal, la turbinoplastia, «amarillo», el control prenatal. Es el patrón del qwen3:14b con
+  v1.7: el bloque de abstención, endurecido para el 8B, un modelo más capaz lo cumple de más.
+  Si la segunda pasada los recuperara, el techo es +33.
+- **gemma3:12b empata con qwen solo y pierde con filtros**, pero es **el único con cero
+  descartes falsos**. Sus errores son omisiones y cambios de sentido, que ningún filtro ve;
+  los de qwen son mecánicos (lado, parte, «antier», institución), que los filtros sí ven.
+- **Ningún modelo resolvió «no me baja el azúcar»** (todos: «hipoglucemia»): es de glosario.
+
+**Pendiente antes de tomarlo como decisión**: (1) verificación por un segundo juez **ciego**
+de qwen3:8b contra gemma4:12b en las 43 notas donde difieren —el +25 lo juzgó un solo
+revisor—; (2) la segunda pasada real de gemma4 sobre sus descartes; (3) la vuelta de ajuste
+del prompt (abstención suavizada) que el diseño reserva al mejor rival.
+
+**Verificación ciega: confirmada.** Un segundo agente, sin acceso a la clave ni a los archivos
+de la competencia, juzgó las **43 notas donde qwen3:8b y gemma4:12b difieren**, con el orden
+A/B barajado por fila. Destapada la clave: **gemma4 es mejor en 31, qwen en 3, empate en 9**;
+veredictos gemma4 33 bien · 6 parcial · 4 mal, qwen 7 · 23 · 13. Descartes falsos: gemma4 3,
+qwen 0 en esas 43 (los dos de qwen, «congestionado» y la hernia, **gemma4 también los hace
+con la misma salida**, por eso no entraron). Dos jueces independientes, uno ciego, dan el
+mismo orden. Lección de método: el juez resumió «A es mejor que B» como si A y B fueran
+sistemas fijos, cuando el orden estaba barajado; **lo que vale del juez ciego son sus
+veredictos fila a fila, no su resumen**.
+
+**Preregistro de la vuelta de ajuste para gemma4** (escrito antes de correrla): se usa
+`NLP/prompts/v1_7_14b.py` **tal como está** —escrito el 2026-09-24 para qwen3:14b, que tenía
+el mismo problema—, sin ningún retoque mirando a gemma4. Solo cambia el bloque de abstención.
+Mismas 63 notas, mismo juicio, mismo puntaje; se reporta **al lado** de v1.7, no en su lugar.
+Criterio: si baja los descartes falsos **sin** dañar aciertos, es el prompt de gemma4.
+
+**REVERTIDO el mismo día, antes de correrlo, por decisión del propietario** (entrada siguiente):
+la vuelta con `v1_7_14b.py` se cancela y la reemplaza un prompt propio por modelo.
+
+---
+
+## 2026-09-24 — Cada modelo con su propio prompt: gana el primero que cruce la barrera
+
+**Decisión del propietario.** Un prompt afinado para un modelo no es igualdad de condiciones.
+Ya se conocen las fuerzas y debilidades de cada uno; ahora **cada modelo recibe su propio
+prompt optimizado** y compiten por cruzar la barrera que qwen3:8b no cruzó. **El primero que
+la cruce es el que se queda.**
+
+**El riesgo que hay que cerrar, y cómo**: afinar prompts mirando las mismas 63 notas con que
+se mide los hace **memorizar** esas notas («no me baja el azúcar = hiperglucemia» escrito en
+el prompt) y el puntaje sube sin que el modelo mejore. Tres defensas:
+1. **Conjunto de validación nuevo**, de las mismas familias difíciles, que ningún agente de
+   prompt ve. Su lista de verificación se escribe antes de correr ningún modelo.
+2. **Los prompts solo llevan reglas generales**, nunca frases, palabras raras o casos de
+   notas concretas de la muestra. El revisor lo audita en cada ronda.
+3. **Mismo presupuesto para todos**: máximo 3 rondas por modelo, todos parten de v1.7, mismos
+   filtros (`posprocesar` de v1.7 sin cambios) y misma cadena con segunda pasada.
+
+**PREREGISTRO — la barrera** (modo cadena, que es lo que iría a producción; juicio leído
+contra la lista, banco real):
+- **B1, lo que qwen no pudo**: de las 16 notas duras (`oids_duros.txt`), **≥ 12 bien**.
+- **B2, no dañar**: en los aciertos del banco real, **0 mal**.
+- **B3, no sacar pacientes de la cuenta**: **0 descartes falsos** sin marca; uno marcado
+  `revisar` por la segunda pasada se tolera, porque lo ve una persona.
+- **Confirmación**: quien cruce B1-B3 en las 63 se corre en la validación; ahí debe dar
+  0 aciertos dañados, 0 descartes falsos sin marca y **puntaje por nota mayor que el de
+  qwen3:8b con v1.7 y cadena** en esa misma validación.
+
+**Quién se queda**: el primero que cruce la barrera y la confirmación, **contando por rondas**
+(todos corren la ronda 1, luego la 2…). Si cruzan varios en la misma ronda: el de mejor
+puntaje en validación; si empatan, el más ligero. Si nadie cruza en 3 rondas, **no hay
+ganador por esta vía** y se le dice al propietario que el problema no se resuelve con
+modelos ligeros en esta máquina.
+
+**Participantes**: gemma4:12b-it-qat, qwen3:8b, gemma3:12b, tulu3:8b, llama3.1:8b (la familia
+que el propietario pidió explorar). Storm 8B entra si en su corrida con v1.7 supera a Tulu.
+
+**Storm 8B, medido: no entra.** −8 solo (igual que Tulu), +1,5 con filtros (Tulu +2,5) y **8
+descartes falsos**, el peor número de la competencia; inventa el embarazo en 12 notas.
+
+**Cuarto defecto de los filtros**: `quitar_parte_inventada` borró una parte del cuerpo **real**
+de una respuesta fiel de Storm porque la nota la escribe con errata y el detector compara
+letra por letra. Primer caso medido de un filtro que convierte un bien en mal.
+
+**Aclaración del reglamento, a mitad de la ronda 1, para todos por igual**: dos agentes
+encontraron por separado que la segunda pasada se dispara en trámites puros bien descartados,
+y con un cierre que prohíbe abstenerse solo puede copiar el trámite o inventar: la barrera B2
+quedaba imposible por diseño. Se permite que la segunda pasada se abstenga **solo** cuando lo
+único que trae la nota es trámite (queda «sin motivo clinico» marcada `revisar`). Todos los
+prompts se corren con la aclaración disponible; ninguno había corrido todavía.
+
+**Prioridad de la cola, por decisión del propietario** (más potencial primero): gemma4 →
+validación de qwen v1.7 (para poder confirmar a gemma4 enseguida) → qwen3 → gemma3 → tulu3 →
+llama3.1. Resumen del método y los números: `NLP/docs/COMPETENCIA.md`.
+
+---
+
 ## 2026-09-24 — Sincronización: se versionan los datos y se sube al repositorio actual
 
 **Decisiones del propietario, tomadas sabiendo lo que implican:**

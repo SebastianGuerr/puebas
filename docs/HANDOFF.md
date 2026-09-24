@@ -41,6 +41,50 @@ vectorial local y deja la respiratoria, que es la hipótesis original.
 
 ---
 
+## EN CURSO (2026-09-24): competencia de modelos ligeros en CPU — Llama 3 y otros
+
+**Qué se busca**: si un modelo local y ligero (Llama 3.x u otro) resuelve lo que qwen3:8b no
+pudo —descartes falsos inestables, duda → certeza, negaciones, «no me baja el azúcar»,
+«oídos tapados»— con igual o menos recursos. Diseño y porqué: `docs/CONTEXTO.md`, entrada
+del 2026-09-24 «Se reabre la competencia de modelos EN CPU».
+
+**Estado (10:55)**: corriendo la competencia en **igualdad de condiciones**, diseño y puntaje
+**preregistrados** en `CONTEXTO.md` (bloque «Diseño final»): 63 notas (sonda + muestra nueva
+de los bancos), prompt v1.7, modo solo, un modelo a la vez. Orden: llama3.1:8b → qwen3:8b →
+tulu3:8b → Llama-3.1-Storm-8B → gemma3:12b → gemma4:12b-it-qat. Un agente revisor escribe la
+lista de verificación de las 63 notas antes de juzgar.
+
+**Ya medido (15:40)** — puntaje preregistrado sobre 63 notas, modo solo / con filtros:
+**gemma4:12b-it-qat +25 / +26** · qwen3:8b +7 / +15,5 · gemma3:12b +6,5 / +7,5 (0 descartes
+falsos) · tulu3:8b −8 / +2,5 · llama3.1:8b −19,5 / −9,5 · llama3.2:3b piso. Detalle y lectura
+en `CONTEXTO.md`. **gemma4:12b es el candidato**, con un defecto: 5 descartes falsos.
+
+**Juez ciego: confirmado** (gemma4 mejor en 31 de 43 notas distintas, qwen en 3).
+
+**NUEVA FASE (16:10), decisión del propietario: un prompt propio por modelo**, gana el primero
+que cruce la barrera preregistrada (≥ 12/16 notas duras, 0 aciertos dañados, 0 descartes
+falsos) y la confirme en una validación que ningún agente de prompt ve. Protocolo completo en
+`CONTEXTO.md`, entrada «Cada modelo con su propio prompt». En curso:
+- 5 agentes escribiendo la ronda 1 (gemma4, qwen3, gemma3, tulu3, llama3.1) en
+  `scratchpad/prompts/<modelo>_r1.py`, con `prompts/REGLAMENTO.md` y `prompts/verificar.py`.
+- Validación en construcción: `scratchpad/validacion_privada/` (~49 notas nuevas de 8
+  familias, fuera de la muestra de 63).
+- Storm 8B corriendo con v1.7; después `cola4.sh` (segunda pasada real y prueba de reuso).
+- Cancelada la vuelta de gemma4 con `v1_7_14b.py` (la reemplaza su prompt propio).
+
+**Para correr un prompt de ronda** (modo cadena, que es el que decide la barrera):
+`python <scratchpad>/comparar.py --modelo <tag> --modo cadena --prompt <scratchpad>/prompts/<m>_r1.py --muestra <scratchpad>/muestra64.csv --salida <scratchpad>/comparacion/<m>_r1.jsonl`
+
+**Herramientas y prompts, versionados** (2026-09-24): `NLP/competencia/` (comparar, segunda,
+filtrar, verificar, despachador, REGLAMENTO) y `NLP/prompts/candidatos/<m>_r1.py`. Método y
+números: `NLP/docs/COMPETENCIA.md`. **El material con texto clínico no se versiona**: en esta
+sesión vive en su scratchpad (muestras, notas enmascaradas, listas de verificación, salidas,
+`revision_modelos.md`, `validacion_privada/`); las herramientas del repo lo buscan en
+`NLP/salidas/competencia/` (ignorado). Para seguir en otro equipo hay que regenerar la muestra
+desde la base local, que solo existe aquí.
+
+---
+
 ## EN CURSO: seguir el trabajo desde el equipo de casa (RTX 4060, 8 GB)
 
 **Qué quiere el propietario:** clonar este repositorio en su equipo de casa y seguir desde
@@ -284,6 +328,27 @@ estancia. Cada figura con su lectura y sus límites.
 ---
 
 ## Trampas conocidas
+
+- **Cuatro defectos de los filtros de producción** (2026-09-24, tabla en
+  `NLP/docs/COMPETENCIA.md`): `quitar_embarazo_inventado` borra un embarazo real;
+  `quitar_parte_inventada` borra una parte del cuerpo real si la nota la escribe con errata; el
+  filtro de trámites deja «la eps»; la segunda pasada se dispara en trámites puros bien
+  descartados. Arreglar con prueba antes de promover ningún prompt.
+- **`banco.enmascarar` tapa de más**: ocultó «desaturaciones» y «como urgencia» como si
+  fueran nombres. No afecta al modelo (recibe la nota entera) pero sí a quien juzga.
+
+- **En Windows, detener una tarea de fondo NO mata a sus hijos** (2026-09-24). Se detuvo una
+  cola `bash cola.sh` y siguieron vivos el bash y su `python`: tres corridas pidieron modelos a
+  la vez, Ollama cargó qwen3:8b y llama3.1:8b juntos, la RAM libre bajó a 0,6 GB y cada nota
+  pasó de ~80 s a ~3 min. **Para parar una corrida: buscar los PID con
+  `Get-CimInstance Win32_Process` y `Stop-Process` a cada uno, y confirmar con `ollama ps`
+  que queda un solo modelo.** `cola3.sh` descarga todo modelo cargado antes de empezar otro.
+
+- **Hueco de privacidad, encontrado el 2026-09-24 y SIN arreglar**: la abreviatura **«doc»**
+  (doctor) no está en `NLP/banco.py:316` (`enmascarar`), ni en `NLP/fidelidad.py:717`
+  (`_TRATO`) ni en `:834` (`quitar_identificadores`). Una nota con «doc + nombre y apellido»
+  sale con el nombre visible, y un modelo que lo copie no pasa por el filtro. Caso real en la
+  muestra de la competencia. Arreglo: sumar `doc` a las tres, con prueba.
 
 - **DuckDB admite un solo escritor y bloquea a los lectores.** Leer de `triage_vista.duckdb`.
 - **`calplot` no está instalado**; el calendario está reimplementado en `figuras.py`.

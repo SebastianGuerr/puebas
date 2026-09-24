@@ -21,7 +21,9 @@ NLP/
 ├── prompt.py            el prompt de PRODUCCIÓN (v1.6) + el hueco del glosario
 ├── prompts/             candidatos en prueba; producción no se toca hasta promover uno
 │   ├── v1_7.py            para qwen3:8b: prompt + posprocesar() + segunda pasada
-│   └── v1_7_14b.py        el mismo con la abstención suavizada, para qwen3:14b
+│   ├── v1_7_14b.py        el mismo con la abstención suavizada, para qwen3:14b
+│   └── candidatos/        un prompt propio por modelo, por rondas (<modelo>_rN.py)
+├── competencia/         comparar modelos en igualdad de condiciones (docs/COMPETENCIA.md)
 ├── glosario.py          busca en los diccionarios los términos de ESTA nota
 ├── modelo.py            cliente de Ollama: comprueba, genera, limpia
 ├── cadena.py            UNA nota de punta a punta: modelo, filtros, segunda pasada
@@ -53,6 +55,7 @@ NLP/
 │
 ├── salidas/           ← lo generan los scripts, ignorado por git
 │   ├── banco/                    fallos, aciertos, sonda (la revisión humana vive aquí)
+│   ├── competencia/              muestras, notas enmascaradas, listas y salidas de la competencia
 │   ├── nube/                     paquete, mapa, resultados, segunda_pasada.txt, revisar.txt
 │   └── tabla/                    notas_triage.csv.gz y su mapa
 │
@@ -69,6 +72,7 @@ NLP/
 | [docs/PROMPT.md](docs/PROMPT.md) | por qué cada regla dice lo que dice |
 | [docs/EVALUACION.md](docs/EVALUACION.md) | cómo se mide que el modelo no alucina: detectores, filtros, sonda, segunda pasada |
 | [docs/NUBE.md](docs/NUBE.md) | procesar en una GPU alquilada sin exponer a los pacientes |
+| [docs/COMPETENCIA.md](docs/COMPETENCIA.md) | qué modelo local extrae mejor el motivo: método preregistrado y resultados |
 | [docs/TABLA.md](docs/TABLA.md) | la tabla de notas para trabajar sin acceso a la base |
 
 ## Antes de ejecutar
