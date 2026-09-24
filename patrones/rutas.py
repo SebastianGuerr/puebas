@@ -104,7 +104,7 @@ TEMAS = rutas_clustering.TEMAS
 ANCLAS = rutas_clustering.ANCLAS
 
 CALENDARIOS = PROYECTO / "calendarios"
-CLIMA = CALENDARIOS / "clima_unificado.csv"
+CLIMA = CALENDARIOS / "clima_unificado.csv.gz"   # comprimido desde el 2026-09-24
 FESTIVOS = CALENDARIOS / "calendario_Colombia.csv"
 DESASTRES = CALENDARIOS / "desastres_manizales_2020_2026.csv"
 EVENTOS = CALENDARIOS / "eventos_manizales_2020_2026.csv"

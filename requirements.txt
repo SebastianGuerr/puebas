@@ -1,72 +1,91 @@
-# Dependencias principales para NLP y ciencia de datos
-# Compatible con Python 3.11.x
+# Dependencias del proyecto. Python 3.11.x (medido con 3.11.9).
+#
+# Versiones fijadas a las del .venv del equipo del hospital, donde la suite
+# completa pasa (python -m pytest NLP/tests -q -> 271 en verde el 2026-09-24).
+# Revisado el 2026-09-24 contra los import de TODO el codigo del repositorio:
+# lo que esta aqui se importa en algun sitio, y lo que se quito no.
+#
+#   python -m venv .venv
+#   .venv\Scripts\activate            (Windows)   |   source .venv/bin/activate
+#   pip install -r requirements.txt
 
-# Core
+# --- Datos ------------------------------------------------------------------
 numpy==1.26.4
 pandas==2.2.3
-scipy==1.14.1
-scikit-learn==1.9.1        # alineado con el .venv el 2026-09-16; antes decia 1.4.2
-joblib==1.4.2
-tqdm==4.66.1
-# lo usa pandas para leer y escribir el vocabulario y el indice de embedding/
+# parquet de salidas/ y del mapa local
 pyarrow==25.0.1
-# almacen de embedding/. Sustituye al par vectores.f32 + parquet: tipo FLOAT[N]
-# nativo, join OID->fecha en SQL y escritura transaccional (no hay estado a
-# medias que defender con fsync). Un archivo local, sin servidor.
+# la base compartida salidas/triage.duckdb (nota_triage + embedding). Un
+# archivo local, sin servidor.
 duckdb==1.5.5
-openpyxl==3.1.5
+scipy==1.14.1
+python-dateutil==2.9.0
+requests==2.32.3
+
+# --- Base clinica (SOLO en el equipo del hospital) ---------------------------
+# extraccion/, NLP/procesar.py y NLP/nube/ hablan con SQL Server (DWSES) por
+# ODBC con autenticacion de Windows. Fuera del hospital se instalan igual pero
+# no se usan: la conexion se abre solo al llamarla. Hace falta ademas el
+# "ODBC Driver 18 for SQL Server", que no es un paquete de pip.
 SQLAlchemy==2.0.35
 pyodbc==5.2.0
-unidecode==1.3.0
-nltk==3.10.3
-networkx==3.6.1
-matplotlib==3.9.2
-seaborn==0.13.2
 
-# fase 8 (patrones/). Modelos de conteo y agrupamiento de datos mixtos.
-#   statsmodels  el Poisson condicional del diseno cruzado por estratos
-#                (ConditionalPoisson) y la correccion Benjamini-Hochberg
-#                (multipletests). Es la unica pieza del proyecto que no se
-#                podia escribir a mano en un rato.
-#   kmodes       K-Prototypes. OJO: ultima version de 2022, clasificada como
-#                alpha y declara soportar Python 3.6-3.10, no 3.11. Funciona
-#                aqui, pero si un dia deja de hacerlo, patrones/comparacion.py
-#                sigue corriendo sin el: los otros dos algoritmos son de
-#                scikit-learn.
+# --- Modelos estadisticos (patrones/) -----------------------------------------
+#   statsmodels  Poisson condicional por estratos y Benjamini-Hochberg
+#   kmodes       K-Prototypes. OJO: ultima version de 2022, declara Python
+#                3.6-3.10; funciona en 3.11, y si deja de hacerlo
+#                patrones/comparacion.py sigue sin el
 statsmodels==0.15.0
 kmodes==0.12.2
+scikit-learn==1.9.1
+joblib==1.4.2
 
-# NLP / text processing
-spacy==3.7.5
-medspacy==1.3.1
-symspellpy==6.7.8
-rapidfuzz==3.14.6
-flashtext==2.7
+# --- Agrupamiento (clustering/) -------------------------------------------------
+# UMAP reduce los vectores y HDBSCAN agrupa por densidad. numba y pynndescent
+# los arrastra umap; se fijan porque numba es sensible a la version de numpy.
+umap-learn==0.5.12
+hdbscan==0.8.44
+numba==0.67.0
+pynndescent==0.6.0
+
+# --- Vectores (embedding/) ------------------------------------------------------
+# SapBERT-es. El tokenizador de XLM-R es sentencepiece y no trae
+# tokenizer.json: transformers lo reconstruye con protobuf. Sin estos dos no
+# carga.
 sentence-transformers==3.2.1
-torch==2.6.0
-# el tokenizador de XLM-R (SapBERT multilingue) es sentencepiece y no trae
-# tokenizer.json, asi que transformers lo reconstruye con protobuf. Sin estos
-# dos, cambridgeltl/SapBERT-...-from-XLMR no carga.
+transformers==4.57.6
 protobuf==7.36.2
 sentencepiece==0.2.2
-language-tool-python==2.8.1
+# CPU por defecto: el equipo del hospital no tiene GPU. En un equipo con GPU
+# NVIDIA (p. ej. RTX 4060), instalar ANTES la rueda CUDA de la misma version:
+#   pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+torch==2.6.0
 
-# Solo para generar lexico_clinico.json (NLP/lexico.py). El pipeline en
-# ejecucion NO los necesita: lee el JSON ya construido.
-transformers==4.57.6
+# --- Figuras y cuadernos ---------------------------------------------------------
+matplotlib==3.9.2
+# para abrir y ejecutar notebooks/ en VS Code o Jupyter
+ipykernel==7.3.0
+nbformat==5.11.1
+nbconvert==7.17.1
+
+# --- Pruebas ----------------------------------------------------------------------
+pytest==9.1.1
+
+# --- Opcional ------------------------------------------------------------------------
+# Solo para REGENERAR calendarios/calendario_Colombia.csv con
+# calendarios/calendario_colombia.py. El CSV ya esta versionado, y el paquete
+# no esta en el .venv del hospital, asi que no hay version medida que fijar.
+#   pip install holidays
+
+# --- Fuera de pip ------------------------------------------------------------------
+# Ollama (https://ollama.com) con qwen3:8b: el modelo local de NLP/. En
+# Windows lo arranca la aplicacion de la bandeja; comprobar con
+#   curl http://127.0.0.1:11434/api/tags
 
 # QUITADAS Y POR QUE
-#   scispacy  sus modelos son en INGLES (en_core_sci_*). No hay version
-#             espanola, asi que sobre este corpus no reconoce nada. Nunca se
-#             importo desde ningun archivo del proyecto.
-#   stanza    nunca se importo. Su modelo espanol es bueno pero duplica lo que
-#             ya hace spaCy, y mas lento.
-
-# Utilities
-pydantic==2.9.2
-requests==2.32.3
-python-dateutil==2.9.0
-PyYAML==6.0.3
-
-# Optional / project-specific
-# python -m spacy download es_core_news_lg
+#   2026-09-24, al retirarse el pipeline de reglas de NLP/ (2026-09-21) nadie
+#   las importa ya: spacy, medspacy, symspellpy, rapidfuzz, flashtext,
+#   language-tool-python, unidecode, nltk, networkx, seaborn, openpyxl,
+#   pydantic, PyYAML, tqdm. Siguen en el historial de git con el codigo que las
+#   usaba.
+#   scispacy  sus modelos son en INGLES (en_core_sci_*). Nunca se importo.
+#   stanza    nunca se importo; duplicaba a spaCy y era mas lento.

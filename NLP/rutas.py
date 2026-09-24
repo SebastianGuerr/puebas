@@ -57,6 +57,11 @@ BASE_DATOS = PROYECTO / "salidas" / "triage.duckdb"
 #   que abre y cierra en cada vuelta.
 BASE_VISTA = PROYECTO / "salidas" / "triage_vista.duckdb"
 
+# LO QUE SALE A UNA GPU DE UN TERCERO Y LO QUE VUELVE. Dentro de salidas/ a
+# proposito: mapa_local.parquet lleva el OID y el texto original, y esta carpeta
+# esta ignorada por git. Ver NLP/docs/NUBE.md.
+NUBE = SALIDAS / "nube"
+
 # El CSV que habia antes. Ya NO se escribe; se conserva la ruta para poder
 # importarlo con 'python -m NLP.procesar --importar-csv'. Ver NLP/docs/FLUJO.md.
 TRIAGE_LIMPIO = SALIDAS / "triage_limpio.csv"

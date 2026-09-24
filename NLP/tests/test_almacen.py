@@ -4,6 +4,11 @@ Pruebas de la tabla `nota_triage`. No tocan la base clinica ni Ollama.
 Cada prueba trabaja sobre una base temporal propia: rutas.BASE_DATOS se
 reapunta con monkeypatch. Sin eso, correr los tests pisaria la base real, que
 contiene horas de generacion imposibles de rehacer sin acceso a la clinica.
+
+rutas.BASE_VISTA se reapunta igual. Hasta el 2026-09-23 no se hacia, y cada
+corrida de las pruebas copiaba la base de prueba (dos filas con fecha nula)
+encima de la copia de lectura real: no se perdia nada, pero quien la leyera
+despues veia datos falsos hasta que la corrida de NLP la volviera a refrescar.
 """
 
 from datetime import datetime
@@ -17,6 +22,7 @@ from NLP.nucleo import almacen
 @pytest.fixture
 def base(tmp_path, monkeypatch):
     monkeypatch.setattr(rutas, "BASE_DATOS", tmp_path / "prueba.duckdb")
+    monkeypatch.setattr(rutas, "BASE_VISTA", tmp_path / "prueba_vista.duckdb")
     return rutas.BASE_DATOS
 
 

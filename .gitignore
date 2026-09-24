@@ -20,12 +20,14 @@ __pycache__/
 .idea/
 *.log
 
-# configuracion local de Claude Code: skills instaladas, permisos y ajustes de
-# sesion. Es herramienta de trabajo, no parte del pipeline, y su procedencia y
-# licencias quedan documentadas en .claude/skills/README.md. Si algun dia se
-# quiere que las skills viajen con el repositorio, hay que quitar esta linea y
-# versionar solo .claude/skills/, nunca .claude/settings.local.json.
-/.claude/
+# configuracion local de Claude Code. Desde el 2026-09-24 las skills SI viajan
+# con el repositorio, para trabajar igual en el equipo del hospital y en el de
+# casa; su procedencia y licencias (MIT, Apache) estan en .claude/skills/README.md.
+# settings.local.json NO: son los permisos y ajustes de cada maquina.
+# El contexto entre equipos no vive aqui sino en CLAUDE.md, docs/CONTEXTO.md y
+# docs/HANDOFF.md; la memoria de Claude es de cada usuario y maquina.
+/.claude/*
+!/.claude/skills/
 
 # credenciales: la conexion a DWSES usa autenticacion integrada de Windows y no
 # guarda secretos, pero si algun dia se pasa a usuario y contrasena tiene que
@@ -49,7 +51,13 @@ __pycache__/
 # fases 1-3: triage_limpio.csv, reporte_cambios.csv, cache_correcciones.json,
 # lexico_clinico.json, lexico_casing.json, muestra_revision.csv, referencia.csv,
 # siglas_detectadas.csv
-NLP/salidas/
+#
+# Por contenido y no por carpeta (NLP/salidas/* y no NLP/salidas/): git no puede
+# volver a incluir un archivo si su carpeta entera esta ignorada, y de aqui sale
+# la tabla de notas. Ver "Lo que SI se versiona".
+NLP/salidas/*
+!NLP/salidas/tabla/
+NLP/salidas/tabla/*
 
 # LA BASE COMPARTIDA. Desde el 2026-09-21 la salida de NLP/ y la de embedding/
 # viven en el mismo archivo, en la raiz: NLP/ escribe la tabla `triage` y
@@ -62,7 +70,11 @@ NLP/salidas/
 # sin volver a consultarla, cosa que solo puede hacer el propietario. Si hay que
 # borrar algo, usar 'python -m embedding.vectorizar --rehacer', que vacia los
 # vectores y deja `triage` en paz. Nunca borrar el archivo a mano.
-salidas/
+#
+# Solo la carpeta de la raiz, y por contenido (/salidas/*): hasta el 2026-09-24
+# decia 'salidas/', que ignoraba TODA carpeta con ese nombre y no dejaba volver
+# a incluir nada de dentro. Las otras carpetas salidas/ tienen cada una su linea.
+/salidas/*
 
 # fase 6: banco_frases.csv, el set congelado con el que se comparan modelos.
 embedding/salidas/
@@ -134,3 +146,44 @@ _[!_]*
 !clustering/datos/anclas.csv
 !clustering/datos/anclas.npy
 !clustering/datos/anclas_origen.json
+
+# Las series agregadas de triage: conteos por dia, hora, nivel, banda de edad y
+# estancia. Las escribe 'python -m extraccion --series', que necesita la base
+# clinica, asi que fuera del hospital no se pueden rehacer; y los cuadernos de
+# notebooks/ las leen. Son conteos con GROUP BY: sin texto y sin identificador.
+# Versionadas desde el 2026-09-24 por decision del propietario, para poder
+# clonar el repositorio en otro equipo y seguir.
+!/salidas/triage_diario.parquet
+!/salidas/triage_horario.parquet
+!/salidas/triage_nivel.parquet
+!/salidas/triage_edad.parquet
+!/salidas/triage_estancia.parquet
+
+# La tabla de notas sin nada que lleve a la persona (NLP/nube/tabla.py; el
+# porque en NLP/docs/TABLA.md): id aleatorio, dia, nivel, banda de edad y la
+# nota con lo identificable borrado. Sale solo si la auditoria la certifica, y
+# el certificado (conteos y la huella sha256 del CSV) viaja al lado. Decision
+# del propietario del 2026-09-24; ver docs/CONTEXTO.md.
+!NLP/salidas/tabla/notas_triage.csv.gz
+!NLP/salidas/tabla/auditoria.json
+
+# =========================================================
+# Retirados del repositorio el 2026-09-24: llevan texto clinico real
+# =========================================================
+# triage_limpio_antiguo.csv es OID + nota cruda de 6.501 triages; las salidas
+# de exploracion.ipynb muestran filas de notas. Se quedan en el equipo del
+# hospital. OJO: siguen en el HISTORIAL de git junto con otros archivos de
+# notas ya borrados; ver docs/CONTEXTO.md, 2026-09-24.
+/triage_limpio_antiguo.csv
+/exploracion.ipynb
+
+# =========================================================
+# NUNCA, aunque una regla de arriba lo vuelva a incluir
+# =========================================================
+# Van al final a proposito: en .gitignore gana la ultima regla que coincide.
+# El mapa id -> OID es lo unico que devuelve una fila anonima a su triage, y
+# las bases DuckDB y el paquete de la nube llevan el texto original de las notas.
+**/mapa_local*.parquet
+*.duckdb
+*.duckdb.wal
+/NLP/salidas/nube/

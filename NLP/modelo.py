@@ -68,15 +68,20 @@ def verificar(modelo):
         % (modelo, "\n".join("  " + n for n in nombres), modelo))
 
 
-def generar(modelo, prompt, timeout):
+OPCIONES = {"temperature": 0, "top_p": 1, "seed": 7, "num_predict": 200, "num_ctx": 4096}
+
+
+def generar(modelo, prompt, timeout, opciones=None):
     """Una llamada a Ollama. Intenta apagar el modo razonamiento; si el modelo
-    no lo admite, repite la llamada sin esa opcion."""
+    no lo admite, repite la llamada sin esa opcion.
+
+    `opciones` pisa parametros de OPCIONES solo para esta llamada. Lo usa
+    NLP/banco.py para comparar configuraciones; la corrida normal no lo pasa."""
     base = {
         "model": modelo,
         "prompt": prompt,
         "stream": False,
-        "options": {"temperature": 0, "top_p": 1, "seed": 7,
-                    "num_predict": 200, "num_ctx": 4096},
+        "options": {**OPCIONES, **(opciones or {})},
     }
     for cuerpo in ({**base, "think": False}, base):
         datos = json.dumps(cuerpo).encode("utf-8")

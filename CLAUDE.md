@@ -67,8 +67,10 @@ argumento que justifica la clasificación por tema.
 
 ## Lo ya medido — no repetirlo
 
-Todo esto es del 2026-09-17, sobre `clustering/salidas/cobertura_diaria.csv` (615 días,
-2025-01-08 a 2026-09-14, sin huecos):
+Todo esto es del 2026-09-17, sobre la serie diaria de 615 días (2025-01-08 a 2026-09-14,
+sin huecos). Son propiedades del **conteo total**, no del agrupamiento: el archivo del que
+salieron era de `clustering/` pero ningún número de aquí depende de cómo se agrupe nada.
+Siguen siendo la vara contra la que se mide cualquier mejora:
 
 | Hecho | Valor |
 |---|---|
@@ -80,10 +82,20 @@ Todo esto es del 2026-09-17, sobre `clustering/salidas/cobertura_diaria.csv` (61
 | Desviación típica del residuo diario | **12,6 %** — el ruido contra el que se compite |
 | «¿Mañana > media de los últimos 7 días?», acierto fuera de muestra | 77,2 % (base 50,7 %) |
 | «¿Mañana entre el 20 % de días más altos?» | 83,3 % (base 76,3 %) — **los picos son lo difícil** |
-| Rupturas seca→lluviosa dentro de la ventana con triage | **8** |
-| Las mismas rupturas en todo el clima disponible (2020-2026) | **24** |
-| Efecto de esas rupturas sobre el residuo, rezagos 0–14 | todos los IC 95 % cruzan cero, anchos de ±10 pp |
+| ~~Rupturas seca→lluviosa dentro de la ventana con triage~~ | ~~8~~ — **anulado, ver abajo** |
+| ~~Las mismas rupturas en todo el clima disponible (2020-2026)~~ | ~~24~~ — **anulado** |
+| ~~Efecto de esas rupturas sobre el residuo~~ | **anulado**: se calculó sobre una variable rota |
 | Efectos de clima sobre urgencias publicados en la literatura | 2 % a 10 % |
+
+
+> **El clima unificado se reescribió el 2026-09-23** porque producía resultados falsos por
+> seis motivos, el peor de los cuales fabricaba tormentas: dentro del mismo mes, los días sin
+> pluviómetro tenían +20,05 mm/día más que los días con él (ahora −0,36). **Queda anulado
+> todo lo calculado sobre la versión anterior** — incluidas las filas tachadas de arriba y la
+> idea de que `llovio` es cierta el 98,8 % de los días (es el 58,5 %). Solo el 42,9 % de los
+> días tiene pluviómetro: para transiciones día a día, usar `precip_con_estacion` o
+> acumulados de 7 días. Evidencia y método en `calendarios/docs/CLIMA.md`.
+
 
 Y esto es del 2026-09-21, sobre las 787 frases del banco congelado de `embedding/`
 (`salidas/banco_frases.csv`). Mide **calidad de representación, no acierto de pronóstico**:
@@ -114,11 +126,9 @@ compuerta antes de agrupar — `python -m embedding.diagnostico`, **11/11**:
 | Asimetría de hubness (problemática por encima de ~2) | 0,77 | — |
 | Dimensión efectiva de 768 nominales | 37,3 | — |
 
-Lectura: el espacio dejó de ser el cono estrecho que describe `clustering/agrupar.py`. El
-percentil 1 llega a cero, o sea que ahora **sí existen pares de frases lejanas**, que es
-justo lo que un algoritmo de densidad necesita. Consecuencia: las tablas de coherencia de
-`clustering/agrupar.py` están calculadas con la correlación de fondo de `bge-m3` (0,4636)
-y **no valen tal cual**. Detalle en `embedding/docs/CALIDAD.md`.
+Lectura: el espacio dejó de ser un cono estrecho. El percentil 1 llega a cero, o sea que
+ahora **sí existen pares de frases lejanas**, que es justo lo que un algoritmo de densidad
+necesita. Detalle en `embedding/docs/CALIDAD.md`.
 
 Lectura: el instrumento actual es más grueso que el efecto que se busca. No es que la
 hipótesis sea falsa; es que este diseño no puede distinguirla de nada.
@@ -156,25 +166,50 @@ Ninguno se arregla con más modelo ni con más limpieza de texto. Los dos son co
 - **Para predecir de verdad hace falta el *pronóstico* del clima, no la observación.** Un
   modelo evaluado con clima observado mide algo que en operación no se va a tener.
 - **La serie por motivo se modela como proporción con denominador, no como conteo.** La
-  cobertura de `HCTMOTCON` cae ~9 puntos por año y eso mete una tendencia falsa. Ver
-  `clustering/fechas.py`.
+  cobertura de `HCTMOTCON` cae ~9 puntos por año y eso mete una tendencia falsa. Lo mismo
+  vale para las figuras: el conteo crudo de una categoría reproduce el ciclo del volumen
+  total y no dice nada. Ver `clustering/visualizaciones/datos.py`.
 
 ## Granularidades
 
 | | Estado |
 |---|---|
 | **Día** | **2.454 días, 2020-01-01 a 2026-09-21, 2 huecos** (`salidas/triage_diario.parquet`). Media 176,6 triages/día. El patrón semanal medido: lunes 208,5 → domingo 132,7. |
-| **Hora** | **Extraída** (`salidas/triage_horario.parquet`, 55.844 filas día×hora). Y la hipótesis se confirma: el patrón intradiario es **mucho** más fuerte que el semanal — pico a las 10 h con 14,0 triages/hora, valle a las 4 h con 1,9. Eso es 7,4× de oscilación, contra 1,57× del día de la semana. |
-| **Mes** | Ya alcanza para el conteo total: 6,7 ciclos anuales. Para la serie por motivo no, que sigue empezando en 2025. |
+| **Hora** | **Extraída** (`salidas/triage_horario.parquet`, 55.844 filas día×hora). El patrón intradiario es **mucho** más fuerte que el semanal. Medido sobre la casilla conjunta el 2026-09-22: pico **lunes 10 h con 17,6 triages/hora**, valle **jueves 3 h con 1,3** — **13,9× de oscilación**, contra 1,57× del día de la semana. El día tiene **dos jorobas** (pico 10-11 h, valle 13-14 h, segundo pico 18-19 h): un solo armónico de 24 h no lo describe. |
+| **Mes** | Ya alcanza para el conteo total: 6,7 ciclos anuales. Para la serie por motivo no, que sigue empezando en 2025. Excluyendo 2020, la amplitud anual es **19,7 %** (feb 169 → jun 202 triages/día). |
+
+### La serie no crece: subió hasta 2024 y lleva dos años cayendo
+
+Medido el 2026-09-22 sobre los 2.454 días. Es el hecho más grande que se conoce del
+desenlace y condiciona todo lo que se modele encima:
+
+| 2020 | 2021 | 2022 | 2023 | **2024** | 2025 | 2026 |
+|---|---|---|---|---|---|---|
+| 105,7 | 149,3 | 189,6 | 192,4 | **226,4** | 199,6 | 172,3 |
+
+Triages/día. Desde el pico de 2024 la caída acumulada es del **23,9 %**.
+
+Dos consecuencias que no son opcionales:
+
+1. **2020 es un cráter de COVID, no un año flojo**: enero 164 → abril 59, un −64 %. Meterlo
+   en el entrenamiento sin tratarlo aparte le enseña al modelo una forma anual que no es
+   la del hospital.
+2. **La tendencia va en el modelo antes que cualquier variable externa.** Un modelo
+   entrenado en 2022-2024 sobre-predice 2026 de forma sistemática, y esa tendencia se lleva
+   el crédito de cualquier variable que también tenga tendencia — que es casi cualquiera.
+
+**Por qué cae no se sabe.** Es la pregunta abierta más importante del proyecto: si es
+demanda real, es un hallazgo; si es un cambio en cómo se registra, contamina los seis años.
 
 ## Cómo está repartido el trabajo
 
 | Carpeta | Papel |
 |---|---|
-| `NLP/` | Fase 1. De `HCTMOTCON` de `DIM_TRIAGE` a un motivo limpio por nota en la tabla `nota_triage` de `salidas/triage.duckdb`, junto con `HCTFECTRI` (la fecha real del triage). Baja **tres** columnas de las trece de `DIM_TRIAGE`; las otras diez son dato identificable. Lo hace **un modelo local de Ollama** (qwen3:8b) guiado por los 4 diccionarios de `NLP/recursos/`, no un pipeline de reglas. Documentación en `NLP/README.md` y `NLP/docs/` |
+| `NLP/` | Fase 1. De `HCTMOTCON` de `DIM_TRIAGE` a un motivo limpio por nota en la tabla `nota_triage` de `salidas/triage.duckdb`, junto con `HCTFECTRI` (la fecha real del triage). Baja **tres** columnas de las trece de `DIM_TRIAGE`; las otras diez son dato identificable. Lo hace **un modelo local de Ollama** (qwen3:8b) guiado por los 4 diccionarios de `NLP/recursos/`, no un pipeline de reglas. Detrás del modelo, `NLP/cadena.py`: filtros deterministas que quitan lo inventado (`NLP/fidelidad.py`) y una **segunda pasada** contra los descartes falsos. Cómo se mide que no alucina: `NLP/docs/EVALUACION.md`. Documentación en `NLP/README.md` y `NLP/docs/` |
 | `embedding/` | Fase 6. Vectoriza `nota_triage.frase_procesada` con **SapBERT-es** y escribe la tabla `embedding` en la misma base, una fila por nota con el `OID` como columna. No agrupa: solo convierte texto en números y mantiene el `OID` unido a su vector sin meterlo dentro. Documentación propia en `embedding/docs/` |
-| `clustering/` | Fase 7. Pide la matriz con `embedding.almacen.cargar()` y agrupa **textos distintos, no notas**. `clustering/fechas.py` es el puente a la serie diaria por tema, **con denominadores**: contar notas por día da un resultado falso porque entre el paciente y la fila hay tres filtros que se mueven con el tiempo |
-| `patrones/` | Fase 8. Poisson condicional por estratos, corrección Benjamini-Hochberg, K-Prototypes, potencia estadística. **No predice**: su `modelos.py` estima asociación ajustada, no acierto |
+| `clustering/` | **En rediseño desde el 2026-09-22.** El agrupamiento no supervisado por densidad devolvió una taxonomía de *redacción*, no de tipo de urgencia, y no sirve como desenlace. Lo que se decida vive en `docs/CONTEXTO.md`. Lo único nuevo y en pie es `clustering/visualizaciones/`: las figuras de tiempo, que funcionan con cualquier columna categórica y hoy corren sobre la serie total |
+| `patrones/` | Fase 8. Poisson condicional por estratos, corrección Benjamini-Hochberg, K-Prototypes, potencia estadística. **No predice**: su `modelos.py` estima asociación ajustada, no acierto. Sus salidas están calculadas sobre los temas retirados y **no valen** |
+| `notebooks/` | El trabajo de análisis: una figura sin su lectura escrita al lado no es un resultado. Un cuaderno por pregunta, con su conclusión y sus límites |
 | `calendarios/` | Las variables externas que explican los picos: festivos de Colombia, clima, eventos y desastres de Manizales, vigilancia en salud de Caldas. **Es el «por qué» del proyecto** |
 | `diccionario_bd/` | Exploración del esquema. **Solo el propietario lo ejecuta** |
 
@@ -205,17 +240,38 @@ imposible. Detalle en `embedding/docs/ALMACEN.md`.
 
 ## Reglas que no se negocian
 
-1. **No conectarse a la base de datos.** Todo lo que hay en SQL Server (`mssql+pyodbc`,
-   host `ls-cobra`) es información clínica sensible de pacientes reales. Ni MCP de base de
-   datos, ni `pyodbc`, ni consultas exploratorias, ni siquiera de lectura. Si hace falta un
-   dato de allí, lo extrae el propietario y lo deja como archivo en el repositorio. Por lo
-   mismo, **no ejecutar** `python -m NLP.procesar` ni `python -m clustering --serie`: bajan
-   de la base.
+1. **No exponer dato personal. La base sí se puede explorar.** Reescrita el 2026-09-22:
+   la versión anterior decía «no conectarse a la base de datos» y eso nunca fue la
+   intención. El coste de la mala lectura fue alto — sesiones enteras dieron por imposibles
+   análisis que se podían hacer en el momento.
 
-   *Excepción concedida una vez, el 2026-09-21*, por instrucción explícita del propietario:
-   extraer `OID` + `HCTFECTRI` (ni texto clínico ni dato identificable) para rellenar las
-   fechas que faltaban y medir el alcance real de la tabla. De ahí salen las series de
-   `salidas/`. **No es un permiso permanente**: cada extracción se pide aparte.
+   Lo que está prohibido es que salga **dato personal identificable**. Explorar esquema,
+   columnas y agregados, no.
+
+   **El protocolo, en tres pasos y en este orden:**
+
+   1. Mirar el **esquema primero**. `INFORMATION_SCHEMA.COLUMNS` no devuelve ni una fila de
+      datos, así que se consulta sin pensarlo.
+   2. **Clasificar las columnas.** Lo que no esté en la lista blanca se trata como sensible
+      mientras no se haya mirado.
+   3. Consultar **solo agregados** de columnas no sensibles. Nunca `SELECT *`, nunca una
+      fila de paciente, nunca un identificador en la salida.
+
+   **Sensibles en `DIM_TRIAGE`**: `GPADOCUME` (documento), `GPANOMBRE`, `GPASEGNOM`,
+   `GPAAPELLI`, `GPASEGAPE` (nombres), `GENMEDICO` (identifica al médico) y `HCTMOTCON`
+   (texto libre: solo lo lee `NLP/` contra el modelo local y **nunca se imprime en crudo**).
+   En `DIM_HCNCONTRDT`: `GENUSUARIO`.
+
+   **`HCTEDAD` es el caso intermedio**: la edad no identifica, pero edad + fecha + servicio
+   reduce mucho el conjunto de candidatos. Se baja **solo agregada en bandas** (0-4, 5-14,
+   15-44, 45-64, 65+), que es como publica cualquier boletín epidemiológico.
+
+   El protocolo vive en código en `extraccion/__init__.py`, que es el **único** módulo del
+   repositorio que habla con SQL Server. Las consultas están en `extraccion/__main__.py` y
+   todas llevan su `GROUP BY`.
+
+   Sigue en pie **no ejecutar `python -m NLP.procesar`** sin decirlo: no por la conexión,
+   sino porque son horas de generación contra el modelo local y bloquea la base DuckDB.
 2. **`datos/` es lo escrito a mano; `salidas/` es lo que regenera un script.** Si un
    archivo nuevo no encaja en ninguna de las dos, está mal ubicado. Las excepciones
    deliberadas están comentadas una por una en `.gitignore`. En `NLP/` la carpeta escrita a
@@ -232,11 +288,17 @@ imposible. Detalle en `embedding/docs/ALMACEN.md`.
    `lugares.csv`, `terminologia_clinica.json`— y sin ellos el modelo deja de entender el
    habla de Caldas y las abreviaturas del hospital. Cómo ampliarlos: `NLP/docs/RECURSOS.md`.
 5. **La documentación vive en la carpeta `docs/` de cada paquete, no en los docstrings**,
-   y se actualiza en el mismo ítem que cambia el código. Hoy son `NLP/docs/` y
-   `embedding/docs/`. Un docstring explica *cómo funciona este módulo*; un documento
+   y se actualiza en el mismo ítem que cambia el código. Hoy son `NLP/docs/`,
+   `embedding/docs/` y `calendarios/docs/`. Un docstring explica *cómo funciona este módulo*; un documento
    explica *por qué se decidió así y con qué evidencia*, que es lo que no se puede
    reconstruir leyendo el código.
-6. **No hay GPU.** Cualquier propuesta que la dé por supuesta está descartada de entrada.
+6. **Este equipo no tiene GPU.** Cualquier propuesta que la dé por supuesta aquí está
+   descartada de entrada (15,9 GB de RAM y sin tarjeta: una sola cosa pesada a la vez).
+   Hay dos vías a una GPU, y en las dos el OID se queda en este equipo: el **equipo de casa
+   del propietario** (RTX 4060, 8 GB), que recibe la tabla sin identidad
+   (`NLP/docs/TABLA.md`), y una **GPU alquilada**, que recibe solo prompts enmascarados
+   (`NLP/docs/NUBE.md`). En el equipo de casa esta regla no aplica. Las dos requieren la
+   autorización institucional, que no la da el código.
 7. **Evidencia antes que afirmación.** Una mejora solo existe si se midió con las mismas
    notas y los mismos artefactos, cambiando únicamente el código. El precedente: una vez se
    reportó una mejora grande que resultó venir de instalar artefactos que faltaban, no del
@@ -245,18 +307,47 @@ imposible. Detalle en `embedding/docs/ALMACEN.md`.
    `verification-before-completion` impide afirmar en falso que un comando corrió; no impide
    afirmar en cierto una métrica irrelevante. Retención de terminología no es acierto de
    pronóstico.
+9. **Toda decisión se escribe en `docs/CONTEXTO.md` en el momento en que se toma.** No al
+   final, no «si da tiempo»: en el momento. Vale para cualquier sesión, no solo para la que
+   abrió el archivo.
+
+   Qué es una decisión: elegir entre dos caminos, descartar algo, fijar un parámetro, medir
+   un número que va a sostener una conclusión, o cambiar de opinión sobre algo ya escrito.
+   Cada entrada lleva **fecha, qué se decidió, por qué, y con qué evidencia**. El «por qué»
+   es el campo que importa: lo que se puede reconstruir leyendo el código no hace falta
+   guardarlo, y lo que no, se pierde en cuanto se cierra la sesión.
+
+   **El archivo solo crece.** Una decisión que se revierte no se borra: se añade la nueva
+   entrada diciendo que revierte a la anterior y por qué. El historial de por qué se cambió
+   de idea vale tanto como la idea, y es lo único que evita volver a discutir lo mismo en
+   tres meses.
+10. **`docs/HANDOFF.md` se actualiza durante la sesión, no al cerrarla.** Es el estado vivo:
+   qué es cierto ahora, qué está a medias, qué sigue, y qué está esperando una decisión del
+   propietario. A diferencia de `CONTEXTO.md`, este **se reescribe**: describe el presente,
+   no la historia.
+
+   Se toca cada vez que algo cambia de estado, no en una pasada final. Una sesión que se
+   corta a la mitad — y se cortan — tiene que dejar el archivo utilizable igual.
+
+   La prueba de que está bien escrito: **una sesión nueva que lea solo `CLAUDE.md`,
+   `CONTEXTO.md` y `HANDOFF.md` tiene que poder seguir sin preguntar nada de lo ya hablado.**
+   Si hace falta explicarle algo que ya se discutió, es que falta en uno de los tres.
 
 ## Al abrir sesión
 
 1. **Este archivo entero.** Es el propósito; sin él las decisiones técnicas no se entienden.
-2. `NLP/README.md` — mapa de la carpeta y cómo se ejecuta.
-3. `NLP/docs/FLUJO.md` — cómo viaja una nota desde la base hasta el CSV, y por qué.
-4. `embedding/docs/HANDOFF.md` — qué se decidió en la última sesión, qué se comprobó y
+2. **`docs/HANDOFF.md` y `docs/CONTEXTO.md`, en ese orden.** El primero dice dónde se quedó
+   todo y qué sigue; el segundo, por qué está así. Leerlos **antes** de proponer nada: casi
+   todo lo que parece una buena idea nueva ya se discutió, y ahí está escrito por qué se
+   tomó o se descartó. Ver las reglas 9 y 10.
+3. `NLP/README.md` — mapa de la carpeta y cómo se ejecuta.
+4. `NLP/docs/FLUJO.md` — cómo viaja una nota desde la base hasta el CSV, y por qué.
+5. `embedding/docs/HANDOFF.md` — qué se decidió en la última sesión, qué se comprobó y
    qué quedó pendiente. Después, según haga falta: `MODELO.md` (qué modelo y con qué
    evidencia), `ALMACEN.md` (el esquema y sus garantías), `CALIDAD.md` (el estado de
    los vectores) y `DECISIONES.md` (la bitácora de lo descartado).
-5. `python -m pytest NLP/tests -q` — **33 en verde** en segundos (medido: 2,7 s).
-6. `python -m NLP.procesar --estado` y `python -m embedding.vectorizar --estado` — qué
+6. `python -m pytest NLP/tests -q` — **283 en verde** (medido el 2026-09-24: ~21 s).
+7. `python -m NLP.procesar --estado` y `python -m embedding.vectorizar --estado` — qué
    hay en la base, sin tocar nada.
 
 **DuckDB admite un solo escritor, y un escritor bloquea también a los lectores** (medido
@@ -269,7 +360,7 @@ entre procesos el 2026-09-21). Consecuencias prácticas, que no son opcionales:
   encima, la corrida ya no se cae. A cambio la copia se congela mientras esté adjunta, y
   avanza al reconectar — Windows no deja sustituir un archivo abierto.
 - Si algo falla con «la tiene tomada», el mensaje dice qué proceso es y cómo soltarlo.
-7. `git status` antes de tocar nada.
+8. `git status` antes de tocar nada.
 
 Si hay que hablar con el modelo, comprobar primero que Ollama responde:
 `curl http://127.0.0.1:11434/api/tags`. En Windows lo arranca sola la aplicación de la
