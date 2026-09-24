@@ -59,34 +59,32 @@ resultados de vuelta. El porqué y lo descartado: `docs/CONTEXTO.md`, 2026-09-24
 - `requirements.txt` rehecho; `calendarios/clima_unificado.csv.gz` (antes `.csv`).
 - Retirados del índice: `triage_limpio_antiguo.csv` y `exploracion.ipynb` (texto real).
 
-**BLOQUEANTE antes de clonar:** el **historial** del repositorio en GitHub tiene notas crudas
-con OID (ver CONTEXTO, 2026-09-24). Un clon las copia. Decisión #6 abajo.
+**Versionado y en el commit `9c43633`** (2026-09-24): el CSV de notas, su certificado, las
+cinco series `salidas/triage_*.parquet`, `clima_unificado.csv.gz` y `.claude/skills/`. El
+mapa, las DuckDB y `NLP/salidas/nube/` siguen fuera (bloque «NUNCA» de `.gitignore`).
+**El push lo hace el propietario** (a Claude se lo bloquea el sistema de permisos).
 
-**Falta para que el clon sirva:**
-1. **Sacar de `.gitignore` el CSV y las series**, que el sistema de permisos le bloqueó a
-   Claude. Si el propietario lo aprueba, estas líneas van en «Lo que SI se versiona» (y
-   `NLP/salidas/` y `salidas/` pasan a `NLP/salidas/*` y `/salidas/*`, porque git no
-   re-incluye un archivo de una carpeta ignorada entera):
-   ```
-   !NLP/salidas/tabla/
-   NLP/salidas/tabla/*
-   !NLP/salidas/tabla/notas_triage.csv.gz
-   !NLP/salidas/tabla/auditoria.json
-   !/salidas/triage_diario.parquet
-   !/salidas/triage_horario.parquet
-   !/salidas/triage_nivel.parquet
-   !/salidas/triage_edad.parquet
-   !/salidas/triage_estancia.parquet
-   ```
-   El bloque «NUNCA» del final sigue ganando sobre el mapa y las DuckDB.
-2. **El código de casa no existe:** leer el CSV, armar el prompt con la versión que se elija
+**El historial sigue sucio, por decisión del propietario** (se sube al repo actual): un clon
+copia las notas crudas de los commits viejos. Decisión #6 abajo, pendiente.
+
+**En el equipo de casa, para arrancar:**
+```
+git clone https://github.com/SebastianGuerr/puebas.git
+cd puebas
+python -m venv .venv && .venv\Scripts\activate
+pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
+pip install -r requirements.txt
+python -m pytest NLP/tests -q
+```
+y Ollama con `qwen3:8b` (y los candidatos que se quieran probar).
+
+**Falta:**
+1. **El código de casa no existe:** leer el CSV, armar el prompt con la versión que se elija
    de `NLP/prompts/`, llamar a Ollama en la GPU, guardar cada resultado con `id`,
    `version_prompt` y `modelo`. Y aquí, el camino de vuelta: resultado → `id` → mapa → OID.
-3. **Pasar el arreglo de las fechas con guion a `enmascarar.py`** (hoy solo lo tiene la
+2. **Pasar el arreglo de las fechas con guion a `enmascarar.py`** (hoy solo lo tiene la
    tabla, `_red_de_fechas`): el paquete de la nube tiene el mismo hueco.
-4. En el equipo de casa: `pip install -r requirements.txt` con `torch` CUDA (ver el
-   comentario en el archivo), y Ollama con el modelo. Allí la regla 6 («No hay GPU») no
-   aplica.
+3. En el equipo de casa la regla 6 («No hay GPU») no aplica: hay RTX 4060 de 8 GB.
 
 ---
 
@@ -264,8 +262,7 @@ estancia. Cada figura con su lectura y sus límites.
 | 2 | **¿Qué significa `HCCFECSAL`** en cada régimen? | Sin eso la estancia no se interpreta ni dentro del régimen 2 |
 | 3 | **La lista de 6-8 categorías clínicas** | Bloquea el banco etiquetado, y el banco bloquea la comparación de métodos |
 | 4 | **Reordenar la cola del NLP por hash del OID** (parar y relanzar la corrida) | Muestra uniforme de 20 meses en ~5 días en vez de 70 días en orden cronológico |
-| 6 | **Limpiar el historial de git**: repo nuevo con un commit limpio (recomendado) o `git filter-repo` + `push --force` | Hoy un clon copia 6.501 notas crudas con OID y otros bancos de notas. Irreversible: lo decide el propietario |
-| 7 | **Autorizar que el CSV de notas y las series salgan de `.gitignore`** (líneas arriba, en «EN CURSO: equipo de casa») | Sin eso el clon no trae los datos. El sistema de permisos se lo bloqueó a Claude |
+| 6 | **Limpiar el historial de git**: repo nuevo con un commit limpio (recomendado) o `git filter-repo` + `push --force`. El 2026-09-24 el propietario eligió subir al repo actual y dejarlo para después | Hoy un clon copia 6.501 notas crudas con OID y otros bancos de notas. Irreversible: lo decide el propietario |
 | 5 | **Permitir una primera pasada léxica en SQL** sobre `HCTMOTCON`: `CASE WHEN ... LIKE` + `GROUP BY` día; el texto nunca sale del servidor | Calendario de motivos de los 20 meses **hoy**, y es además el «piso léxico» del banco de comparación |
 
 ---

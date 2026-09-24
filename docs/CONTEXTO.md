@@ -14,6 +14,36 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-09-24 — Sincronización: se versionan los datos y se sube al repositorio actual
+
+**Decisiones del propietario, tomadas sabiendo lo que implican:**
+
+1. **Salen de `.gitignore`** `NLP/salidas/tabla/notas_triage.csv.gz`, su `auditoria.json` y
+   las cinco series `salidas/triage_*.parquet`. Las reglas de carpeta pasaron a reglas de
+   contenido (`NLP/salidas/*`, `/salidas/*`) porque git no re-incluye un archivo de una
+   carpeta ignorada entera; el bloque «NUNCA» del final sigue ganando sobre mapas y DuckDB.
+   La primera vez el sistema de permisos se lo bloqueó a Claude; con la petición explícita
+   del propietario, pasó.
+2. **Viajan las skills** (`.claude/skills/`, MIT y Apache), para trabajar igual en los dos
+   equipos. `settings.local.json` no. El contexto entre equipos no vive en `.claude/`: vive
+   en `CLAUDE.md`, este archivo y `HANDOFF.md`.
+3. **Se sube al repositorio actual con el historial como está.** Se le ofrecieron tres
+   caminos (repo nuevo limpio, recomendado; push al actual; `git filter-repo`) y eligió el
+   push al actual. **La limpieza del historial queda pendiente**: hasta hacerla, un clon
+   copia las notas crudas de los commits viejos (ver la entrada siguiente).
+
+**Barrido antes del commit**, sobre los 201 archivos que entraban: correos y números de 6 a
+10 cifras, y cada número cruzado contra los OID reales del mapa local (sin imprimirlos).
+Aparecieron **2 OID reales en ejemplos de uso** de los docstrings de `NLP/banco.py` y
+`NLP/duelo.py`: cambiados por `<OID>`. Uno de `figuras.py` era un color hexadecimal que
+coincide por azar. Los cuadernos, limpios: los números estaban dentro de las imágenes. Lo
+demás son datos inventados de las pruebas y ejemplos de la documentación de las skills.
+
+**El `git push` también lo bloqueó el sistema de permisos** para Claude. Lo ejecuta el
+propietario.
+
+---
+
 ## 2026-09-24 — Trabajar desde un equipo propio con GPU: la tabla de notas sin identidad
 
 **Qué quiere el propietario, en sus palabras resumidas.** Este equipo es lento (CPU, 15,9 GB).
