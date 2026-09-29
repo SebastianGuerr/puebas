@@ -20,6 +20,15 @@ duckdb==1.5.5
 scipy==1.14.1
 python-dateutil==2.9.0
 requests==2.32.3
+# lee los Excel de microdatos SIVIGILA (calendarios/vigilancia/sivigila.py).
+# Motor en Rust: ~50 s y poca memoria por archivo de 250.000 filas, donde
+# openpyxl tarda varios minutos. Instalado el 2026-09-28.
+python-calamine==0.8.2
+# usa el almacen de certificados de Windows en requests. En la red del
+# hospital la inspeccion TLS corporativa hace fallar a requests con 'self-signed
+# certificate in chain' contra la API de Power BI del INS
+# (calendarios/vigilancia/powerbi.py). Instalado el 2026-09-28.
+truststore==0.10.4
 
 # --- Base clinica (SOLO en el equipo del hospital) ---------------------------
 # extraccion/, NLP/procesar.py y NLP/nube/ hablan con SQL Server (DWSES) por

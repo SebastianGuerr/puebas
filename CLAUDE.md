@@ -31,6 +31,12 @@ histórico que diga «el lunes tiende a haber más gente».
 
 ## El mecanismo tipo que se quiere capturar
 
+> **Aclaración del propietario, 2026-09-28:** lo que sigue es un **ejemplo del tipo de
+> razonamiento** («factor externo → cambio en la demanda»), no la hipótesis del proyecto. El
+> desenlace es el **triage total**, y no la gripa ni los niños. La etapa actual es de
+> **recolección e inventario de variables externas**, sin conclusiones: ver `docs/CONTEXTO.md`
+> y `calendarios/docs/INVENTARIO.md`.
+
 El ejemplo que fija el criterio, en palabras del propietario:
 
 > Si venimos en temporada de sequía y el clima cambia de golpe —se pone más lluvioso, más
@@ -95,6 +101,12 @@ Siguen siendo la vara contra la que se mide cualquier mejora:
 > idea de que `llovio` es cierta el 98,8 % de los días (es el 58,5 %). Solo el 42,9 % de los
 > días tiene pluviómetro: para transiciones día a día, usar `precip_con_estacion` o
 > acumulados de 7 días. Evidencia y método en `calendarios/docs/CLIMA.md`.
+>
+> **Y se corrigió otra vez el 2026-09-29.** El pluviómetro de La Nubia reportaba **0 mm días
+> enteros** de octubre de 2025 a julio de 2026 mientras llovía, y fabricaba sequías. Ahora se
+> detecta (`pluviometro_fallido`, 199 días) y se trata como ausente. Con eso, los días con
+> pluviómetro válido son el **34,7 %** y la lluvia anual 1.297 mm. El «seco → lluvioso» del
+> cuaderno 07 en 0-4 años bajó de +22 % a +13 % ± 15: ya no es significativo.
 
 
 Y esto es del 2026-09-21, sobre las 787 frases del banco congelado de `embedding/`
@@ -174,8 +186,9 @@ Ninguno se arregla con más modelo ni con más limpieza de texto. Los dos son co
 
 | | Estado |
 |---|---|
-| **Día** | **2.454 días, 2020-01-01 a 2026-09-21, 2 huecos** (`salidas/triage_diario.parquet`). Media 176,6 triages/día. El patrón semanal medido: lunes 208,5 → domingo 132,7. |
-| **Hora** | **Extraída** (`salidas/triage_horario.parquet`, 55.844 filas día×hora). El patrón intradiario es **mucho** más fuerte que el semanal. Medido sobre la casilla conjunta el 2026-09-22: pico **lunes 10 h con 17,6 triages/hora**, valle **jueves 3 h con 1,3** — **13,9× de oscilación**, contra 1,57× del día de la semana. El día tiene **dos jorobas** (pico 10-11 h, valle 13-14 h, segundo pico 18-19 h): un solo armónico de 24 h no lo describe. |
+| **Día** | **2.454 días, 2020-01-01 a 2026-09-21** (`salidas/triage_diario.parquet`). **Caída de registro, no ausencia de pacientes:** el **19 y 20-mar-2024 sin filas** y el **21-mar-2024 con 40** (17 % de lo esperado). En el total esos días van como **nulo**, nunca como cero (corregido el 2026-09-29). El 21-sep-2026 está incompleto: cortar en el 20. Media 176,6 triages/día. El patrón semanal medido: lunes 208,8 → domingo 132,7. |
+| **Hora** | **Extraída** (`salidas/triage_horario.parquet`, 55.844 filas día×hora). El patrón intradiario es **mucho** más fuerte que el semanal. Medido sobre la casilla conjunta el 2026-09-22: pico **lunes 10 h con 17,6 triages/hora**, valle **jueves 3 h con 1,3** — **13,9× de oscilación**, contra 1,57× del día de la semana. El día tiene **dos jorobas**: pico a las 10 h, valle a las 12-13 h y **segundo pico a las 14-15 h** (2022-2026: 15,8 / 10,9 / 13,0 triages por hora); a las 18-19 h ya va en descenso (8,6). *Corregido el 2026-09-29: antes decía «valle 13-14 h, segundo pico 18-19 h», que no es lo que dan los datos.* Un solo armónico de 24 h no lo describe. |
+| **Asegurador** | **Extraído el 2026-09-28** (`salidas/triage_entidad.parquet`, día × hora × entidad; `python -m extraccion --entidad`). **Nueva EPS es el 58 % del triage** y explica la caída del volumen de 2025-2026 (116 → 72 por día). Ver `docs/CONTEXTO.md`, «Dos capas». |
 | **Mes** | Ya alcanza para el conteo total: 6,7 ciclos anuales. Para la serie por motivo no, que sigue empezando en 2025. Excluyendo 2020, la amplitud anual es **19,7 %** (feb 169 → jun 202 triages/día). |
 
 ### La serie no crece: subió hasta 2024 y lleva dos años cayendo
@@ -198,8 +211,13 @@ Dos consecuencias que no son opcionales:
    entrenado en 2022-2024 sobre-predice 2026 de forma sistemática, y esa tendencia se lleva
    el crédito de cualquier variable que también tenga tendencia — que es casi cualquiera.
 
-**Por qué cae no se sabe.** Es la pregunta abierta más importante del proyecto: si es
-demanda real, es un hallazgo; si es un cambio en cómo se registra, contamina los seis años.
+~~**Por qué cae no se sabe.**~~ **Resuelto el 2026-09-28** (cuaderno 07). La caída del
+**volumen** es de **Nueva EPS**: intervenida por corrupción y al borde de la quiebra, sus afiliados
+dejaron de venir. Pasa de 115,8 a 72,2 triages por día entre 2025 y 2026, con desplomes a mediados
+de noviembre de 2025 y en julio de 2026. La reclasificación del nivel de triage es real, pero es
+**otro fenómeno**: cambiar la etiqueta no cambia el conteo. **El nivel del volumen lo mueve la red
+de salud; los picos, otras cosas.** Por eso el modelo necesita el estado de la EPS dominante como
+variable explícita.
 
 ## Cómo está repartido el trabajo
 

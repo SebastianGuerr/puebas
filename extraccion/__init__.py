@@ -48,6 +48,9 @@ LO QUE SE BAJA, Y POR QUE CADA COSA
     HCTEDAD       solo en bandas, ver arriba
     HCCFECTUR     hora de entrada al servicio
     HCCFECSAL     hora de salida. Con la anterior da el tiempo de estancia
+    GEENENTADM    entidad administradora (EPS, aseguradora SOAT, ARL...), cruzada con
+                  DIM_ENTIDAD para el nombre. Es una ORGANIZACION, no una persona, y se
+                  baja solo contada por dia x hora. Anadida el 2026-09-28
 """
 
 SENSIBLES = {
@@ -63,6 +66,63 @@ SENSIBLES = {
     "DIM_HCNCONTRDT": {
         "GENUSUARIO": "identifica a quien registro",
     },
+    # --- Anadidas el 2026-09-29, ANTES de consultar ningun dato de estas tablas, para el
+    # perfil del hospital (cuaderno 10). Llaves de paciente, documentos, nombres, usuarios,
+    # medicos y todo texto libre. Un OID de ingreso no identifica por si solo, pero tampoco
+    # sale: solo se usa dentro de la consulta para unir, y lo que sale son conteos.
+    "DIM_INGRESO": {
+        "GENPACIEN": "llave del paciente",
+        "GEENUSUARIO": "identifica a quien registro",
+        "AINCONSEC": "consecutivo de ingreso: identificador administrativo",
+    },
+    "DIM_FOLIO": {
+        "GENPACIEN": "llave del paciente",
+        "GENMEDICO": "identifica al medico",
+        "GENMEDICOA": "identifica al medico",
+        "HCNUMFOL": "numero de folio: identificador",
+    },
+    "ADNCIADMIN_DW": {
+        "ACIMOTIVO": "texto libre",
+        "ADNMOTANU": "texto libre",
+        "GEENUSUARIO": "identifica a quien registro",
+        "ADNUSUANUL": "identifica a quien anulo",
+    },
+    "SEGUIMIENTO_REMISIONES_DW": {
+        "Cedula": "documento de identidad",
+        "Nombre": "nombre",
+        "Paciente": "nombre del paciente",
+        "MEDICO": "identifica al medico",
+        "OBSERVACIONES": "texto libre",
+        "MotivoInicialConsulta": "texto libre clinico",
+        "AntecentesMedicos": "texto libre clinico",
+        "EnfermedadActual": "texto libre clinico",
+        "MotivoRemision": "texto: tratar como libre mientras no se demuestre que es un catalogo",
+        "MOTIVO": "texto: tratar como libre mientras no se demuestre que es un catalogo",
+        "USUMODIFICA": "identifica a quien modifico",
+        "Expr2": "contenido desconocido: sensible hasta mirarlo",
+        "Expr3": "contenido desconocido: sensible hasta mirarlo",
+        "ConsecIngreso": "identificador administrativo",
+    },
+    "DW_MATRIZ_EGRESOS": {
+        "DI": "documento de identidad",
+        "Edad": "edad exacta: solo en bandas",
+        "Certificado_de_defuncion": "identificador de un documento",
+        "certificado_de_nacido_vivo": "identificador de un documento",
+    },
+    "TRASLADOS_Y_EGRESOS": {
+        "PACNUMDOC": "documento de identidad",
+        "TERNOMCOM": "nombre",
+        "AINCONSEC": "identificador administrativo",
+        "EDAD": "edad exacta: solo en bandas",
+        "MUNICIPIO": "residencia: el propietario decidio no usarla",
+    },
+    "EGRESOS_INDICADORES": {"IDENTIFICACION": "documento", "USUARIO": "nombre o usuario"},
+    "EGRESOS_HASTA_JUNIO_2025": {"IDENTIFICACION": "documento", "USUARIO": "nombre o usuario"},
+    "EGRESOS_TRASLADO": {"IDENTIFICACION": "documento", "USUARIO": "nombre o usuario"},
+    "FACT_EGRESOS_PROBABLES": {"PACNUMDOC": "documento", "GPANOMCOM": "nombre", "AINCONSEC": "identificador"},
+    "FACT_SOLICITUD_CAMA": {"oidgenpacien": "llave del paciente"},
+    "SERVICIOS_AMBULATORIOS_CONEXT": {"NUMIDPACIENTE": "documento", "PACIENTE": "nombre"},
+    "AREA_SERVICIO": {"GEEMAIL": "correo"},
 }
 
 # Edad: se baja, pero nunca fila a fila. Ver la cabecera.

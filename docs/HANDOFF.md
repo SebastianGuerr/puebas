@@ -6,7 +6,7 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-09-24.**
+**Última actualización: 2026-09-28.**
 
 ---
 
@@ -18,7 +18,147 @@ existen, cómo se comportan y qué relaciones reales hay entre las tablas y los 
 
 ---
 
+## EN CURSO (2026-09-28): calendarios externos con fuentes reales — 1/4: vigilancia
+
+**El NLP está en pausa por decisión del propietario.** El orden y el porqué están en
+`CONTEXTO.md` («Se aparta el NLP…»): **vigilancia → clima → desastres → eventos**, de uno en uno.
+
+**Encuadre (propietario, 28-09):** esta etapa es de **recolección e inventario**. El desenlace
+es el **triage total**; lo respiratorio era solo un ejemplo. El entregable central es
+`calendarios/docs/INVENTARIO.md`. Alcance fijado:
+- Eventos grandes (Feria) sí; partidos no.
+- Catástrofes, de la UNGRD.
+- **Sin** calidad del aire.
+- El clima actual basta.
+
+**Estado al cierre del 28-09:**
+- **Calendario 1 (vigilancia) CERRADO.**
+  - 995 y 998: `vigilancia_sivigila.csv.gz`.
+  - 14 eventos individuales y 3 marcadores: `vigilancia_sivigila_eventos.csv.gz`, con el script
+    `eventos.py`.
+  - 2026 por Power BI (`powerbi.py`), con una instantánea en `powerbi/2026-09-28/`.
+  - Decisiones y escalones: `CONTEXTO.md`, entrada «Calendario de vigilancia cerrado».
+- **Cuaderno `notebooks/06_patrones_exploratorios.ipynb`**, con los primeros patrones contra el
+  triage total. Lo más fuerte es institucional; clima, Feria y vigilancias no se distinguen del
+  azar. Cinco hipótesis (H1-H5) en `CONTEXTO.md`.
+- **Inventario de fuentes de las demás familias** en `calendarios/docs/FUENTES_EXTERNAS.md`.
+  Las acciones del propietario están en la decisión #10.
+- **Regla nueva:** en el total, un día sin filas es una caída del registro, no cero pacientes.
+
+**EN CURSO (29-09, noche): el entorno conectado consigo mismo**, que es la decisión del propietario.
+- `notebooks/09_el_entorno.ipynb` está hecho, sin errores y sin datos del hospital. Trae el
+  calendario → violencia, las cadenas clima → IRA con rezago y los estados del entorno (calma,
+  frío y húmedo, seco y cálido, decembrino, Feria).
+- **Sección 6 hecha**: lo observado contra lo publicado, con la revisión en
+  `calendarios/docs/LITERATURA_ENTORNO.md` (86 referencias). Casi todo coincide. Aportes propios:
+  quincena → violencia intrafamiliar, y la interacción frío × virus × mayores.
+- Datos nuevos: `enso_oni.csv` y `calendario_escolar_manizales.csv`.
+- **Después:** enfrentar los estados y sus interacciones contra el hospital (cuaderno 10 o 11;
+  el perfil del hospital espera, #13).
+
+**HECHO (29-09, tarde): los cuadernos 01-08 cuentan la historia completa.**
+- Índice y hilo en `notebooks/README.md`.
+- 01, 02, 03 (nuevo), 05 (convertido), 06, 07 y 08 (nuevo) corren **sin errores**.
+- Llevan recuadros de corrección, incluido el del clima.
+- **El 08 (los picos)** dejó tres relojes: la noche festiva (baja de día, sube de madrugada, y el
+  día siguiente sube), el arranque de año (3 de enero +14 %) y la temporada de mitad de año
+  (vacaciones +6,5 %). Fiestas de pueblos lejanos: +2 %.
+- **El clima está corregido otra vez** (pluviómetro roto, `pluviometro_fallido`).
+- **Siguiente:** fijar las variables definitivas y probarlas fuera de muestra (origen rodante).
+  Pendientes del propietario: #10, #11, #12 (CRUE).
+
+**(histórico de la mañana) Los cuadernos cuentan la historia completa** (`CONTEXTO.md`, entrada del 29).
+Tres agentes trabajan en paralelo, sin compartir archivos:
+- **01 y 02: TERMINADOS**, 38 y 36 celdas, sin errores, con 22 y 24 recuadros de corrección.
+  `CLAUDE.md` también corregido: la segunda joroba es a las 14-15 h, los huecos van nombrados y
+  la caída se atribuye a Nueva EPS.
+  - **Pendiente:** ningún script regenera `triage_diario` ni `triage_horario`. Hay que añadirlos
+    a `extraccion --series`.
+- **Calendario de fiestas:** un agente está integrando `scratchpad/picos_contexto/fiestas_A.csv`
+  (93 filas con URL y los aplazamientos por el terremoto) en
+  `calendarios/fiestas_caldas_2020_2026.csv`.
+- **03 nuevo** (fuentes externas) y **05 convertido a cuaderno**, con el defecto de marzo de 2024
+  arreglado.
+- **Investigación de picos**: calendario de fiestas de los municipios de Caldas en
+  `calendarios/fiestas_caldas_2020_2026.csv`, y contexto oficial de diciembre, enero y mitad de
+  año en `<scratchpad>/picos_contexto/INFORME.md`.
+
+**Después:** el cuaderno **08, los picos**, con las hipótesis ya preregistradas
+(`diciembre_noches_festivas`, `fiestas_pueblos`, `mitad_de_anio`); `notebooks/README.md` con el
+hilo; y ajustes al 06 y al 07. **Ya medido:** hay dos tipos de pico. Días puntuales en
+diciembre-enero (12-15 por cada 100 días) y semanas altas sostenidas en marzo-mayo (mayo: 45 % de
+sus semanas).
+
+**NUEVO (28-09, noche): método por mecanismos** (`CONTEXTO.md`, «Cambio de método»).
+- Ventanas preregistradas en `patrones/datos/variables.csv`.
+- Serie nueva por asegurador: `salidas/triage_entidad.parquet` (`python -m extraccion
+  --entidad`), agrupada con `extraccion/entidades.py`, que es un borrador a revisar.
+- `notebooks/07_mecanismos.ipynb`: Nueva EPS explica los escalones de nov-2025 y jul-2026; la
+  Feria tiene huella propia (SOAT +37 % contra +12 %); seco → lluvioso daba +22 % en 0-4 años (**+13 % ± 15, no significativo, tras corregir el
+  pluviómetro el 29-09**) a
+  1-2 semanas.
+- Las lecturas del 06 están corregidas.
+- **Pendiente del propietario (#11):** fechas de suspensión y reanudación de servicios entre el
+  SES y Nueva EPS, y revisar la clasificación de entidades.
+
+**Sigue, en orden** (el propietario elige):
+1. **Calendario del sistema de salud (H1).** Es la señal más visible y no existe como dato.
+   Se arma con la API de noticias de la Alcaldía (8.746 desde 2020) mientras llega el derecho de
+   petición a la DTSC (#10c).
+2. **Catástrofes de la UNGRD**, que sustituyen `desastres_manizales_2020_2026.csv`.
+3. **Eventos sociales grandes**, que sustituyen el calendario manual: Feria con asistencia y
+   número de eventos por año, que es lo único que la haría medible.
+4. **Tarea semanal que congele el Power BI.** Hoy hay una sola instantánea.
+5. **Preregistrar H1-H5** en `patrones/datos/variables.csv` antes de cualquier prueba fuera de
+   muestra.
+
+---
+
+**Detalle del calendario 1 (vigilancia):**
+
+| | |
+|---|---|
+| Código | `calendarios/vigilancia/sivigila.py` (`--sin-descargar` rehace todo desde el caché en ~16 s) |
+| Salidas versionables | `calendarios/vigilancia_sivigila.csv.gz` (203.772 filas; Manizales, Caldas y Colombia) y `vigilancia_sivigila_instituciones.csv.gz` (130 instituciones) |
+| Crudo | `calendarios/vigilancia/crudo/`, 1,6 GB, **ignorado**: trae datos de quien notifica |
+| Porqué | `calendarios/docs/VIGILANCIA.md` |
+| Fuentes | `calendarios/docs/FUENTES_VIGILANCIA.md` |
+| Cobertura | 995 usable **2015-2025**; 998 de 2011 a 2025 |
+
+**Lo que hay que saber para usarlo** (detalle en `CONTEXTO.md`):
+- La proporción IRA / todas las causas **solo se compara dentro de cada año**: el denominador
+  tiene escalones de +60 % y +35 %. Para comparar entre años, usar el conteo.
+- La IRA 0-4 de la ciudad correlaciona **r = 0,703** con el triage 0-4 del hospital. En
+  diferencias semanales baja a 0,18.
+- **Trampa de conteo:** el `GROUP BY` de SQL no emite días con cero. Antes de correlacionar,
+  rellenar con cero.
+
+- Los eventos individuales (300, 356, 875, 365…) **solo entran al pronóstico con rezago**:
+  son parte del desenlace.
+- Pendiente: una proporción sobre un panel fijo de instituciones, para quitar los escalones
+  del denominador.
+
+Las copias del scratchpad con datos de quien notifica (`d995.xlsx`, `d995_2025.parquet`) se
+borraron el 28. El único crudo que queda es el de `crudo/`, ignorado por git.
+
 ## Lo más nuevo, y lo que más cambia el plan
+
+**0. (2026-09-28) Validación «sin motivo» medida — ver `CONTEXTO.md`, entrada del 28.**
+`python notebooks/05_validacion_sin_motivo.py`. En corto: el motivo **no hace falta** para
+predecir ni para probar el mecanismo (la edad lo prueba: frío/humedad → +6-11 % de consultas
+0-14 años a 1-2 semanas). Pero **ninguna variable externa actual mejora el pronóstico del
+total** fuera de muestra (semanal: estacionalidad 5,23 % de MAPE, con externas 5,64 %), porque
+los calendarios son sobre todo calendario disfrazado (vigilancia: 67 % ventanas fijas; el mes
+explica 93-100 % de ellas) y las rupturas seca→lluvia son solo 7 semanas. Lo que más mueve el
+conteo es institucional (nov-2025, terremoto −21,5 %). **Espera decisión del propietario** (#7).
+Fuera del repositorio hay dos cosas útiles:
+- **Microdatos SIVIGILA 995** (IRA por institución × semana, Manizales, 2011-2025): es una serie
+  de vigilancia real para reemplazar las ventanas fijas. Al cargarlos hay que descartar las
+  columnas del notificador, que son dato personal.
+- Los **cierres a Nueva EPS**: Avidanti el 21-ago-2025 y Santa Sofía el 1-dic-2025. Son el
+  candidato a explicar noviembre-diciembre de 2025.
+
+Detalle y enlaces en `CONTEXTO.md`.
 
 **1. La vía pediátrica pasa a ser el camino principal.** Las bandas 0-4 y 5-14 tienen
 **72,5 % y 43,5 % de amplitud estacional** contra 5-8 % de las adultas, con pico en mayo y
@@ -71,6 +211,13 @@ falsos) y la confirme en una validación que ningún agente de prompt ve. Protoc
   familias, fuera de la muestra de 63).
 - Storm 8B corriendo con v1.7; después `cola4.sh` (segunda pasada real y prueba de reuso).
 - Cancelada la vuelta de gemma4 con `v1_7_14b.py` (la reemplaza su prompt propio).
+
+**2026-09-25, 08:00 — se reanuda tras un reinicio de la máquina.** La ronda 1 no había guardado
+nada (R1_gemma4 quedó vacío). Ollama se actualizó solo a **0.34.4** (ayer 0.34.3): las salidas
+a temperatura 0 de ayer podrían no ser idénticas byte a byte. Solo había **5,6 GB libres** (VS
+Code, Edge, Brave), así que la cola se reordenó para empezar por lo que cabe: R1_qwen3 →
+validación de qwen v1.7 → R1_gemma4 → R1_gemma3 → R1_tulu3 → R1_llama31. **Los ~12B necesitan
+~8,5 GB: cerrar navegadores antes de que les toque.**
 
 **Para correr un prompt de ronda** (modo cadena, que es el que decide la barrera):
 `python <scratchpad>/comparar.py --modelo <tag> --modo cadena --prompt <scratchpad>/prompts/<m>_r1.py --muestra <scratchpad>/muestra64.csv --salida <scratchpad>/comparacion/<m>_r1.jsonl`
@@ -307,6 +454,14 @@ estancia. Cada figura con su lectura y sus límites.
 | 3 | **La lista de 6-8 categorías clínicas** | Bloquea el banco etiquetado, y el banco bloquea la comparación de métodos |
 | 4 | **Reordenar la cola del NLP por hash del OID** (parar y relanzar la corrida) | Muestra uniforme de 20 meses en ~5 días en vez de 70 días en orden cronológico |
 | 6 | **Limpiar el historial de git**: repo nuevo con un commit limpio (recomendado) o `git filter-repo` + `push --force`. El 2026-09-24 el propietario eligió subir al repo actual y dejarlo para después | Hoy un clon copia 6.501 notas crudas con OID y otros bancos de notas. Irreversible: lo decide el propietario |
+| 7 | **¿Se congela el NLP y se sigue sin motivo?** (2026-09-28, conversación con el superior). La medición apoya congelarlo *para el pronóstico*; lo que se pierde es solo la vía respiratoria adulta. Si se sigue sin motivo, lo que falta no es modelo sino **mejores externas**: series semanales reales de vigilancia (no ventanas fijas), pronóstico de clima, y un calendario **institucional** (EPS, cierres de la red, directrices) | Decide en qué se gasta la GPU y el tiempo de las próximas semanas |
+| 14 | **Perfil del hospital, decisiones abiertas** (2026-09-29, tras explorar la base; resultados en `CONTEXTO.md`, «Exploración de la base para el perfil»): (a) el diccionario de códigos de `DIM_INGRESO.AINCAUING` (causa de ingreso: se saben el 3, el 6 y el 10) y `AINTIPING`; (b) la granularidad que se persiste de los diagnósticos: capítulo CIE-10 por día, capítulo × edad por semana, código mensual con supresión < 5; (c) **no versionar** esas series en GitHub sin autorización | Con eso se construye el cuaderno 10 y se obtienen las series de desenlace específico (J, A09, S, O) sin NLP |
+| 13 | **Perfil del hospital: EN ESPERA** (2026-09-29). El propietario habla con su superior para conseguir documentación de base (servicios, qué se reporta, qué se atiende) antes de construirlo. Tablas candidatas ya vistas en el esquema: `DIM_INGRESO` (causa de ingreso, servicio, cama), `CONTROL_DIAGNOSTICO` (CIE-10) y `SEGUIMIENTO_REMISIONES_DW` (con datos personales: solo agregados) | Define qué factores deberían importarle al SES y qué es el 40 % que sí se atiende |
+| 12 | **Informes del CRUE (remisiones), a mano** (2026-09-29): 119 informes mensuales en `saluddecaldas.gov.co/documentos/338/referencia-y-contrarreferencia-caldas/`, con reCAPTCHA en cada descarga. Empezar por diciembre, enero, junio y julio. Derecho de petición propuesto en `calendarios/docs/CONTEXTO_PICOS.md` §4.3 | Es la única vía para medir la hipótesis «lo que el pueblo no atiende termina en Manizales» |
+| 11 | **Fechas de la relación SES-Nueva EPS** (2026-09-28): ¿qué pasó a mediados de noviembre de 2025, en marzo de 2026 y en julio de 2026 (suspensión, reanudación, cambio de contrato)? Y revisar `salidas/entidades_clasificadas.csv` | Es la variable de mayor efecto (±40-55 % del triage de Nueva EPS) y se conoce por adelantado |
+| 10 | **Acciones de fuentes que solo puede hacer el propietario** (2026-09-28; detalle en `calendarios/docs/FUENTES_EXTERNAS.md`): (a) calidad del aire del CDIAC: la red institucional lo bloquea como «Malicious Websites»; pedir a TI que lo reclasifique, bajarlo desde casa o pedírselo a Corpocaldas; (b) registro en ACLED para la API de protestas; (c) derecho de petición a la DTSC con alertas hospitalarias, novedades REPS de urgencias, hospitalización y UCI, y ocupación, 2020-2026; (d) serie histórica de afiliados por EPS de MinSalud; (e) histórico de medidas de la Supersalud; (f) aceptar o no las API no documentadas (ESPN, SGC); (g) autorizar que se empiece a guardar la foto mensual de la BDUA | Sin (c) no hay calendario del sistema de salud, que es la familia que coincide con las semanas más extremas. (g) pierde historia cada mes |
+| 9 | ~~¿El hospital aparece en el SIVIGILA 995?~~ **RESUELTA el 28-09**: es el SES Hospital Universitario de Caldas, `170010010301` «SERVICIOS ESPECIALES DE SALUD». Reporta ~0 IRA; se excluye de las consultas de la ciudad | Si aparece, parte de la correlación r = 0,703 es mecánica (son las mismas consultas) y hay que excluirlo de la serie de la ciudad para usarla como variable externa |
+| 8 | **¿Se avisa al INS de que los modelos públicos de sus tableros Power BI por evento exponen columnas identificables?** (2026-09-28) | El proyecto no las usa, pero están expuestas a cualquiera. Es una decisión ética e institucional, no técnica |
 | 5 | **Permitir una primera pasada léxica en SQL** sobre `HCTMOTCON`: `CASE WHEN ... LIKE` + `GROUP BY` día; el texto nunca sale del servidor | Calendario de motivos de los 20 meses **hoy**, y es además el «piso léxico» del banco de comparación |
 
 ---

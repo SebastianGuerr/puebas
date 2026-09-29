@@ -1,0 +1,1087 @@
+{
+ "descargado": "2026-09-28T11:30:08",
+ "archivos": {
+  "rutinaria_manizales.csv": {
+   "clave": "526982b9-fe09-4db3-adcc-92383aecbcef",
+   "modelo": 7467481,
+   "dataset": "c367e0c6-f758-4614-840a-0aa57b62465f",
+   "reporte": "3453abd8-9508-49b2-b5e4-f192978ffab8",
+   "refresco_ins": "2026-09-26T22:04:29.627",
+   "proximo_refresco_ins": "2026-09-30T09:00:00",
+   "tablero": "006 Vigilancia Rutinaria",
+   "tabla": "Rutinaria 2026",
+   "filtro": "Cod_municipio = 17001",
+   "consulta": {
+    "Version": 2,
+    "From": [
+     {
+      "Name": "t",
+      "Entity": "Rutinaria 2026",
+      "Type": 0
+     }
+    ],
+    "Select": [
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "t"
+        }
+       },
+       "Property": "año"
+      },
+      "Name": "t.año"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "t"
+        }
+       },
+       "Property": "cod_eve"
+      },
+      "Name": "t.cod_eve"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "t"
+        }
+       },
+       "Property": "nom_eve"
+      },
+      "Name": "t.nom_eve"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "t"
+        }
+       },
+       "Property": "semana"
+      },
+      "Name": "t.semana"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "conteo"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.conteo)"
+     }
+    ],
+    "Where": [
+     {
+      "Condition": {
+       "In": {
+        "Expressions": [
+         {
+          "Column": {
+           "Expression": {
+            "SourceRef": {
+             "Source": "t"
+            }
+           },
+           "Property": "Cod_municipio"
+          }
+         }
+        ],
+        "Values": [
+         [
+          {
+           "Literal": {
+            "Value": "'17001'"
+           }
+          }
+         ]
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "filas": 494
+  },
+  "ira_995_rutinaria.csv": {
+   "clave": "526982b9-fe09-4db3-adcc-92383aecbcef",
+   "modelo": 7467481,
+   "dataset": "c367e0c6-f758-4614-840a-0aa57b62465f",
+   "reporte": "3453abd8-9508-49b2-b5e4-f192978ffab8",
+   "refresco_ins": "2026-09-26T22:04:29.627",
+   "proximo_refresco_ins": "2026-09-30T09:00:00",
+   "tablero": "006 Vigilancia Rutinaria",
+   "tabla": "salida_para_rutinaria_995 2026",
+   "filtro": "nmun_notif = MANIZALES, ndep_notif = CALDAS",
+   "consulta": {
+    "Version": 2,
+    "From": [
+     {
+      "Name": "t",
+      "Entity": "salida_para_rutinaria_995 2026",
+      "Type": 0
+     }
+    ],
+    "Select": [
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "t"
+        }
+       },
+       "Property": "año"
+      },
+      "Name": "t.año"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "t"
+        }
+       },
+       "Property": "semana"
+      },
+      "Name": "t.semana"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "SumaDetot_iraext"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.SumaDetot_iraext)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "tot_exturg"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.tot_exturg)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "SumaDetot_irag"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.SumaDetot_irag)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "SumaDetot_irauci"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.SumaDetot_irauci)"
+     }
+    ],
+    "Where": [
+     {
+      "Condition": {
+       "In": {
+        "Expressions": [
+         {
+          "Column": {
+           "Expression": {
+            "SourceRef": {
+             "Source": "t"
+            }
+           },
+           "Property": "nmun_notif"
+          }
+         }
+        ],
+        "Values": [
+         [
+          {
+           "Literal": {
+            "Value": "'MANIZALES'"
+           }
+          }
+         ]
+        ]
+       }
+      }
+     },
+     {
+      "Condition": {
+       "In": {
+        "Expressions": [
+         {
+          "Column": {
+           "Expression": {
+            "SourceRef": {
+             "Source": "t"
+            }
+           },
+           "Property": "ndep_notif"
+          }
+         }
+        ],
+        "Values": [
+         [
+          {
+           "Literal": {
+            "Value": "'CALDAS'"
+           }
+          }
+         ]
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "filas": 37
+  },
+  "ira_995_tablero.csv": {
+   "clave": "574df00d-5641-42f9-a858-2e3c407f27de",
+   "modelo": 7872862,
+   "dataset": "ac360573-f073-4b26-9569-d8c8dd58eb9f",
+   "reporte": "82ffa639-6f81-496c-b63f-0db1fd9019d5",
+   "refresco_ins": "2026-09-26T04:56:08.847",
+   "proximo_refresco_ins": "2026-09-30T23:30:00",
+   "tablero": "995 Morbilidad por IRA",
+   "tabla": "IRA",
+   "filtro": "cod_mun = 17001",
+   "consulta": {
+    "Version": 2,
+    "From": [
+     {
+      "Name": "t",
+      "Entity": "IRA",
+      "Type": 0
+     }
+    ],
+    "Select": [
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "t"
+        }
+       },
+       "Property": "año"
+      },
+      "Name": "t.año"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "t"
+        }
+       },
+       "Property": "semana"
+      },
+      "Name": "t.semana"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "grupo_1"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.grupo_1)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "grupo_2"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.grupo_2)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "grupo_3"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.grupo_3)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "grupo_4"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.grupo_4)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "grupo_5"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.grupo_5)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "grupo_6"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.grupo_6)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "grupo_7"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.grupo_7)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "grup_total"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.grup_total)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "Tot_1"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.Tot_1)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "Tot_2"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.Tot_2)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "Tot_3"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.Tot_3)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "Tot_4"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.Tot_4)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "Tot_5"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.Tot_5)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "Tot_6"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.Tot_6)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "Tot_7"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.Tot_7)"
+     },
+     {
+      "Aggregation": {
+       "Expression": {
+        "Column": {
+         "Expression": {
+          "SourceRef": {
+           "Source": "t"
+          }
+         },
+         "Property": "Tot_tot"
+        }
+       },
+       "Function": 0
+      },
+      "Name": "sum(t.Tot_tot)"
+     }
+    ],
+    "Where": [
+     {
+      "Condition": {
+       "In": {
+        "Expressions": [
+         {
+          "Column": {
+           "Expression": {
+            "SourceRef": {
+             "Source": "t"
+            }
+           },
+           "Property": "cod_mun"
+          }
+         }
+        ],
+        "Values": [
+         [
+          {
+           "Literal": {
+            "Value": "'17001'"
+           }
+          }
+         ]
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "filas": 558
+  },
+  "evento_356.csv": {
+   "clave": "0da217b2-ea0c-4df9-b92f-d5b8101cb265",
+   "modelo": 11530492,
+   "dataset": "7a3a9b4e-60c4-4659-af2a-882668785076",
+   "reporte": "dff55289-dca1-43ad-a384-0e000535e773",
+   "refresco_ins": "2026-09-25T21:17:07.537",
+   "proximo_refresco_ins": "2026-09-30T08:30:00",
+   "tablero": "356 Intento de suicidio",
+   "tabla": "Calendario x Municipio -> Calculos[Casos]",
+   "filtro": "Municipio[CodMun] = 17001",
+   "consulta": {
+    "Version": 2,
+    "From": [
+     {
+      "Name": "c",
+      "Entity": "Calendario",
+      "Type": 0
+     },
+     {
+      "Name": "k",
+      "Entity": "Calculos",
+      "Type": 0
+     },
+     {
+      "Name": "m",
+      "Entity": "Municipio",
+      "Type": 0
+     }
+    ],
+    "Select": [
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "c"
+        }
+       },
+       "Property": "Año"
+      },
+      "Name": "c.Año"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "c"
+        }
+       },
+       "Property": "Semana"
+      },
+      "Name": "c.Semana"
+     },
+     {
+      "Measure": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "k"
+        }
+       },
+       "Property": "Casos"
+      },
+      "Name": "k.Casos"
+     }
+    ],
+    "Where": [
+     {
+      "Condition": {
+       "In": {
+        "Expressions": [
+         {
+          "Column": {
+           "Expression": {
+            "SourceRef": {
+             "Source": "m"
+            }
+           },
+           "Property": "CodMun"
+          }
+         }
+        ],
+        "Values": [
+         [
+          {
+           "Literal": {
+            "Value": "'17001'"
+           }
+          }
+         ]
+        ]
+       }
+      }
+     },
+     {
+      "Condition": {
+       "Comparison": {
+        "ComparisonKind": 2,
+        "Left": {
+         "Column": {
+          "Expression": {
+           "SourceRef": {
+            "Source": "c"
+           }
+          },
+          "Property": "Año"
+         }
+        },
+        "Right": {
+         "Literal": {
+          "Value": "2007L"
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   "filas": 558
+  },
+  "evento_300.csv": {
+   "clave": "d5e79c82-7d72-4ec7-975f-a1dde8aa623e",
+   "modelo": 6119231,
+   "dataset": "9a37653c-2879-4ea1-8181-0e40784fdbd4",
+   "reporte": "c05bfe91-61c5-4c70-b629-ba1c9443a565",
+   "refresco_ins": "2026-09-25T21:38:46.027",
+   "proximo_refresco_ins": "2026-09-30T10:00:00",
+   "tablero": "300 Agresiones por Animales Potencialmente Transmisores de Rabia (APTR)",
+   "tabla": "Calendario x Municipio -> Calculos[Casos]",
+   "filtro": "Municipio[CodMun] = 17001",
+   "consulta": {
+    "Version": 2,
+    "From": [
+     {
+      "Name": "c",
+      "Entity": "Calendario",
+      "Type": 0
+     },
+     {
+      "Name": "k",
+      "Entity": "Calculos",
+      "Type": 0
+     },
+     {
+      "Name": "m",
+      "Entity": "Municipio",
+      "Type": 0
+     }
+    ],
+    "Select": [
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "c"
+        }
+       },
+       "Property": "Año"
+      },
+      "Name": "c.Año"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "c"
+        }
+       },
+       "Property": "Semana"
+      },
+      "Name": "c.Semana"
+     },
+     {
+      "Measure": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "k"
+        }
+       },
+       "Property": "Casos"
+      },
+      "Name": "k.Casos"
+     }
+    ],
+    "Where": [
+     {
+      "Condition": {
+       "In": {
+        "Expressions": [
+         {
+          "Column": {
+           "Expression": {
+            "SourceRef": {
+             "Source": "m"
+            }
+           },
+           "Property": "CodMun"
+          }
+         }
+        ],
+        "Values": [
+         [
+          {
+           "Literal": {
+            "Value": "'17001'"
+           }
+          }
+         ]
+        ]
+       }
+      }
+     },
+     {
+      "Condition": {
+       "Comparison": {
+        "ComparisonKind": 2,
+        "Left": {
+         "Column": {
+          "Expression": {
+           "SourceRef": {
+            "Source": "c"
+           }
+          },
+          "Property": "Año"
+         }
+        },
+        "Right": {
+         "Literal": {
+          "Value": "2007L"
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   "filas": 247
+  },
+  "evento_831.csv": {
+   "clave": "703227e3-1654-49da-b1a9-51c2791896f7",
+   "modelo": 11530501,
+   "dataset": "782e8a5a-e016-48ae-ae3b-2a7cfaa58383",
+   "reporte": "8508d7ce-20a3-4034-8ba6-5d0639675b1c",
+   "refresco_ins": "2026-09-25T23:16:58.25",
+   "proximo_refresco_ins": "2026-09-30T10:00:00",
+   "tablero": "831 Varicela",
+   "tabla": "Calendario x Municipio -> Calculos[Casos]",
+   "filtro": "Municipio[CodMun] = 17001",
+   "consulta": {
+    "Version": 2,
+    "From": [
+     {
+      "Name": "c",
+      "Entity": "Calendario",
+      "Type": 0
+     },
+     {
+      "Name": "k",
+      "Entity": "Calculos",
+      "Type": 0
+     },
+     {
+      "Name": "m",
+      "Entity": "Municipio",
+      "Type": 0
+     }
+    ],
+    "Select": [
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "c"
+        }
+       },
+       "Property": "Año"
+      },
+      "Name": "c.Año"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "c"
+        }
+       },
+       "Property": "Semana"
+      },
+      "Name": "c.Semana"
+     },
+     {
+      "Measure": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "k"
+        }
+       },
+       "Property": "Casos"
+      },
+      "Name": "k.Casos"
+     }
+    ],
+    "Where": [
+     {
+      "Condition": {
+       "In": {
+        "Expressions": [
+         {
+          "Column": {
+           "Expression": {
+            "SourceRef": {
+             "Source": "m"
+            }
+           },
+           "Property": "CodMun"
+          }
+         }
+        ],
+        "Values": [
+         [
+          {
+           "Literal": {
+            "Value": "'17001'"
+           }
+          }
+         ]
+        ]
+       }
+      }
+     },
+     {
+      "Condition": {
+       "Comparison": {
+        "ComparisonKind": 2,
+        "Left": {
+         "Column": {
+          "Expression": {
+           "SourceRef": {
+            "Source": "c"
+           }
+          },
+          "Property": "Año"
+         }
+        },
+        "Right": {
+         "Literal": {
+          "Value": "2007L"
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   "filas": 1033
+  },
+  "evento_875.csv": {
+   "clave": "c7df7d40-029f-44e6-85f9-a41baa250312",
+   "modelo": 4901061,
+   "dataset": "74a9139d-ca95-4d33-8fad-59b68530b610",
+   "reporte": "b21f1c63-d258-4bf9-9b2a-63aeb27eba96",
+   "refresco_ins": "2026-09-25T12:17:25.847",
+   "proximo_refresco_ins": "2026-10-01T07:00:00",
+   "tablero": "875 Vigilancia en Salud Pública de las Violencias de Género e Intrafamiliar y Ataques con Agentes Químicos",
+   "tabla": "Fechas x 2Municipio -> Calculos[Casos]",
+   "filtro": "2Municipio[CodMun] = 17001",
+   "consulta": {
+    "Version": 2,
+    "From": [
+     {
+      "Name": "c",
+      "Entity": "Fechas",
+      "Type": 0
+     },
+     {
+      "Name": "k",
+      "Entity": "Calculos",
+      "Type": 0
+     },
+     {
+      "Name": "m",
+      "Entity": "2Municipio",
+      "Type": 0
+     }
+    ],
+    "Select": [
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "c"
+        }
+       },
+       "Property": "Año"
+      },
+      "Name": "c.Año"
+     },
+     {
+      "Column": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "c"
+        }
+       },
+       "Property": "Semana"
+      },
+      "Name": "c.Semana"
+     },
+     {
+      "Measure": {
+       "Expression": {
+        "SourceRef": {
+         "Source": "k"
+        }
+       },
+       "Property": "Casos"
+      },
+      "Name": "k.Casos"
+     }
+    ],
+    "Where": [
+     {
+      "Condition": {
+       "In": {
+        "Expressions": [
+         {
+          "Column": {
+           "Expression": {
+            "SourceRef": {
+             "Source": "m"
+            }
+           },
+           "Property": "CodMun"
+          }
+         }
+        ],
+        "Values": [
+         [
+          {
+           "Literal": {
+            "Value": "'17001'"
+           }
+          }
+         ]
+        ]
+       }
+      }
+     },
+     {
+      "Condition": {
+       "Comparison": {
+        "ComparisonKind": 2,
+        "Left": {
+         "Column": {
+          "Expression": {
+           "SourceRef": {
+            "Source": "c"
+           }
+          },
+          "Property": "Año"
+         }
+        },
+        "Right": {
+         "Literal": {
+          "Value": "2007L"
+         }
+        }
+       }
+      }
+     }
+    ]
+   },
+   "filas": 515
+  }
+ }
+}

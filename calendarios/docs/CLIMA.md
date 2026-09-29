@@ -117,6 +117,50 @@ total del mes pero no el día exacto de la lluvia (r = 0,18 contra la estación,
 La columna `precip_con_estacion` dice cuáles son. **Para buscar transiciones día a día,
 restringir a esos días o trabajar con acumulados de 7 días**, que son robustos a esto.
 
+> **Actualizado el 2026-09-29:** tras quitar la falla del pluviómetro (sección siguiente),
+> los días con pluviómetro válido son el **34,7 %**, no el 42,9 %.
+
+### La falla del pluviómetro de La Nubia (octubre de 2025 a julio de 2026)
+
+**El problema.** Desde octubre de 2025 el pluviómetro reporta **0 mm días enteros** mientras NASA
+registra lluvia normal. No falta el dato: el dato es falso, y el filtro de completitud no lo
+detecta porque el registro está completo.
+
+| Mes | Pluviómetro (mm, días con dato) | NASA (mm) |
+|---|---|---|
+| 2025-10 | 4,2 (31) | 202,6 |
+| 2026-01 | 8,8 (30) | 240,3 |
+| 2026-02 | 1,6 (28) | 200,4 |
+| 2026-03 a 06 | **0,0 cada mes** | 103-159 |
+
+**Por qué es grave para este proyecto.** El consenso toma el pluviómetro como referencia, así que
+**fabricaba sequías**: marzo-junio de 2026 salían como los meses más secos de la serie. El
+proyecto busca justamente el paso de seco a lluvioso, así que esas sequías falsas fabricaban
+«rupturas». Además, `corregir()` calcula el factor con que se escala NASA **sobre el solape con
+el pluviómetro**, de modo que los meses fallidos contaminaban también ese factor en toda la serie.
+
+**La regla** (`pluviometro_fallido()` en el script):
+- En 31 días centrados, un día se marca como falla si el pluviómetro suma **menos del 10 %** de lo
+  que suma NASA **y** NASA supera **60 mm**.
+- Se mira a escala de un mes y no de un día, porque un día seco aislado es real.
+- **Por qué el 10 %:** en los 34 meses con ≥ 20 días de pluviómetro, la razón pluviómetro/NASA de
+  los meses sanos va de **0,27 a 1,42** (mediana 0,54). En los fallidos es **< 0,04**. El umbral
+  deja margen a los dos lados.
+- **El orden importa:** la falla se quita **antes** de calcular los factores de escala.
+
+**Resultado.**
+- 199 días marcados: 20 en octubre de 2025, enero a junio de 2026 completos y 5 en julio.
+- Van a la columna `pluviometro_fallido` y se tratan como día sin pluviómetro.
+- La lluvia anual del consenso pasa de ~1.035 a **1.297 mm**.
+- El nivel medio según el número de fuentes queda parejo: 3,47 mm con una, 3,71 con dos.
+
+**Efecto en resultados ya publicados.** En el cuaderno 07, «seco → lluvioso» sobre los 0-4 años pasa
+de +22,0 ± 17,8 % (13 episodios) a **+13,4 ± 15,0 % (17 episodios)**, que ya no se distingue de
+cero. La madrugada con lluvia fuerte pasa de −7,8 % a −4,3 %, tampoco significativo.
+
+**Lo que no se arregla:** 2021 no tiene **ninguna** medida de lluvia en tierra. Es reanálisis
+puro y sale como el año más seco.
+
 ---
 
 ## Las banderas

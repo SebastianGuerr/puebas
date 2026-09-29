@@ -14,6 +14,1116 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-09-29 — Exploración de la base para el perfil del hospital: primeros resultados
+
+Se siguió el protocolo:
+- esquema primero;
+- **las columnas sensibles de 14 tablas añadidas a `extraccion/__init__.py` antes de consultar
+  nada**;
+- solo agregados por año. Las casillas con menos de 5 casos van a «otros».
+
+**Ningún texto libre salió.** Los scripts de exploración están en el scratchpad
+(`esquema_perfil.py`, `cobertura_perfil.py`, `repartos_perfil.py`) y todavía no se versionan.
+
+**Cómo se enlaza:**
+- triage → `DIM_INGRESO` (`ADNINGRESO`);
+- ingreso → `DIM_FOLIO` → `CONTROL_DIAGNOSTICO` (`HCPDIAPRIN` = principal) → `DIM_DIAGNOSTICO` (CIE-10);
+- ingreso → `AREA_SERVICIO` (con marca de urgencias).
+- **Cobertura: el 98-99 % de los ingresos tiene diagnóstico principal CIE-10.** Es el diagnóstico
+  estructurado que `GENDIAGNO1` no traía.
+
+**1. Qué fracción del triage se atiende en el SES** (triage con ingreso):
+- ~50 % en 2020-2023, **35 % en 2024, 30 % en 2025 y 34 % en 2026**.
+- Por nivel: I 87 %, II 94 %, IIIU 93 %, III-G 64 %, **III 30 %, IV 14 %, V 0,1 %**. El nivel es,
+  en la práctica, la decisión de tomar o redirigir.
+- **Por edad: 65+ 55 %, 45-64 43 %, 15-44 39 %, 5-14 15 %, 0-4 13 %.** Confirma lo dicho por el
+  superior: los niños se estabilizan y se remiten.
+
+**2. Dónde se atiende:**
+- Urgencias: 122.136 ingresos, 2020-2026.
+- **Unidad obstétrica: 27.841, y creciendo** (2.349 en 2020, 5.554 en 2024, 4.851 en 2026 a
+  septiembre).
+- Recién nacidos: 596.
+
+**3. Qué tienen** (diagnóstico principal del primer folio, primera letra CIE-10, 2020-2026):
+
+| Grupo | Ingresos |
+|---|---|
+| R, síntomas (dolor abdominal R10: 15.171) | 25.459 |
+| **S, traumatismos** | **22.128** |
+| O, obstetricia | 21.840 |
+| N, genitourinario | 13.157 |
+| **J, respiratorio** (EPOC exacerbado J44, rinofaringitis J00) | **11.523** |
+| M, osteomuscular | 11.037 |
+| G, neurológico (cefalea, migraña) | 10.767 |
+| I, circulatorio | 10.120 |
+| K, digestivo | 8.713 |
+| **A, infecciosas (diarrea A09: 4.944)** | 5.917 |
+| U07, COVID | 4.601 |
+
+- **Llega mucho trauma (S, el segundo grupo), pero no por SOAT.** Son contusiones de dedos,
+  rodilla y cabeza: caídas y golpes, no accidentes de tránsito.
+- **Aviso para la tesis.** Hay series con **mecanismo externo conocido**, codificadas desde 2020,
+  **sin NLP**: respiratorio (J), diarrea (A09), trauma (S) y obstetricia (O). Son los «desenlaces
+  específicos» que el `CLAUDE.md` pedía al NLP, **pero solo del subconjunto que se ingresa**.
+
+**Advertencia:** los nombres de los códigos de 3 caracteres salieron de `MIN(DIANOMBRE)`, que es el
+nombre de una subcategoría y no de la categoría. Por ejemplo, N39 salió como «incontinencia»
+cuando N39.0 es infección urinaria, y R07 como «dolor de garganta» cuando R07 es sobre todo dolor
+torácico. **Hay que rotularlos con la categoría CIE-10 oficial.**
+
+**4. Causa de ingreso** (`AINCAUING`, códigos sin catálogo en la base). Descifrados en parte cruzando
+con el asegurador:
+- **código 6 = accidente de tránsito** (74 % SOAT);
+- **código 10 = accidente laboral** (74 % ARL);
+- **código 3 = enfermedad general** (casi todo);
+- el **código 9** tiene 34.197 casos de todos los aseguradores y no se sabe qué es;
+- 4, 2, 1 y 8 tampoco se saben.
+- **Hace falta el diccionario de la base** (pregunta al superior).
+
+**5. Remisiones** (`SEGUIMIENTO_REMISIONES_DW`, 2023-2026, ~1.200-1.600 por año). `MOTIVO` resultó
+ser un catálogo de 6 valores (≤ 36 caracteres). `MotivoRemision` es texto libre de ~550 caracteres
+y **no se consulta**.
+
+| Motivo | Remisiones |
+|---|---|
+| **No disponibilidad de la especialidad** | 1.913 |
+| **No convenio con la EPS** | 1.209 |
+| No disponibilidad de camas | 453 |
+| No habilitación (sube: 0 → 111) | 152 |
+| Menor complejidad | 103 |
+| No disponibilidad de equipos | 71 |
+
+El 60 % de las remisiones sale de Urgencias (2.975). Coincide con el superior: se recibe todo y se
+remite por especialidad y por convenio con la EPS.
+
+**Pendiente de decidir con el propietario:**
+- **qué granularidad se persiste**. Un diagnóstico por día con cifras pequeñas es información de
+  salud: se propone capítulo CIE-10 por día, capítulo × banda de edad por semana y código de 3
+  caracteres solo mensual con supresión < 5;
+- **si se versiona**, porque el repositorio está en GitHub. La propuesta es **no** versionarlo
+  mientras no lo autorice.
+
+---
+
+## 2026-09-29 — Qué hospital es el SES, según el superior del propietario; se abre la exploración de la base
+
+**Contexto institucional** (el superior, vía el propietario). Responde la decisión #13 en su parte
+cualitativa:
+- **El SES recibe de todo.** Una urgencia se atiende por razones legales y morales. Otra cosa es
+  que pueda **resolverla** allí.
+- **Donde faltan especialistas, se recibe, se estabiliza y se remite.**
+  - **Niños:** no hay especialistas pediátricos. La urgencia infantil se estabiliza y se envía al
+    Hospital Infantil, que no tiene urgencias propias de puerta.
+  - **Cardiovascular:** se remite a una clínica cardiovascular de Manizales. El propietario cree
+    que es Avidanti, sin confirmar.
+- **Accidentes de tránsito:** no hay un destino fijo; la ambulancia va al hospital más cercano.
+  - Hipótesis del propietario: el SES está en una zona de avenidas bien señalizadas, con pocos
+    accidentes cerca, y por eso le llegan pocos.
+  - Sin SOAT, el paciente no llega por esa vía, sino por su EPS a donde haya convenio.
+- **Remitir no es no atender**: «es mejor remitirlo que tratarlo con limitaciones».
+
+**Cómo cambia la lectura de lo ya medido:**
+- El **SOAT bajo** del SES (4 %) y su falta de relación con el tránsito de la ciudad (r = 0,01) son
+  **geografía y logística de ambulancias**, no falta de demanda.
+- La **estacionalidad pediátrica** del SES mide a los niños que **pasan por aquí para ser
+  estabilizados**, no a toda la demanda infantil.
+- El **51 % «no urgente»** (cuaderno 02) y el «60 % que se remite a la EPS» son la puerta de un
+  hospital que **recibe todo y resuelve según su capacidad**.
+
+**Decisión:** explorar la base para el perfil del hospital (cuaderno 10) **con el protocolo de la
+regla 1, y con cautela reforzada por petición expresa del propietario**:
+1. Solo esquema.
+2. Clasificar cada columna nueva y añadir las sensibles a `extraccion/__init__.py` **antes** de
+   consultar nada.
+3. Solo conteos agregados de columnas codificadas.
+
+**Ningún texto libre sale de la base**, ni siquiera como «valores más frecuentes». El precedente
+del 28-09 fue que un agente imprimió valores de una columna con forma de cédula.
+
+---
+
+## 2026-09-29 — Cuaderno 09: el entorno conectado consigo mismo
+
+Archivo: `notebooks/09_el_entorno.ipynb`, 21 celdas, sin errores. **Ningún dato del hospital.**
+25 contextos por semana, y análisis conjunto en 2022-2025, unas 209 semanas.
+
+**Datos nuevos integrados:**
+- **ENSO:** `calendarios/clima/enso.py` → `calendarios/enso_oni.csv` (ONI de la NOAA, 1950-2026).
+  Un episodio abierto al final de la serie se marca «en curso»: **El Niño de 2026, ONI +1,80 en
+  junio-agosto**.
+- **Recesos escolares oficiales:** `calendarios/calendario_escolar_manizales.csv`, 2021-2026, cada
+  uno con su resolución y su URL. Sustituye las 122 fechas fijas del calendario.
+
+**Hallazgos:**
+1. **El calendario mueve la violencia de la ciudad** (Policía, Poisson, 2015-2026 sin cuarentenas).
+   - Lesiones personales: domingo ×1,78, festivo ×1,32, **noche festiva ×1,96**.
+   - Homicidios: domingo ×2,11 y noche festiva ×2,02.
+   - **La violencia intrafamiliar tiene otro calendario:** quincena ×1,20 y receso escolar ×0,83.
+   - El tránsito baja en festivo (×0,72).
+2. **Cadenas con rezago** (anomalías sin estacionalidad):
+   - **Temperatura media → IRA ciudad: r = −0,37 a 4 semanas.** Frío → más IRA.
+   - Temperatura mínima: −0,31 a 1 semana.
+   - Humedad: +0,31 a 5 semanas.
+   - Lluvia: +0,23 a 5 semanas.
+   - **Receso escolar → IRA −0,20 y varicela −0,18 en la misma semana.**
+   - **ENSO → temperatura +0,49.** El Niño calienta Manizales.
+   - Al revés de lo esperado: **lluvia → EDA −0,19**.
+   - La ceniza no se puede medir: solo 4 episodios.
+   - **Es la cadena clima → contagio → consulta que describía el propietario**, vista en la ciudad
+     sin el hospital. Las barras en *k < 0* indican que parte es persistencia compartida: no es
+     prueba de causa.
+3. **Estados del entorno** (k-medias):
+   - **Con calendario, 5 estados:** calma (45 % de las semanas; febrero-mayo y
+     septiembre-noviembre), seco y cálido (julio-septiembre, El Niño), fiestas de los pueblos,
+     temporada decembrina (100 % de diciembre) y Feria.
+   - **Sin calendario, 3:** frío y húmedo (marzo-junio y octubre-diciembre), intermedio, y seco y
+     cálido (julio-septiembre).
+   - La IRA no define ningún estado. **El estado visible es el gatillo** (frío y húmedo), que
+     precede a la IRA.
+   - Siluetas bajas (0,13-0,17): son regiones de un continuo, no cajas.
+4. **La «suma de factores» puesta en fechas:**
+   - **marzo a mayo** junta colegios abiertos, frío y humedad, y lluvias. Es donde el cuaderno 08
+     vio las semanas altas sostenidas;
+   - **diciembre** junta receso, fiestas y violencia. Son los picos puntuales de noche.
+
+**Trampas documentadas:**
+- **La IRA como porcentaje sube en receso por el denominador** (cae la consulta programada). Para
+  el contagio se usa el conteo.
+- **La ceniza, la pólvora y el alumbrado parecen relacionados solo porque caen en el mismo
+  diciembre** (2023).
+
+**Sección 6 hecha el mismo día.** Revisión de literatura en `calendarios/docs/LITERATURA_ENTORNO.md`:
+11 relaciones y 86 referencias verificadas, escrita **antes** de comparar.
+- **Casi todo lo esperado aparece en la dirección publicada:** lluvia y humedad → IRA a ~1 mes,
+  frío → IRA, cierre de colegios → menos transmisión, El Niño → calor, fin de semana y fiesta →
+  violencia, pólvora en diciembre-enero. Eso da confianza en que las series externas miden lo que
+  dicen.
+- **No coincide:** la lluvia no sube los siniestros viales. La literatura avisa que el efecto es
+  por hora y que el dato diario lo diluye.
+- **Aportes posibles de la tesis, sin estudio publicado:**
+  - quincena → violencia intrafamiliar ×1,20;
+  - **la interacción frío × virus × población mayor.**
+- **Vacíos de datos:** la ceniza (hace falta el PM10 del CDIAC, #10a), el tránsito por hora y la
+  transición seco → lluvioso sobre la EDA.
+
+**Decisión: el siguiente paso es enfrentar los estados y sus interacciones contra el hospital**,
+preregistradas antes de mirar. La primera es la del propietario: frío anómalo × IRA circulando ×
+mayores de 65.
+
+---
+
+## 2026-09-29 — Primero el entorno entre sí, después el hospital; el perfil del hospital espera
+
+**Decisión del propietario.** Antes de volver a enfrentar nada contra el triage, se **conectan
+los contextos externos entre sí**:
+- clima, calendario (fines de semana, festivos, vacaciones);
+- fiestas y eventos;
+- vigilancia en salud;
+- violencia y lesiones;
+- volcán, ENSO y desastres.
+
+**Qué se busca:**
+- qué se mueve junto y con qué rezago;
+- qué caracteriza la **«calma»** o flujo normal;
+- qué **estados del entorno** se repiten, por ejemplo «temporada respiratoria activa»,
+  «temporada festiva» o «calma».
+
+Cada relación observada se **contrasta con la investigación publicada**. Ejemplo del
+propietario: estudios de cómo la ceniza volcánica afecta la calidad del aire y la salud
+respiratoria. **Solo después** se enfrentan esos estados, y sus **interacciones**, contra el
+hospital.
+
+**Por qué.** Enfrentar cada factor por separado contra el triage no ve **la suma de factores**. El
+ejemplo del propietario: población frágil, más frío, más virus circulando da un riesgo mayor que
+cada uno solo. Para medir esa interacción, primero hay que saber cuándo coinciden los factores
+en el entorno.
+
+**Diseño:**
+1. **Revisión de literatura primero**, por un agente. Relaciones esperadas entre contextos, con
+   dirección, tamaño y rezago publicados. Así lo esperado queda escrito antes de mirar lo
+   observado, que es el espíritu del preregistro.
+2. **Cuaderno 09, «El entorno».** Solo datos externos, ningún dato del hospital:
+   - perfiles estacionales compartidos;
+   - correlaciones cruzadas con rezago entre anomalías;
+   - efecto del calendario sobre las otras series externas;
+   - **estados del entorno** por agrupamiento de semanas;
+   - comparación de lo observado con lo publicado.
+3. **Datos que faltan y se integran para esto:** el índice ENSO (ONI de la NOAA) y el calendario
+   oficial de vacaciones escolares, con las fechas de las resoluciones.
+
+**El perfil del hospital (cuaderno 09 propuesto el mismo día) queda EN ESPERA.** El propietario
+va a hablar con su superior para conseguir documentación e información de base antes de
+construirlo desde cero. Pasa a ser el cuaderno 10. Ya se identificaron en el esquema, sin bajar
+datos, tres tablas candidatas:
+- `DIM_INGRESO`: causa de ingreso, servicio, cama;
+- `CONTROL_DIAGNOSTICO` → `DIM_DIAGNOSTICO`: CIE-10;
+- `SEGUIMIENTO_REMISIONES_DW`: remisiones. **Trae cédula, nombres y texto clínico: solo
+  agregados.**
+
+---
+
+## 2026-09-29 — Cuaderno 08: los picos tienen tres relojes, y se corrige lo dicho sobre la mitad de año
+
+Archivo: `notebooks/08_los_picos.ipynb`, 21 celdas, sin errores. Las pruebas son las
+preregistradas el mismo día.
+
+**1. Revierte el «matiz» de la entrada «Los cuadernos cuentan la historia completa»**, que decía
+que el alto de mitad de año cae en mayo, antes de las vacaciones, y que junio-julio bajan.
+**Era un artefacto del control.** Ese cálculo descontaba las «vacaciones escolares» del
+calendario, que son 122 fechas fijas cada año.
+- **Sin ese descuento** (control con día de la semana, festivo y año), **las semanas de
+  vacaciones escolares oficiales están por encima del nivel del año los cinco años**: +3,5 a
+  +9,3 %, media **+6,5 %**. Marzo-mayo está en +4,3 %.
+- **El propietario tenía razón:** la mitad del año es la parte alta, de marzo a julio.
+- Lección: un control que incluye la variable que se quiere estudiar la hace desaparecer.
+
+**2. Las noches festivas**, frente a los demás domingos y festivos:
+- **La ciudad es violenta esas noches.** Las lesiones personales de la Policía suben +161 % en
+  velitas, +120 % el 8 de diciembre, +54 % el 25 y **+201 % el 1 de enero**.
+- **En el SES el día completo baja**: −24 % en velitas, −35 % el 24, −40 % el 31.
+- **Pero la madrugada sube**: +44 % la del 8 de diciembre, +31 % la del 31 y +35 % la del 1 de
+  enero.
+- **El 31 llegan +74 % de particulares.**
+- La pólvora es el 80 % de sus casos anuales en diciembre-enero (SIVIGILA 452: 1,3 por semana),
+  pero pesa poco en el conteo.
+
+**3. El pico llega el día después.** En las 4 temporadas limpias: **3 de enero +14,0 %**, 2 de
+enero y 26 de diciembre +6,7 %, 4 de enero +5,6 %.
+- Del 2 al 4 de enero se juntan el día siguiente a Año Nuevo, el regreso de vacaciones, la Feria
+  y el Carnaval de Riosucio.
+- **Corrección dentro del mismo cuaderno:** la temporada 2021-22, dentro de la ventana COVID que
+  el modelo no ajusta, fabricaba un pico de +11 a +17 % el 8-10 de diciembre. Sin ella, el 8 de
+  diciembre queda en +2,7 %.
+
+**4. Fiestas de los pueblos** (107 fiestas realizadas con fecha):
+- Durante la fiesta y los 3 días siguientes, el total sube **+1,9 % [+0,5; +3,4] con las lejanas
+  (≥ 60 km)** y +0,2 % con las cercanas. En 15-44 años, +2,1 % con las lejanas.
+- **La huella del asegurador no acompaña:** particulares −7,5 %; IPS remitente −6 %, −10 % con
+  las cercanas.
+- Son 18 pruebas. El patrón «lejos > cerca» encaja con la hipótesis de remisión, pero el efecto
+  es pequeño. **La prueba directa es la serie del CRUE** (#12).
+
+**5. Para el modelo, decidido aquí:**
+- **El indicador de festivo se parte en dos**: la noche de fiesta, que baja de día y sube de
+  madrugada, y el día siguiente, que sube.
+- **Las vacaciones escolares se toman con las fechas oficiales de cada año**, no con las fijas
+  del calendario.
+- **Las fiestas de los pueblos entran separadas por distancia**, con peso bajo.
+- **Conviene un modelo por hora, o al menos día y madrugada por separado.**
+
+---
+
+## 2026-09-29 — El pluviómetro de La Nubia reporta cero cuando llueve: el clima vuelve a fabricar sequías
+
+**Hallazgo**, del agente del cuaderno 03 y verificado aquí sobre `calendarios/clima_unificado.csv.gz`:
+
+| Mes | Pluviómetro (mm, días con dato) | NASA POWER (mm) |
+|---|---|---|
+| 2025-02 | 1,2 (7) | 202,8 |
+| 2025-10 | 4,2 (31) | 202,6 |
+| 2026-01 | 8,8 (30) | 240,3 |
+| 2026-02 | 1,6 (28) | 200,4 |
+| **2026-03 a 2026-06** | **0,0 cada mes, con dato los 30-31 días** | 103-159 |
+
+**El pluviómetro no está ausente: reporta cero todos los días.** Como `precip_con_estacion` lo da
+por medido y el consenso toma el pluviómetro de referencia, **marzo-junio de 2026 aparecen como
+los meses más secos de la serie**, cuando la fuente satelital dice que llovió lo normal. Es el
+mismo tipo de defecto que el arreglo del 23-09 corrigió en otra dirección: allí la falta de dato
+fabricaba tormentas; aquí un **dato falso** fabrica sequías. El propietario sospechaba que el clima
+tenía cálculos mal hechos, y en esto tenía razón.
+
+**Además:** en 2021 no hay ninguna medida de lluvia en tierra (0 días con pluviómetro). Todo ese
+año es reanálisis, y sale como el más seco del consenso (664 mm).
+
+**Qué queda en duda:**
+- las variables de lluvia de octubre de 2025 a junio de 2026;
+- **los episodios «seco → lluvioso» del cuaderno 07 de ese periodo**, porque un falso seco
+  seguido de la vuelta del pluviómetro fabrica una «ruptura»;
+- las variables de lluvia del periodo de prueba del cuaderno 05.
+
+El +22 % de los 0-4 años tras un paso de seco a lluvioso **se vuelve a medir con el clima arreglado
+antes de citarlo**.
+
+**Decisión:** `clima_unificado.py` debe detectar la falla y tratarla como ausencia de pluviómetro.
+El criterio es el cero sostenido de la estación mientras el satélite registra lluvia, a escala
+de mes y no de día: un día seco aislado es real. La corrección y su evidencia van en
+`calendarios/docs/CLIMA.md`.
+
+**Hecho el mismo día.** `pluviometro_fallido()` usa 31 días centrados: pluviómetro < 10 % de NASA
+y NASA ≥ 60 mm.
+- **Por qué el 10 %:** en los 34 meses sanos la razón va de 0,27 a 1,42; en los fallidos es
+  < 0,04.
+- Marca 199 días y se aplica **antes** de calcular los factores de escala.
+- La lluvia anual queda en 1.297 mm y los días con pluviómetro válido bajan al 34,7 %.
+
+**Resultados que cambian:**
+- **Seco → lluvioso, 0-4 años: de +22,0 ± 17,8 % (13 episodios) a +13,4 ± 15,0 % (17
+  episodios).** La forma es la misma, pero **ya no se distingue de cero**.
+- Lluvia fuerte y madrugada: de −7,8 % a −4,3 %, no significativo.
+- En el cuaderno 06, la lluvia en quintiles pasa de −3,6 a −2,5 puntos.
+
+**No cambian:** Feria, eventos sociales, Nueva EPS, enfriamiento y calentamiento, picos y el mapa
+de correlaciones (las mismas 15 casillas marcadas).
+
+**Cuadernos:**
+- 06 y 07 re-ejecutados, con recuadros «clima corregido».
+- 01, 02, 03 y 05 en manos de un agente.
+
+**Lección, la segunda sobre el mismo archivo:** una fuente que **reporta** también puede estar
+rota. La completitud no mide la verdad del dato. Toda referencia en tierra se contrasta con una
+fuente independiente mes a mes antes de usarla.
+
+---
+
+## 2026-09-29 — Los cuadernos cuentan la historia completa, y los picos pasan al centro
+
+**Decisión del propietario: los cuadernos 01 a 07 se corrigen para contar todo el camino.**
+Cada uno debe mostrar:
+- las premisas, los datos y las figuras;
+- las fuentes de donde sale cada dato;
+- la lectura y sus límites;
+- **y lo que se supo después**.
+
+**Cómo se corrige** (criterio fijado aquí): una afirmación que resultó falsa **no se borra en
+silencio**. Queda visible con un recuadro «Corrección del 2026-09-29» que dice qué cambió y por
+qué, igual que este archivo, que solo crece. El valor del recorrido está en poder ver por qué se
+cambió de idea.
+
+**Correcciones de fondo ya identificadas:**
+1. **El 01 dice que la caída del 23,9 % es «en parte artefacto» del cambio de criterio de
+   triage.** Es un error de razonamiento: reetiquetar un triage de IV a III **no cambia el
+   conteo**. La caída del volumen es de **Nueva EPS** (cuaderno 07: 115,8 → 72,2 triages por día
+   entre 2025 y 2026). La reclasificación es un fenómeno aparte, de la institución.
+2. **El 01 dice «no hay huecos de registro».** El 19 y el 20 de marzo de 2024 no tienen filas,
+   y el 21 tiene 40.
+3. **El 01 y el 02 presentan la gripa y los niños como la hipótesis del proyecto.** Era un
+   ejemplo (aclaración del 28-09).
+4. **El 02 remite a un «cuaderno 03» de control de calendario que no existe.**
+5. **El `05_validacion_sin_motivo.py` no es un cuaderno.** Se convierte, y su conclusión («las
+   externas no mejoran el pronóstico») se matiza con el 07.
+
+**Estructura nueva:**
+- **03, nuevo**: las fuentes externas, con de dónde sale cada una, su cobertura y sus escalones.
+  Hoy esa información solo está en `calendarios/docs/`.
+- **08, nuevo**: los picos.
+- **`notebooks/README.md`**: el hilo que une los cuadernos. El 04 (ciclo horario con Fourier)
+  sigue pendiente.
+
+**Los picos pasan al centro. Hipótesis del propietario**, que se preregistran antes de medir en
+el 08:
+- **Diciembre**: alcohol, riñas, fiesta, **pólvora**, quemados por velitas (7 de diciembre) y por
+  el muñeco del 31. Es festivo y peligroso.
+- **Año Nuevo y enero**: además de la Feria, **las fiestas de los pueblos cercanos**. Lo que el
+  hospital del pueblo no puede atender termina en Manizales.
+- **Mitad de año**: el propietario ve **más picos a mitad de año que a final**, lo que hay que
+  medir.
+- El contexto debe salir de **fuentes oficiales del gobierno de Caldas y de Manizales**.
+
+**Lo que se deja:** accidentes de tránsito y lluvia como vía de los picos. Ya se midió que al SES
+llega poco tránsito (r = 0,01 con la ciudad, salva la Feria) y que la lluvia no lo sube. El
+propietario considera que seguir por ahí es sobrepensar.
+
+**Medido el mismo día: hay dos tipos de pico** (descriptivo, residuo contra el calendario y el
+nivel del año, 2022-03 a 2026-09; `scratchpad/picos_por_mes.py`, que pasará al cuaderno 08):
+1. **Días puntuales**: más de 1,5 desviaciones sobre el nivel local.
+   - **Enero 14,5 y diciembre 12,1 por cada 100 días**; el resto de meses, 1-6,5.
+   - Ejemplos: 25 de diciembre de 2022; 1 y 8 de diciembre de 2024 (la noche de velitas); 26-27 de
+     diciembre de 2025; 2-5 de enero de 2025; 3-4 de enero de 2026.
+   - **El nivel medio de esos meses es bajo** (−2,6 % y −2,9 %). Son noches, no temporadas.
+2. **Semanas altas sostenidas**: más de +8,4 % sobre el nivel del año.
+   - **Mayo 45 %** de sus semanas, marzo-abril 23-25 %, **octubre-noviembre 0 %**.
+   - Mayo tiene el nivel medio más alto del año (+8,1 %).
+
+**Lectura.** El propietario ve más picos a mitad de año, y es cierto **si «pico» es una semana alta
+sostenida**. Si es un día puntual, dominan diciembre y enero. Parecen dos mecanismos distintos:
+lo festivo y rápido en diciembre-enero, y algo lento y sostenido en marzo-mayo.
+
+**Matiz.** El alto de mitad de año cae en **mayo, antes de las vacaciones escolares**; junio y
+julio, ya en vacaciones, bajan al 14 %. La variable preregistrada `mitad_de_anio` (semanas de
+vacaciones) apunta a la ventana equivocada. **No se redefine**: se deja escrito y se añade como
+exploratoria la ventana marzo-mayo, declarando que se miró después.
+
+### Mismo día: el contexto oficial de los picos
+
+Informe completo en `calendarios/docs/CONTEXTO_PICOS.md`.
+
+**1. Calendario de fiestas municipales:** `calendarios/fiestas_caldas_2020_2026.csv`.
+- **Primera versión incompleta**: 75 filas de 22 municipios, de las que 48 citan la fuente como
+  texto y no como URL. Hay otro agente completándolo.
+- Lo que ya se ve: **en enero solo está el Carnaval de Riosucio** (años impares).
+- **El grueso de las fiestas cae entre finales de junio y comienzos de julio**, y en
+  octubre-noviembre.
+- Es decir, **no coinciden con los meses de más picos** (enero puntual, mayo sostenido). Hay que
+  medirlo, no suponerlo.
+
+**2. Pólvora (DTSC, Gobernación, Alcaldía).**
+- En Caldas, de 24 a 47 quemados por temporada; en Manizales, de 8 a 16.
+- **Son uno o dos triages por día pico, frente a ~177 de media.** La pólvora es parte de la
+  noche festiva, pero no la explica sola.
+- En la serie de MinDefensa, las **lesiones personales se multiplican por 2 a 5 el 1-ene y el
+  25-dic**. Diciembre es el mes más alto (71,6 al mes) y junio el más bajo (48,0).
+
+**3. Hechos de la red de salud que afectan al conteo.** Son causas de **oferta**, no de demanda.
+- **28-feb-2024: el SES deja de atender en urgencias a Salud Total y Sanitas.** En los datos:
+  172 y 194 triages en febrero y marzo de 2024, 120 en abril. Es un corte real, pero de solo
+  4-6 triages por día.
+- **Marzo de 2025: el SES al 200 %** («todos los pacientes del departamento llegan al SES»).
+- **Julio de 2025: alerta hospitalaria en Manizales**, con urgencias al 200 % en días punta; en
+  abril de 2026 seguía vigente por Nueva EPS.
+- **La saturación puede recortar el conteo en los días de más demanda.** Si el servicio está
+  lleno, se desvía o no se registra. **El conteo mide lo que el hospital recibe, no lo que la
+  ciudad necesita.** Hay que tenerlo presente al interpretar cualquier pico.
+
+**4. Remisiones.** La DTSC publica **119 informes mensuales del CRUE** («Referencia y
+contrarreferencia Caldas», 2015-01 a 2026-08), pero cada descarga pide un reCAPTCHA. **Solo los
+puede bajar el propietario a mano.** Además hay un derecho de petición propuesto en
+`CONTEXTO_PICOS.md` §4.3.
+
+**5. Vacaciones escolares de mitad de año**, por resolución de la Secretaría de Educación de
+Manizales, 2021-2026. Ejemplo: 2025, del 16-jun al 6-jul.
+
+**6. Calendario de fiestas completado**: `calendarios/fiestas_caldas_2020_2026.csv`.
+- **177 ediciones de 26 municipios**, 167 con URL. Hay 119 fechas confirmadas y 58 estimadas;
+  130 filas verificadas abriendo la página (V), 8 vistas solo en el buscador (B) y 39 inferidas
+  (I).
+- Valores de `estado` válidos: realizado, cancelado, virtual, programado y aplazado.
+- **Las fiestas realizadas empiezan en octubre (39), junio (33) y agosto (20); en enero, 2.**
+  Octubre y noviembre son justo los meses **sin** semanas altas de triage (0 %).
+- No hay fiestas de San Pedro y San Pablo como fiesta principal. El puente de finales de junio lo
+  ocupan otras fiestas (Colación, Ceiba, Samán y Horticultura).
+- El terremoto del 10-ago-2026 canceló o aplazó varias.
+
+### Mismo día: cuadernos 01 y 02 corregidos, y tres correcciones a `CLAUDE.md`
+
+**Cuadernos.** El 01 tiene 38 celdas y el 02, 36; corren sin errores. Llevan 22 y 24 recuadros
+«Corrección del 2026-09-29».
+- **El markdown de los dos estaba roto**: sin saltos de línea y con las tablas en una sola línea.
+  Se rehízo.
+
+**Hallazgos nuevos:**
+- **Caída del volumen de 2024 a 2026:** el total pierde 54,2 triages por día y Nueva EPS 53,4.
+  **Pero de 2024 a 2025 la caída es sobre todo del resto** (−17,4; Sura baja de 69,6 a 53,9 tras
+  su salto de abril de 2024). De 2025 a 2026 es de Nueva EPS (−43,6), mientras el resto sube 16,6.
+- **La reclasificación del nivel y la cuota de Nueva EPS** van en sentido contrario de enero a
+  octubre de 2025 (r = −0,80), así que la deriva de criterio es independiente. Desde noviembre
+  de 2025 van juntas (r = +0,63). Queda como hipótesis; comprobarla exige un agregado nuevo día ×
+  nivel × entidad.
+- **Composición por edad de 2024 a 2026:** los 15-44 bajan de 122,1 a 88,1 por día y los 0-4 no
+  suben (6,8 a 6,9). Los extremos ganan peso porque cae el centro, no porque vengan más niños.
+
+**Cifras antiguas corregidas:**
+- Emergencias: 1.591 casos, no 1.463.
+- Obstétrico: 12,5 %.
+- Triages por mes, octubre-diciembre de 2025: 6.434 → 5.165 → 4.581.
+- Estancia, régimen 2: 324.046 registros.
+- Clima del 02 (anterior al arreglo): temperatura media 16,6 °C; lluvia ~1.081 mm por año con
+  máximo en marzo. **El «rezago de un mes» entre lluvia y pico pediátrico deja de sostenerse.**
+
+**Corregido en `CLAUDE.md`, verificado aquí contra `triage_horario`, 2022-2026:**
+1. **La segunda joroba del día es a las 14-15 h, no a las 18-19 h.** Pico a las 10 h (15,8
+   triages por hora), valle a las 12-13 h (10,9), segundo pico a las 14-15 h (13,0); a las 18-19 h
+   ya se baja a 8,6.
+2. **Los «2 huecos» se nombran:** 19 y 20 de marzo de 2024, y el 21 con 40 triages.
+3. **«Por qué cae no se sabe»** queda tachado y resuelto: es Nueva EPS.
+
+**Hueco de reproducibilidad sin arreglar:** `python -m extraccion --series` **no** regenera
+`triage_diario.parquet` ni `triage_horario.parquet`. Ningún script del repositorio los produce.
+Sí se comprobó que el horario coincide casilla a casilla con `triage_nivel` sumado (0 diferencias
+en 55.833 casillas).
+
+---
+
+## 2026-09-28 — Dos capas: el nivel lo mueve la red, los picos los mueven otras cosas
+
+**Contexto que aporta el propietario**, con el respaldo de su superior y de las noticias:
+- **Nueva EPS fue intervenida por corrupción y quedó al borde de la quiebra.** No puede pagar
+  los tratamientos.
+- **Sus afiliados dejaron de venir** porque saben que no los van a atender.
+- Es lo que el cuaderno 07 vio en los datos del hospital: de 116 a 72 triages por día de Nueva EPS
+  entre 2025 y 2026, con escalones en noviembre de 2025 y julio de 2026.
+
+**Decisión de diseño.** El desenlace se separa en dos capas con causas distintas:
+1. **El nivel**, lo que el hospital recibe «en una semana normal». Lo mueve la **red de salud**:
+   la situación de la EPS dominante, los cierres y las intervenciones. Cambia en escalones y
+   dura meses.
+2. **Los picos**, lo que se sale del nivel reciente. Los mueven eventos sociales, cambios
+   bruscos de clima, epidemias y catástrofes, cada uno con su reloj.
+
+**Por qué importa.** Si los picos se miden contra la media del año, un desplome de nivel como el
+de noviembre de 2025 fabrica «días bajos» y esconde «días altos» dentro de un año partido en dos.
+**Los picos se definen desde ahora contra el nivel reciente**: los días previos, no la media del
+año. Eso además coincide con la pregunta del proyecto, «¿va a incrementar?», que siempre es
+respecto de lo que se venía viendo.
+
+**Sobre el tránsito, según el propietario.** Los accidentados probablemente van a la Clínica La
+Presentación o a Santa Sofía, y al SES solo llegan en momentos concretos, como la Feria. No lo
+puede asegurar. El SIVIGILA no trae accidentes de tránsito como evento. La serie diaria de lesiones
+de tránsito de MinDefensa en datos.gov.co (`FUENTES_EXTERNAS.md`) permite comparar la ciudad con el
+SOAT del SES.
+
+**Medido el mismo día** (`calendarios/seguridad/mindefensa.py` → `seguridad_mindefensa.csv.gz`,
+solo sumas por día; cuaderno 07, sección 3.3):
+- Correlación entre el **tránsito de la ciudad** (Policía, 3,1 casos por día) y el **SOAT del SES**
+  (7,2 por día): **r = +0,01** por día y por semana. No se mueven juntos, como sostenía el
+  propietario.
+- En la Feria sí suben los dos: ciudad +63 % (±51) y SES +37 % (±6), frente a +26 % y +12 % de otros
+  regresos.
+- La lluvia fuerte no sube el tránsito ni en la ciudad (−8,5 % ±16) ni en el SES.
+
+**Decisión derivada:** el tránsito de la ciudad **no** entra como predictor del triage del SES; la
+Feria sí.
+
+**Picos redefinidos contra el nivel local** (mediana de ±14 días, solo para describir): hay **30**,
+frente a 22 contra la media del año. Los preceden la Feria (5,3 veces la tasa base) y los eventos
+sociales (2,0 veces; 18 de 30). 18 caen en fin de semana, 9 en enero y 6 en diciembre. **Un nivel
+que solo mira hacia atrás confunde la recuperación de Nueva EPS (mar-2026) con un pico.** Por
+eso el pronóstico tendrá que llevar el estado de Nueva EPS como variable explícita.
+
+---
+
+## 2026-09-28 — Cambio de método: mecanismos con su propio reloj, no correlaciones globales
+
+**Qué se decide.** El análisis de patrones deja de ser «correlacionar el residuo semanal con
+todo». Pasa a buscar **mecanismos**. Cada familia de factores tiene:
+- **su reloj**: los eventos sociales actúan en 0-5 días (trasnocho, trago, aglomeración,
+  trauma, visitantes sin EPS a mano); lo infeccioso y lo climático, en 1-4 semanas
+  (incubación, contagio);
+- **su gatillo**: el cambio brusco, no el nivel;
+- **su condición**: en día laboral la gente va a urgencias por la incapacidad, porque la cita de
+  la EPS tarda una semana;
+- **su subgrupo**: edad, hora, asegurador.
+
+Y se ve en **picos puntuales**, no a lo largo del año.
+
+**Por qué.** El propietario leyó el cuaderno 06 y vio en las gráficas lo contrario de lo que
+decían sus lecturas. Tenía razón en lo esencial. Las lecturas concluían «no afecta» a partir de
+un residuo al que **ya se le había quitado la estacionalidad**: eso borra precisamente los
+efectos que se repiten cada año en las mismas fechas. Es un **sesgo de supervivencia**: se
+concluyó sobre lo que sobrevivió al filtro. Además:
+- una sola ventana semanal diluye los efectos de días;
+- las variables de nivel no ven los cambios bruscos;
+- el total entierra las firmas de subgrupo.
+
+**Lo que ya estaba bien y se conserva:**
+- Coincidir en el tiempo no identifica la causa. La Feria cae siempre al regreso de vacaciones,
+  y el pico de mayo-junio coincide con lluvia, IRA y vacaciones escolares a la vez.
+- Para eso sirven los años y fechas que **varían**, usados como experimentos naturales.
+
+**Cómo se hace:**
+1. Ventanas **preregistradas** en `patrones/datos/variables.csv` (filas del 2026-09-28), antes de
+   mirar. Cada fila declara lo que ya se había visto.
+2. Anatomía de los picos: composición y lo que pasó antes.
+3. Efectos rápidos en días, con comparadores. Por ejemplo, la Feria contra otros regresos de
+   vacaciones.
+4. Efectos lentos por transiciones, separando día laboral de fin de semana.
+
+**Dato nuevo que lo hace posible sin el motivo: la entidad administradora.**
+`DIM_TRIAGE.GEENENTADM` → `DIM_ENTIDAD` cruza en el 100 % de 2020-2024 y el 99 % de 2025-2026.
+Se extrae como `salidas/triage_entidad.parquet` (`python -m extraccion --entidad`; día × hora ×
+entidad, 434.726 triages) y se agrupa con `extraccion/entidades.py`. Reparto:
+
+| Grupo | % |
+|---|---|
+| Nueva EPS | **58,2** |
+| EPS Sura | 22,2 |
+| Otras EPS | 6,1 |
+| **SOAT (accidente de tránsito)** | **4,0** |
+| Régimen especial | 2,5 |
+| Prepagada | 1,8 |
+| **Particulares** | 1,3 |
+| **ARL (accidente laboral)** | 1,0 |
+
+La clasificación es un borrador que revisa el propietario (`salidas/entidades_clasificadas.csv`).
+**El SOAT mide los accidentes de tránsito que llegan al SES**, que era la pregunta abierta del
+propietario. La residencia del paciente **no** se usa, por decisión suya.
+
+**Primer dato, aún sin analizar.** Nueva EPS pasa de 42.270 triages en 2025 a 19.532 en lo que va
+de 2026 (~26 mil anualizados, −38 %). EPS Sura se mantiene (19.691 → 16.858, ~22 mil
+anualizados).
+
+### Mismo día: resultados del cuaderno 07 con el método nuevo
+
+Archivo: `notebooks/07_mecanismos.ipynb`, 27 celdas, sin errores. Las pruebas son las
+preregistradas en `variables.csv`.
+
+1. **Red de salud (el efecto más grande).** Nueva EPS pasa de 115,8 a 72,2 triages por día entre
+   2025 y 2026 (−38 %), mientras Sura sube; su cuota baja del 58 % al 42 %.
+   - A mediados de **noviembre de 2025** se desploma de ~130 a ~55 por día. Empieza **antes** del
+     cierre de Santa Sofía del 1-dic, así que apunta a algo entre el **SES y Nueva EPS**.
+   - Se recupera en marzo de 2026 y vuelve a caer en **julio de 2026**.
+   - Tras el cierre de Avidanti, Nueva EPS sube frente a Sura (+15,5 %).
+   - **Estos escalones explican las semanas más bajas del cuaderno 06.**
+2. **Feria contra 52 otros regresos de vacaciones**, media de los días 0-4:
+   - **SOAT +36,9 ± 5,5 % contra +12,5 ± 8,5 %.** Sigue separado con t de 4 grados de libertad.
+   - Particulares +61 contra +29 %, con intervalo ancho.
+   - 15-44 +9 contra +4 %; total +7,3 contra +2,7 %, que se solapan.
+   - Parte de la subida empieza el 1-2 de enero (Año Nuevo).
+3. **Picos.** 22 días (más de +27 %), 13 de ellos en fin de semana y concentrados en enero y mayo.
+   Su composición es casi la de un día normal. Los preceden la Feria (4,2 veces la tasa base) y
+   los eventos sociales (1,8 veces). La mirada hacia atrás no sirve para lo lento: su ventana
+   cubre al 65 % de los días.
+4. **Transiciones de clima**, del cambio hacia adelante:
+   - **Seco → lluvioso: 0-4 años +22,0 ± 17,8 % a los 7-13 días** (13 episodios), que se apaga a
+     los 21-28.
+   - Enfriamiento: + en mayores y en adultos en día laboral (+2 a +4 %). Calentamiento: −2 a −3 %.
+     Los signos son coherentes, pero cada intervalo cruza el cero.
+   - Son 36 comparaciones, así que el resultado de los niños hay que confirmarlo fuera de muestra.
+5. **Lluvia fuerte:** −7,8 % de madrugada y ningún aumento del SOAT en el SES.
+6. **Subidas de la IRA de la ciudad:** nada en el SES, ni en día laboral ni en fin de semana.
+
+**Corrección del cuaderno 06.** Sus lecturas decían «no afecta». Ahora dicen qué no podía ver el
+método (estacionalidad quitada, ventana semanal, nivel en vez de cambio, total en vez de
+subgrupo) y remiten al 07.
+
+**Lo que solo tiene el propietario:** las fechas de suspensión y reanudación de servicios entre
+el SES y Nueva EPS. Con ellas, la variable de mayor efecto pasa a ser un predictor conocido **por
+adelantado**.
+
+---
+
+## 2026-09-28 — Calendario de vigilancia cerrado: 14 eventos, marcadores y 2026 por Power BI
+
+Detalle y evidencia en `calendarios/docs/VIGILANCIA.md`, sección final; estado por evento en
+`calendarios/docs/INVENTARIO.md`.
+
+**Decisiones de construcción** (las tomó el agente de integración; se asientan aquí):
+1. **Archivo aparte para los eventos individuales**, `calendarios/vigilancia_sivigila_eventos.csv.gz`
+   (`calendarios/vigilancia/eventos.py`). `sivigila.py` reescribe su archivo entero y dos
+   escritores sobre el mismo se pisarían. Tiene la misma estructura larga. El censo de casos por
+   año y evento está en `vigilancia_sivigila_eventos_censo.csv`.
+2. **La semana principal es la de la columna `SEMANA`**, porque es la única que empalma con 2026
+   (Power BI). **Contra ella:** no sigue la misma fecha todos los años. Por ejemplo, el 875 pasa
+   a fecha de consulta en 2020 y el 549 en 2023. Por eso se conserva también
+   `casos_ocurrencia_semana_consulta`, que es homogénea pero no existe para 2026. Según el
+   evento, las dos correlacionan de ≥ 0,9 a 0,07-0,45.
+3. **Las instantáneas de Power BI se versionan** (`calendarios/vigilancia/powerbi/AAAA-MM-DD/`).
+   Son agregados sin persona y no se pueden rehacer: el tablero se sobrescribe cada semana. Hoy
+   hay una sola, la del 28-09. **Falta una tarea que congele una cada semana.**
+
+**Integrados** como serie semanal de Manizales (2015-2025, más 2026 por Power BI donde hay):
+- 300 (agresiones por animales), 875 (violencias), 356 (intento de suicidio).
+- 365 (intoxicaciones, suma de 360 a 414), 549 (morbilidad materna extrema), 831 (varicela).
+- 155 (cáncer de mama y cuello), 850 (VIH), 813 (tuberculosis), 346 (COVID).
+- 113 (desnutrición < 5 años), 620 (parotiditis).
+
+Como **marcadores**: 452 (pólvora), 349 (brotes de ETA) y 348 (IRAG inusitado). En el límite
+de volumen: 414, 735 y 750. Otros 53 eventos tienen volumen insuficiente, y 11 dejaron de
+publicarse.
+
+**Empalme de Power BI contra los microdatos:**
+- Totales anuales de 2025 dentro del ±2 %.
+- Excepción: el 300 de 2024, −8,3 %, sin explicar.
+- El 995 del tablero va +3 a +8 % por encima, con r = 0,999: es un nivel, no un desfase.
+- **Los tableros no usan una sola definición de semana**: 356 y 875 van por `SEMANA`; 300 y 831
+  por la de notificación.
+
+**Escalones** (antes de usar cualquiera, mirar su serie):
+- 414 cae un 93 % entre 2016 y 2021 y arrastra al 365.
+- 549 se triplica en 2020-2021.
+- 831 cae de 1.316 a 110 entre 2015 y 2020.
+- 348 absorbió COVID en 2022-2023.
+- 113 salta ×2,9 en 2023.
+- 155 no tiene 2022.
+
+**Error encontrado y corregido.** `sivigila.fecha()` cortaba el texto a 10 caracteres y perdía
+las fechas con día o mes de un dígito («5/1/2021 00:00:00»). En las fichas individuales perdía
+8.718 de 29.557 filas del 831; `eventos.py` usa un lector propio. **Se midió que no afectaba al
+995 ni al 998:**
+- 995: 0 fechas nulas de 2015 a 2025.
+- 998: 2016, 2020, 2021, 2023 y 2025 sin pérdidas; todo llega como fecha de Excel o como texto
+  que se lee bien.
+
+La función se arregló igual, cortando antes del espacio. Al rehacer `vigilancia_sivigila.csv.gz`
+se obtienen 203.772 filas y **0 valores distintos**.
+
+---
+
+## 2026-09-28 — El hospital es el SES, el alcance se fija y empieza la búsqueda de patrones
+
+**1. Identidad del hospital (resuelve la decisión #9).** El propietario confirma que es el
+**SES Hospital Universitario de Caldas**, en Manizales. En el SIVIGILA 995 es la institución
+**`170010010301` «SERVICIOS ESPECIALES DE SALUD»**, presente de 2019 a 2025. Lo medido:
+- Sus consultas por todas las causas contra el triage semanal del proyecto dan **r = 0,758**
+  en 313 semanas.
+- **Reporta ~0 consultas por IRA**: 0 en 2022 y 2025, con 87 y 146 mil consultas. La
+  correlación r = 0,703 entre la IRA de la ciudad y el triage 0-4 **no es mecánica**: el
+  hospital no aporta a ese numerador.
+- **Sí aporta al denominador** de la ciudad. Cuando se use «consultas de la ciudad» como
+  variable externa, se **excluye el SES**.
+- Dato sin interpretar: sus consultas del SIVIGILA suben de 2024 a 2025 (126 → 146 mil),
+  mientras el triage baja (82 → 72 mil).
+
+**2. Alcance, decidido por el propietario:**
+- **Eventos sociales**: interesan los **grandes**, como la Feria de Manizales. Los partidos del
+  Once Caldas quedan fuera por ahora.
+- **Catástrofes**: de las bases abiertas colombianas (UNGRD en datos.gov.co).
+- **Calidad del aire**: **descartada**. No hace falta.
+- **Clima**: basta con `clima_unificado.csv.gz`.
+- **Con esto hay datos suficientes para empezar a buscar patrones.** Se abre un cuaderno
+  exploratorio de correlaciones y gráficas.
+
+**3. Cómo se leen esos patrones.** Son **exploratorios**: sirven para generar hipótesis, no para
+confirmarlas. Toda variable que se quiera contrastar después se preregistra en
+`patrones/datos/variables.csv` antes de mirar su resultado confirmatorio.
+
+### Mismo día: cuaderno 06, los primeros patrones
+
+Archivo: `notebooks/06_patrones_exploratorios.ipynb`. Tiene 25 celdas y 7 figuras, cada una con
+su lectura, y corre sin errores.
+
+**Corrección de datos que vale para todo el proyecto.** Un día **sin filas** en el triage total
+es una **caída del registro**, no cero pacientes. El 19 y el 20 de marzo de 2024 no tienen ni un
+registro, y el 21 tiene 40. Rellenados con cero fabricaban una semana de −42 %. **Regla:** en el
+total, un día sin filas es nulo, y un día con menos del 40 % de lo esperado fuera de COVID se
+excluye como caída parcial. Rellenar con cero sigue siendo lo correcto para **subconjuntos**
+(una banda de edad sí puede tener cero).
+
+**Lo que se vio:**
+- **Residuo semanal: 8,0 %, con autocorrelación de +0,62.** Lo que falta por explicar se mueve
+  lento y en bloques.
+- **Semanas extremas.** De las 10 más bajas, 7 caen entre noviembre de 2025 y febrero de 2026,
+  y otra es la del terremoto. **Los calendarios actuales no tienen nada que decir de casi
+  ninguna.**
+- **Mapa de correlaciones:** 23 variables, rezagos de −1 a +4, 138 pruebas por panel.
+  - Hay **15 celdas marcadas y el azar daría ~7**.
+  - Solo es robusta la del propio SES en el SIVIGILA (+0,32 a +0,46), que es el control.
+  - Ciudad sin el SES: +0,08 a +0,18.
+  - Clima: ninguna de nivel pasa de ±0,15.
+  - Feria y eventos: desaparecen al quitar la estacionalidad.
+- **Consultas de la ciudad contra el hospital:** r = 0,17 en nivel y 0,00 con rezago. El total
+  del SIVIGILA mezcla consulta externa (programada, que se hunde en festivos) con urgencias:
+  **no mide demanda urgente**.
+- **Feria:** +6,3 % de media, pero de −7,7 % a +27,3 % según el año. No se separa del regreso
+  de vacaciones de enero.
+- **Clima en quintiles:** la diferencia entre extremos queda dentro de ±3,6 puntos, sin
+  pendiente.
+- **Deslizamientos:** nada.
+- **Terremoto:** −50 % el día del sismo, −26 % la primera semana, −7 % los días 8 a 21.
+
+**Hipótesis que salen de aquí.** Sección 8 del cuaderno; ninguna probada.
+- **H1:** la red de salud mueve el triage total más que cualquier otra familia.
+- **H2:** la persistencia es la base contra la que se mide todo.
+- **H3:** una catástrofe grande baja el triage registrado.
+- **H4:** la lluvia de la semana lo baja un poco.
+- **H5:** varicela y desnutrición comparten algo con el triage, quizá el calendario escolar.
+
+**Siguiente paso propuesto:** el calendario del sistema de salud (H1).
+
+---
+
+## 2026-09-28 — Corrección del propietario: el ejemplo de la gripa no es el objetivo, y ahora toca recolectar
+
+**Qué se corrige.** Las entradas anteriores del mismo día se estrecharon hacia lo respiratorio y
+lo pediátrico: IRA 0-4, su correlación con el triage 0-4 y el pico de marzo a junio. **El
+propietario aclara que la gripa era una ilustración del tipo de razonamiento, no la hipótesis
+a perseguir.** El desenlace sigue siendo uno solo: **cuándo sube o no la tendencia del triage
+total**. Y la etapa actual no es de conclusiones.
+
+**Decisión.** Esta etapa es de **recolección e inventario**:
+- Reunir el mayor número de variables externas candidatas, de fuentes oficiales y
+  comprobables: clima, salud pública, sistema de salud, sociales, catástrofes, calendario.
+- De cada una, documentar qué es, de dónde sale, qué cobertura tiene, con qué granularidad y
+  rezago, y qué calidad.
+- Las hipótesis y las correlaciones contra el triage total vienen **después**, con el
+  inventario completo y preregistrando las variables en `patrones/datos/variables.csv`.
+
+**Qué pasa con lo ya hecho.** Los hallazgos respiratorios y pediátricos de hoy (r = 0,703, el
+pico de marzo a junio, etc.) **no se retiran, pero tampoco guían el trabajo**. Quedan como
+auditoría de calidad de la fuente: demuestran que la serie SIVIGILA es coherente con el
+hospital. No son un resultado del proyecto.
+
+**Entregable central nuevo: `calendarios/docs/INVENTARIO.md`.** Es el catálogo de variables
+candidatas, una fila por variable, con fuente, estado y limitaciones.
+
+### Mismo día: inventario de fuentes fuera de vigilancia
+
+Informe completo en `calendarios/docs/FUENTES_EXTERNAS.md`: 6 familias, cada fuente marcada como
+verificada [V] o inferida [I].
+
+**Lo más aprovechable.** Tienen historia desde 2020 o antes y se pueden automatizar:
+- **Delitos de MinDefensa y la Policía** en datos.gov.co: lesiones, violencia intrafamiliar,
+  homicidio, lesiones y muertes en tránsito. Por **día** y municipio, desde 2003, con 2-6
+  semanas de rezago.
+- **NOAA ONI**, el índice ENSO, 1950 →.
+- **Pronóstico archivado de Open-Meteo**: temperatura desde 2021-03, lluvia desde 2024-01.
+- **Partidos del Once Caldas** de local, con asistencia (API de ESPN, no documentada).
+- **DANE**: población anual y desempleo por trimestre móvil.
+- **UNGRD**: 80 emergencias en Manizales entre 2019 y 2025.
+- **Sismos del USGS.**
+- **Aerocivil** y la **terminal de buses**.
+- **Aire del IDEAM**, hasta 2024-12.
+
+**Escalones en fuentes externas.** Lesiones en tránsito sube de 279 a 1.013 entre 2019 y 2022;
+lesiones personales cae un 62 % entre 2018 y 2025. Parecen cambios de registro, no de
+realidad. Es la misma disciplina que con el triage: mirar la serie antes de usarla.
+
+**Lo que no existe como serie y hay que pedirlo o construirlo:**
+- Alertas hospitalarias.
+- Cierres de servicios por fecha.
+- Histórico de afiliados por EPS.
+- Medidas de la Supersalud ya levantadas.
+
+Lista de acciones del propietario en `HANDOFF.md`.
+
+**Urgente por construcción.** La foto mensual de afiliados por EPS (BDUA) no guarda historia:
+cada mes que no se descarga se pierde.
+
+**Segundo incidente de privacidad del día.** Una consulta de prueba al REPS (`c36g-9fc2`)
+imprimió en la terminal del agente una fila con nombre, cédula y correo de un profesional
+independiente. No se guardó en ningún archivo. **Regla que sale de aquí:** en datos.gov.co,
+la primera consulta a un dataset nuevo pide **solo el esquema** (`$select` con conteo, o los
+metadatos), nunca `$limit=1` sobre todas las columnas.
+
+---
+
+## 2026-09-28 — Se aparta el NLP y se rehacen los calendarios externos con fuentes reales
+
+**Decisión del propietario.** Las notas de triage quedan en pausa. El trabajo pasa a sustituir
+los calendarios hechos a mano por **series obtenidas por API, descarga o raspado de fuentes
+públicas**, con historia real, empezando por uno solo a la vez.
+
+**Por qué.** La validación del mismo día (entrada siguiente) mostró que los calendarios
+actuales no aportan señal fuera de muestra. El 67 % de la vigilancia son ventanas con fechas
+fijas y los eventos son recurrentes anuales. El cuello de botella es la calidad de las
+variables externas, no el modelo ni el texto.
+
+**Orden** (fijado aquí; el propietario puede cambiarlo):
+1. **Vigilancia en salud → microdatos SIVIGILA** (84 eventos, 2007-2025). Es la fuente con más
+   valor y la única ya confirmada.
+2. **Clima.** Auditoría de lo que el propietario sospecha mal calculado, más pronóstico
+   archivado (Open-Meteo).
+3. **Desastres y emergencias**, incluida la pandemia como periodo.
+4. **Eventos sociales.**
+
+**Arquitectura de vigilancia**:
+- Código en `calendarios/vigilancia/`.
+- Descarga cruda en `calendarios/vigilancia/crudo/`, **ignorada por git**. Los archivos del
+  SIVIGILA traen nombre, teléfono y correo de quien notifica.
+- Salida agregada a municipio × semana epidemiológica, **sin una sola columna de persona**,
+  versionada como `calendarios/vigilancia_sivigila.csv.gz`.
+- El porqué de la construcción va en `calendarios/docs/VIGILANCIA.md`.
+- El CSV manual `vigilancia_salud_manizales_caldas.csv` **no se borra**: queda como registro de
+  lo que había y de dónde salió cada fecha.
+
+**Límite conocido desde el inicio.** Los microdatos se publican con ~8 meses de rezago (2025
+salió el 25-ago-2026; 2026 no existe). Sirven para entrenar y medir. Para operar en tiempo
+real hará falta otra vía (boletines semanales), que se investiga en paralelo.
+
+### Mismo día, más tarde: la vía para 2026 y el orden de eventos
+
+Fuente: `calendarios/docs/FUENTES_VIGILANCIA.md`.
+
+**1. La vía para 2026 es Power BI, no los boletines.** El tablero público del INS «006
+Vigilancia Rutinaria» da conteos por evento × semana × municipio, se actualiza cada semana y
+va ~7 días por detrás.
+- Se consulta por la API pública de Power BI, sin token. Su clave se lee cada vez de la lista
+  SharePoint `MenuReporteNivel2`.
+- Los tableros por evento traen historia y **cuadran con los microdatos**: 356 de 2016 da 368
+  contra 368; 831 de 2024, 214 contra 211-214.
+- Se descartaron:
+  - El BES: solo baja a departamento.
+  - La DTSC: reCAPTCHA en cada descarga.
+  - datos.gov.co: congelado en 2022.
+  - La Secretaría de Salud de Manizales: PDF mensual, casi todo gráficos.
+- **Límites:** la API no está documentada y las 2 o 3 últimas semanas se revisan por
+  notificación tardía. Cada descarga se guarda congelada con su fecha, para poder evaluar con
+  lo que se habría sabido en su momento.
+
+**2. Regla de privacidad nueva, y no negociable.** Los modelos públicos de los tableros por
+evento **exponen en su esquema columnas identificables**: nombre, documento, dirección,
+teléfono, coordenadas. Por eso:
+- El proyecto solo pide **medidas agregadas** (`Casos`, `SUM(conteo)`) o la tabla ya agregada
+  del 006.
+- **Nunca pide una columna cruda de esos modelos.**
+- Si se avisa o no al INS lo decide el propietario.
+
+**3. Orden de integración después del 995:**
+1. 998 (EDA), con el denominador del 995.
+2. 356 (intento de suicidio).
+3. 875 (violencia de género e intrafamiliar).
+4. 300 (agresiones por animales).
+5. 365 (intoxicaciones, suma de los códigos 360-414).
+6. 831 (varicela) + 620 (parotiditis).
+7. 549 (morbilidad materna extrema), solo si el triage cubre obstetricia; cubre el 12,6 %.
+
+Los vectores quedan fuera: tienen 0-7 casos al año en Manizales. El 345 también: Manizales no
+es sitio centinela. Pólvora (452), brotes de ETA (349) e IRAG inusitado (348) entran como
+**marcadores de evento**, no como series.
+
+**4. Aviso de fuga.** 356, 875, 300 y 365 son **parte del propio desenlace**: esas personas
+consultan en urgencias, quizá en este mismo hospital. Solo pueden entrar al pronóstico con
+rezago, o como desenlaces específicos. En la misma semana serían fuga de información.
+
+**5. Calendario epidemiológico.** Semana de domingo a sábado; la SE1 es la que contiene el 4 de
+enero. Tienen 53 semanas 2008, 2014, 2020 y 2025. **2021 no**, aunque algún calendario
+interno del INS le asigne una.
+
+### Mismo día: 995 y 998 integrados, y cuatro decisiones de construcción
+
+Evidencia en `calendarios/docs/VIGILANCIA.md`. La corrida se repitió aquí desde el caché
+(`--sin-descargar`, 16 s): 203.772 filas, **ninguna columna de persona** y el crudo ignorado
+por git.
+
+1. **La serie usable del 995 empieza en 2015.**
+   - 2011 es otra ficha: trae casos, sin denominador.
+   - 2012-2014 tienen semanas con 2 instituciones, duplicados y más IRA que consultas.
+2. **La proporción IRA / todas las causas solo se compara dentro de cada año.** El
+   denominador sube +60 % en 2021 y +35 % en 2024 por instituciones nuevas. La caída del
+   16 % al 3,6 % es del denominador, no de la IRA. Para comparar entre años se usa el
+   **conteo** de IRA, o una proporción sobre un **panel fijo de instituciones** (pendiente).
+3. **El municipio se toma del código de la institución** (`cod_pre[:5]`), porque `cod_mun`
+   cambia de formato entre años. Se midió: en Manizales es idéntico desde 2016, y en
+   2012-2015 la correlación es ≥ 0,995.
+4. **Semana epidemiológica asignada por regla, no por la columna.** Las 39 filas de «SE53 de
+   2021» son la SE53 de 2020 y se descartan; ninguna es de Manizales.
+
+**Hallazgos que cambian cosas.**
+- **Correlación con el hospital: r = 0,703** entre la IRA 0-4 de Manizales y el triage 0-4,
+  en 312 semanas de 2020-2025; 0,808 normalizando por año. El 0,685 de antes perdía los 124
+  días con cero triages pediátricos, porque el `GROUP BY` no emite ceros. **Esa trampa vale
+  para toda serie de conteo del proyecto.**
+- **Límite:** en diferencias semanales la correlación baja a 0,18. Explica el nivel, no el
+  cambio de una semana a la siguiente.
+- **El segundo pico de lluvias (octubre-noviembre) no tiene pico de IRA en 0-4 años**, como ya
+  pasaba en el hospital. Octubre es el mes más bajo.
+- **Avidanti −39 % tras cerrar a Nueva EPS.** Pesa el 0,3 % del volumen de la ciudad y no se
+  ve desplazamiento agregado.
+- **La EDA de Manizales cae a la mitad desde 2020, sin explicación.** No se sabe si es real o
+  de notificación.
+
+**Sin verificar.**
+- **Si el hospital del proyecto es una de las instituciones del 995.** Si lo es, parte de la
+  correlación es mecánica: son las mismas consultas. El propietario lo sabe.
+- El significado de los códigos de ajuste 4 y 6. Se asumió que 6 es descartado.
+
+**Incidente de privacidad.** En la exploración inicial, el agente de integración imprimió en su
+salida de sesión los 5 valores más frecuentes de `num_con`, que tienen forma de cédula. No
+quedaron en ningún archivo del repositorio. A partir de ahí `num_con` va en la lista de
+columnas descartadas al leer.
+
+---
+
+## 2026-09-28 — Validación: ¿se puede predecir el conteo sin el motivo de triage?
+
+**Origen.** El superior del propietario sostiene que el motivo de la nota no hace falta para el
+objetivo: las notas las escriben enfermeras, están sujetas a interpretación, y bastaría con
+conteo + fecha enfrentados a factores externos (clima, salud, eventos, desastres). Se pidió
+validarlo con los datos. **No es una decisión todavía: es la medición que la va a sostener.**
+Script: `notebooks/05_validacion_sin_motivo.py` (solo parquet agregados y calendarios).
+Ventana 2022-03-01 a 2026-09-20; control = día de semana, festivos, puentes, quincena,
+vacaciones, Semana Santa, Navidad + nivel por año + escalón 2025-11. Las dos variables de
+transición se definieron en el docstring **antes** de correr (no se preregistraron en
+`variables.csv`: lo encontrado aquí es exploratorio).
+
+**1. Los calendarios, tal como están, son en su mayoría calendario disfrazado.**
+- `vigilancia_salud`: 216 de 321 filas (67 %) son «ventana_estacional», **las mismas fechas
+  cada año**. El mes del año explica el **92,6 %** de la bandera IRA y el **100 %** de VSR e
+  influenza. Usarlas es proyección, no predicción — exactamente lo que `CLAUDE.md` descarta.
+  Solo 28 filas traen número de casos; de Manizales, 6.
+- `eventos`: 99 filas, casi todas recurrentes anuales. **Efecto medido nulo**: días de evento
+  +0,0 % [−0,4; +0,4]; días de Feria +0,2 % [−0,8; +1,1] por día.
+- `desastres`: 17 filas, 4 pendientes de verificar.
+
+**2. El presupuesto de ruido: sí hay algo que explicar, sobre todo a escala semanal.**
+
+| | Diario | Semanal |
+|---|---|---|
+| sd del residuo tras control + estacionalidad | 11,8 % | 6,4 % |
+| piso de Poisson (irreducible) | 7,3 % | 2,7 % |
+| varianza residual potencialmente explicable | 62 % | 82 % |
+| autocorrelación del residuo | +0,26 | +0,52 |
+
+De la varianza diaria total: calendario 55,1 %, nivel por año +16,5 %, estacionalidad anual
+**+2,5 %**, queda 25,9 % (≈10 puntos son Poisson).
+
+**3. Las externas no explican el conteo TOTAL más allá del azar; sí explican el pediátrico.**
+R² incremental de 19 variables externas sobre el residuo semanal: **total 0,112** (azar en
+bloques de 8 semanas, p95 = 0,167: indistinguible) · adultos 0,112 (p95 0,175) · **0-14 años
+0,260** (p95 0,197: por encima del azar).
+
+Efectos por desviación típica (IC95 HAC, control + estacionalidad):
+
+| | total | 0-14 años |
+|---|---|---|
+| temperatura, rezago 1-2 sem | −0,2 / −1,2 % | **−9,9 / −10,8 %** (frío → más niños) |
+| humedad, rezago 1-2 sem | −0,5 / +0,3 % | **+6,2 / +7,4 %** |
+| lluvia, misma semana | **−1,4 %** (llueve → menos consultas) | +1,1 % |
+| enfriamiento brusco, misma semana | **−3,6 %** | −1,7 % |
+| ruptura seca→lluvia | nulo, IC ±8 % | nulo, IC ±17 % |
+| La Niña / El Niño | +1,8 % / −0,8 % | **+21,8 % / −27,2 %** (confundido con año) |
+| terremoto 2026-08-10 (2 sem.) | **−21,5 %** | −29,5 % |
+
+**El mecanismo respiratorio existe y se ve sin motivo, en la edad, con 6,7 años de historia.**
+En el total se diluye: la correlación del residuo pediátrico con el de adultos es +0,08, y el
+residuo pediátrico de la semana anterior no anticipa a los adultos (t = −1,75).
+
+**4. Pronóstico semanal, origen rodante, 136 semanas (2024-01 a 2026-08), h = 1 semana.**
+
+| Modelo | MAPE | acierto «¿sube?» | Brier |
+|---|---|---|---|
+| ingenuo (= semana actual) | 5,24 % | — | — |
+| nivel + calendario | 6,07 % | 64,0 % | 0,240 |
+| + estacionalidad (proyección) | **5,23 %** | 58,1 % | 0,237 |
+| + externas conocidas en t | 5,64 % | 63,2 % | 0,252 |
+| oráculo: + clima observado t+1 | 5,61 % | 55,9 % | 0,255 |
+
+(Base: 47,1 % de semanas suben; Brier de una moneda 0,250.) **Ninguna variable externa mejora
+el pronóstico del total, ni siquiera con el clima de la semana siguiente conocido.** Para la
+serie pediátrica tampoco: el clima empeora de 15,0 % a 15,9 % de MAPE — la asociación existe,
+pero no alcanza para predecir una semana adelante.
+
+**5. Potencia.** Solo **7 semanas de ruptura seca→lluvia** en 237 (3 %). Efecto mínimo
+detectable ~5,5 % sin corregir autocorrelación y ~7 % corrigiéndola, contra 2-10 % publicado.
+La hipótesis de transición sobre el total **no se puede contrastar con este diseño, con o sin
+motivo**.
+
+**6. Lo que mueve de verdad el conteo es institucional.** Las semanas más extremas: 2025-11-02
+y 11-09 (+21,7 %, +18,9 %) seguidas de 11-30 y 12-07 (−17,1 %, −13,2 %); la del terremoto
+(−26,4 %); un bloque alto en marzo-abril de 2026. Ninguna coincide con una anomalía de clima.
+Y el volumen anual (105,7 → 226,4 → 172,6) lo movieron COVID y la reclasificación.
+
+**Lectura.**
+1. **El superior tiene razón en que el motivo no hace falta para predecir** — `CLAUDE.md` ya lo
+   decía: el motivo nunca podía ser entrada. Y para **probar el mecanismo**, la edad lo sustituye
+   con más historia y sin interpretación de nadie.
+2. **No tiene razón, con estos datos, en que las externas mejoren la predicción del total.** Los
+   calendarios actuales no aportan señal fuera de muestra. No es que la idea sea falsa: es que
+   las variables disponibles son calendario disfrazado, o demasiado raras para tener potencia.
+3. El motivo solo añadiría lo que la edad no ve: la vía respiratoria **adulta** (la de la
+   incapacidad). Es explicación, no pronóstico.
+
+**Límites.** El periodo de prueba (2024-2026) es justo el de la deriva administrativa; ridge
+con λ fijo sin ajustar; ENSO confundido con el año; solo horizonte semanal.
+
+**Complemento del mismo día: lo que hay fuera** (investigación web; [V] = página leída por el
+agente, no re-verificado en esta sesión).
+- **La literatura coincide con el resultado.** Wargon et al. 2009, una revisión de 9 estudios
+  [V]: *«adding meteorological data failed to improve model performance»*. Marcilio et al.
+  2013 en São Paulo [V]: con temperatura el MAPE fue de 11,5 %, sin ella de 10,8 %. En
+  Colombia el efecto grande aparece en lo **respiratorio o pediátrico** (Rodríguez-Villamizar
+  2018; Medellín 2024; Bogotá 2015), no en el total.
+- **La dilución es mayor de lo que suponía `CLAUDE.md`.** En los microdatos SIVIGILA 995 de
+  2025, la IRA es ~5 % de las consultas de Manizales, no el 10 % supuesto.
+- **Existe una serie de vigilancia real.** Son los microdatos SIVIGILA del evento 995 (IRA
+  colectiva), en `portalsivigila.ins.gov.co/Microdatos`, **2011-2025**. Traen una fila por
+  institución × semana con código de municipio, consultas por IRA en 7 grupos de edad y
+  `tot_exturg`, que es el total de consultas de todas las causas. Tienen dos límites:
+  - Publican con ~8 meses de rezago, así que sirven para entrenar, no para operar.
+  - Traen nombre, teléfono y correo de quien notifica: esas columnas se descartan al cargar.
+- **Hay eventos institucionales que coinciden con las semanas extremas** [V]:
+  - Avidanti suspende todos los servicios a Nueva EPS el 21-ago-2025. Es ~30 % de la capacidad
+    de la ciudad y ~1.600 triages al mes.
+  - Santa Sofía cierra a Nueva EPS el 1-dic-2025.
+  - Diagnostimed suspende en diciembre de 2025.
+  - La Resolución 373 de 2026 obliga a reportar los tiempos de triage desde el 1-ene-2026.
+
+  Esto es compatible con que el hospital recibiera primero la demanda desplazada (el pico de
+  noviembre) y después cambiara su registro o se viera afectado por el cierre. **No está
+  comprobado.** Se comprueba con `tot_exturg` por institución.
+
+---
+
 ## 2026-09-24 — Se reabre la competencia de modelos EN CPU: Llama 3 y otros ligeros
 
 **Decisión del propietario**: antes de dar por cerrado que el problema necesita GPU, medir
@@ -240,6 +1350,84 @@ y con un cierre que prohíbe abstenerse solo puede copiar el trámite o inventar
 quedaba imposible por diseño. Se permite que la segunda pasada se abstenga **solo** cuando lo
 único que trae la nota es trámite (queda «sin motivo clinico» marcada `revisar`). Todos los
 prompts se corren con la aclaración disponible; ninguno había corrido todavía.
+
+**Segunda pasada real con v1.7 (cadena completa), medida el 2026-09-24:**
+- **gemma4:12b recupera 3 de sus 5 descartes falsos** (la remisión con diagnóstico, el
+  procedimiento, el control prenatal), los tres fieles; los otros 2 quedan «sin motivo clinico»
+  **marcados `revisar`**. Los 2 trámites puros quedan bien. **Con la cadena, gemma4 no deja
+  ningún descarte falso sin marca.**
+- qwen3:8b recupera la remisión con diagnóstico **inventándole la localización** (otra vez, y
+  ningún detector la ve); el otro descarte queda en `revisar`.
+- **Cruzada** (primera qwen, segunda gemma3): la remisión sale fiel, sin la invención; pero con
+  el cierre estricto de v1.7 **daña los 2 trámites puros** (copia el servicio que remite). Es
+  el problema que resolvió la aclaración del reglamento.
+
+**Hallazgo de velocidad: la segunda pasada rompe la caché de Ollama.** Ollama reaprovecha el
+prefijo común de los prompts: medido con qwen3:8b, la primera llamada lee 2.218 tokens en 213 s;
+la misma nota repetida, 0,4 s; **otra nota, ~10 s** (solo paga su tramo propio). Pero
+`construir_segunda_pasada` pone su aviso **al principio**, así que cada vez que se dispara lee
+el prompt entero otra vez: **288-419 s contra ~14 s**, y al volver a la primera pasada paga de
+nuevo. Arreglo sin costo: mover el aviso al final, justo antes de la nota. Pendiente de
+producción (`NLP/prompts/v1_7.py`, `_AVISO_SEGUNDA`).
+
+**Línea base en cadena con v1.7** (filtros + segunda pasada real, 63 notas):
+
+| Cadena v1.7 | Total | B1 (≥ 12/16) | B2 (0 aciertos mal) | B3 (0 DF sin marca) |
+|---|---|---|---|---|
+| **gemma4:12b** | **+30** | **14/16 ✓** | 1, marcado `revisar` | 0 ✓ |
+| qwen3:8b | +15,5 | 5/16 ✗ | 2 ✗ | 0 ✓ |
+| qwen3:8b + 2.ª pasada de gemma3 | +14,5 | 6/16 ✗ | 2 ✗ | 0 ✓ |
+| gemma3:12b | +5,5 | 6/16 ✗ | 5 ✗ | 0 ✓ |
+
+La cruzada no conviene: recupera limpia la remisión con diagnóstico (+1) pero convierte en
+motivo los dos trámites puros (−2).
+
+**Ambigüedad del preregistro, resuelta ANTES de ver la ronda 1**: B3 tolera un descarte falso
+marcado, pero B2 no dice nada de marcas, y un acierto descartado y marcado cae en los dos. **Se
+resuelve en sentido estricto: un acierto que termina descartado cuenta como dañado en B2 aunque
+esté marcado.** Motivo: la regla del propietario es no dañar lo que estaba bien, y una nota que
+pasa a necesitar revisión humana está dañada, aunque sea visible. La tolerancia de B3 queda
+para los fallos. Consecuencia: gemma4 con v1.7 **no cruza por una nota**. Resolverla después
+de ver R1 sería acomodar la regla al candidato.
+
+**R1 qwen3:8b (2026-09-25; `FORMATO="razonado"`, copia literal a 5 casillas y después el
+motivo)**: +12,5 en cadena (v1.7: +15,5). **No cruza**: B1 11/16 (v1.7: 5/16), B2 4 ✗, B3 1 ✗
+(la segunda pasada dijo «ningún motivo clínico identificado», un descarte que esquiva la marca).
+Auditoría: limpio. **La copia literal resuelve sentido y duda** —el coloquialismo de glucemia
+invertido por primera vez en un 8B, los oídos, «creo que», quién causó la lesión—, pero **falla
+el ensamblaje**: llena la casilla de negaciones y el motivo no la usa; se cuela «nada»; inventa
+un tiempo y un «posible». Errores de armado, no de comprensión: van a la ronda 2.
+
+**R1 tulu3:8b (instrucciones en inglés + recordatorios por nota armados con los detectores)**:
++8 en cadena (v1.7: +2,5). No cruza: B1 10/16, B2 5, B3 1. Auditoría: limpio. Arregla los
+embarazos inventados (16 → 0) y recupera descartes; pero **el recordatorio desplaza a la queja**:
+el modelo escribe solo lo que se le recordó («niega X» sin el síntoma principal) y comprime las
+notas largas. Lección general: inyectar hechos de la nota en el prompt funciona solo si se dice
+que se AÑADEN al motivo.
+
+**R1 gemma4:12b (abstención por categorías)**: +28,5 en cadena, el mejor de la ronda pero bajo
+su v1.7 (+30). No cruza: B1 11/16 (v1.7: 14), B2 1 (el mismo acierto de una palabra de aspecto,
+marcado), B3 0 ✓. Auditoría: limpio. Arregla duraciones, edad pediátrica y el control de la
+gestante; **pierde la duda en 2 notas que v1.7 hacía bien**: el énfasis nuevo en «escribe lo que
+dice del paciente» se comió la regla de la duda. De sus 14 «sin motivo clinico», 12 son trámites
+correctos: no se abstiene más que con v1.7.
+
+**R1 llama3.1:8b (formato razonado con casillas)**: −6 en cadena (v1.7: −9,5 con filtros). No
+cruza: B1 4/16, B2 9, B3 0 ✓. Auditoría: limpio. **El formato razonado arregla su problema de
+formato** (63/63 JSON válidos) y los embarazos inventados (0), pero **las casillas hacen eco en el
+motivo**: «posible» en 25/63 salidas sin duda en la nota, tiempos inventados en 6, diagnósticos
+deducidos del nombre de un servicio. Lección general: una casilla vacía que el modelo debe
+«llenar» invita a inventar.
+
+**gemma3 R1 falló por memoria** (2026-09-25, 11:54-12:50): con los navegadores abiertos, 8,1 GB
+de modelo paginaron a disco; 6 notas, la última a 473 s, y un timeout de 30 min. Se repite con
+los navegadores cerrados. Salida apartada como `descartado_R1_gemma3_timeout`.
+
+**La vara de la confirmación, medida (2026-09-25)**: qwen3:8b + v1.7 en cadena sobre las 56 notas
+de validación: **−18 (−0,32 por nota)**; fallos 2 bien / 2 parcial / 12 mal; aciertos 24 / 11 / 5
+mal; **0 descartes falsos**. En notas que el prompt nunca vio, v1.7 rinde mucho peor que en la
+muestra con que se afinó: confirma que hacía falta la validación. El juicio nota a nota vive solo
+en `validacion_privada/`.
 
 **Prioridad de la cola, por decisión del propietario** (más potencial primero): gemma4 →
 validación de qwen v1.7 (para poder confirmar a gemma4 enseguida) → qwen3 → gemma3 → tulu3 →

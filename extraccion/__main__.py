@@ -115,6 +115,31 @@ def series(eng, destino):
     print(f"{len(estancia):,} filas")
 
 
+def entidad(eng, destino):
+    """
+    Triages por dia x hora x entidad administradora (la EPS, la aseguradora SOAT, la ARL...).
+
+    DIM_TRIAGE.GEENENTADM -> DIM_ENTIDAD.OID cruza en el 100% de 2020-2024 y el 99% de
+    2025-2026 (medido el 2026-09-28). El nombre es el de una ORGANIZACION, no de una
+    persona. Sirve para dos cosas que ninguna otra columna da: separar la demanda por
+    asegurador (los cierres de servicios a una EPS) y ver mecanismos sin leer el
+    motivo -- el SOAT es accidente de transito, la ARL accidente laboral.
+    """
+    destino.mkdir(parents=True, exist_ok=True)
+    print("  entidad administradora por dia x hora...", end=" ", flush=True)
+    tabla = pd.read_sql("""
+        SELECT CAST(t.HCTFECTRI AS DATE) AS dia, DATEPART(HOUR, t.HCTFECTRI) AS hora,
+               n.OID AS entidad_oid, n.ENTNOMBRE AS entidad, n.ENTTIPENT AS tipo_entidad,
+               COUNT(*) AS n
+        FROM dbo.DIM_TRIAGE t LEFT JOIN dbo.DIM_ENTIDAD n ON t.GEENENTADM = n.OID
+        WHERE t.HCTFECTRI IS NOT NULL
+        GROUP BY CAST(t.HCTFECTRI AS DATE), DATEPART(HOUR, t.HCTFECTRI),
+                 n.OID, n.ENTNOMBRE, n.ENTTIPENT""", eng)
+    tabla["dia"] = pd.to_datetime(tabla["dia"])
+    tabla.to_parquet(destino / "triage_entidad.parquet", index=False)
+    print(f"{len(tabla):,} filas")
+
+
 def main(argv=None):
     from pathlib import Path
 
@@ -122,19 +147,24 @@ def main(argv=None):
     parser.add_argument("--esquema", action="store_true")
     parser.add_argument("--cobertura", action="store_true")
     parser.add_argument("--series", action="store_true")
+    parser.add_argument("--entidad", action="store_true",
+                        help="solo la serie por entidad administradora (EPS, SOAT, ARL)")
     args = parser.parse_args(argv)
 
-    if not (args.esquema or args.cobertura or args.series):
+    if not (args.esquema or args.cobertura or args.series or args.entidad):
         parser.print_help()
         return 1
 
     eng = motor()
+    salidas = Path(__file__).resolve().parents[1] / "salidas"
     if args.esquema:
         esquema(eng)
     if args.cobertura:
         cobertura(eng)
     if args.series:
-        series(eng, Path(__file__).resolve().parents[1] / "salidas")
+        series(eng, salidas)
+    if args.series or args.entidad:
+        entidad(eng, salidas)
     return 0
 
 

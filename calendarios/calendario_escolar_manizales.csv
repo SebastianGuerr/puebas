@@ -1,0 +1,30 @@
+anio_lectivo,tipo,fecha_inicio,fecha_fin,resolucion,fuente_url,nota
+2021,fin_de_anio,2020-12-28,2021-01-24,Res. 0669 del 19-10-2020,https://www.mineducacion.gov.co/1780/articles-402903_m_06.pdf,alternancia COVID; sin receso de Semana Santa
+2021,mitad_de_anio,2021-06-14,2021-07-04,Res. 0669 del 19-10-2020,https://www.mineducacion.gov.co/1780/articles-402903_m_06.pdf,
+2021,octubre,2021-10-11,2021-10-17,Res. 0669 del 19-10-2020,https://www.mineducacion.gov.co/1780/articles-402903_m_06.pdf,
+2021,fin_de_anio,2021-11-29,2021-12-26,Res. 0669 del 19-10-2020,https://www.mineducacion.gov.co/1780/articles-402903_m_06.pdf,
+2022,fin_de_anio,2021-12-27,2022-01-23,Res. 1129 del 29-10-2021,https://www.mineducacion.gov.co/1780/articles-408776_LN_07.pdf,corregida por Res. 1133 del 02-11-2021 (no leida)
+2022,semana_santa,2022-04-11,2022-04-17,Res. 1129 del 29-10-2021,https://www.mineducacion.gov.co/1780/articles-408776_LN_07.pdf,
+2022,mitad_de_anio,2022-06-20,2022-07-10,Res. 1129 del 29-10-2021,https://www.mineducacion.gov.co/1780/articles-408776_LN_07.pdf,
+2022,octubre,2022-10-10,2022-10-16,Res. 1129 del 29-10-2021,https://www.mineducacion.gov.co/1780/articles-408776_LN_07.pdf,la tabla dice 2021 (errata)
+2022,fin_de_anio,2022-12-05,2022-12-25,Res. 1129 del 29-10-2021,https://www.mineducacion.gov.co/1780/articles-408776_LN_07.pdf,
+2023,fin_de_anio,2022-12-26,2023-01-22,Res. 1303 del 27-10-2022,https://www.mineducacion.gov.co/1780/articles-413526_recurso_53.pdf,
+2023,semana_santa,2023-04-03,2023-04-09,Res. 1303 del 27-10-2022,https://www.mineducacion.gov.co/1780/articles-413526_recurso_53.pdf,
+2023,mitad_de_anio,2023-06-19,2023-07-02,Res. 1303 del 27-10-2022,https://www.mineducacion.gov.co/1780/articles-413526_recurso_53.pdf,
+2023,octubre,2023-10-09,2023-10-15,Res. 1303 del 27-10-2022,https://www.mineducacion.gov.co/1780/articles-413526_recurso_53.pdf,
+2023,fin_de_anio,2023-11-27,2023-12-24,Res. 1303 del 27-10-2022,https://www.mineducacion.gov.co/1780/articles-413526_recurso_53.pdf,
+2024,fin_de_anio,2023-12-25,2024-01-21,Res. 812 del 17-10-2023,https://manizales.gov.co/wp-content/uploads/2023/10/RES.-No.-812-17.10.2023-CALENDARIO-ACADEMICO-2024.pdf,
+2024,semana_santa,2024-03-25,2024-03-31,Res. 812 del 17-10-2023,https://manizales.gov.co/wp-content/uploads/2023/10/RES.-No.-812-17.10.2023-CALENDARIO-ACADEMICO-2024.pdf,
+2024,mitad_de_anio,2024-06-17,2024-07-07,Res. 812 del 17-10-2023,https://manizales.gov.co/wp-content/uploads/2023/10/RES.-No.-812-17.10.2023-CALENDARIO-ACADEMICO-2024.pdf,
+2024,octubre,2024-10-07,2024-10-13,Res. 812 del 17-10-2023,https://manizales.gov.co/wp-content/uploads/2023/10/RES.-No.-812-17.10.2023-CALENDARIO-ACADEMICO-2024.pdf,
+2024,fin_de_anio,2024-12-02,2024-12-22,Res. 812 del 17-10-2023,https://manizales.gov.co/wp-content/uploads/2023/10/RES.-No.-812-17.10.2023-CALENDARIO-ACADEMICO-2024.pdf,
+2025,fin_de_anio,2024-12-23,2025-01-19,Res. 0923 del 29-10-2024,https://www.mineducacion.gov.co/1780/articles-423172_recurso_74.pdf,
+2025,semana_santa,2025-04-14,2025-04-20,Res. 0923 del 29-10-2024,https://www.mineducacion.gov.co/1780/articles-423172_recurso_74.pdf,
+2025,mitad_de_anio,2025-06-16,2025-07-06,Res. 0923 del 29-10-2024,https://www.mineducacion.gov.co/1780/articles-423172_recurso_74.pdf,
+2025,octubre,2025-10-06,2025-10-12,Res. 0923 del 29-10-2024,https://www.mineducacion.gov.co/1780/articles-423172_recurso_74.pdf,
+2025,fin_de_anio,2025-12-01,2025-12-21,Res. 0923 del 29-10-2024,https://www.mineducacion.gov.co/1780/articles-423172_recurso_74.pdf,
+2026,fin_de_anio,2025-12-22,2026-01-18,Res. 0992 del 29-10-2025,https://www.mineducacion.gov.co/1780/articles-426215_recurso_29.pdf,la tabla del art. 6 dice hasta el 25-ene pero las clases empiezan el 19-ene; se usa el inicio de clases
+2026,semana_santa,2026-03-30,2026-04-05,Res. 0992 del 29-10-2025,https://www.mineducacion.gov.co/1780/articles-426215_recurso_29.pdf,
+2026,mitad_de_anio,2026-06-15,2026-07-05,Res. 0992 del 29-10-2025,https://www.mineducacion.gov.co/1780/articles-426215_recurso_29.pdf,receso oficial desde el 22-jun; sin clase efectiva desde el 15-jun (desarrollo institucional)
+2026,octubre,2026-10-05,2026-10-11,Res. 0992 del 29-10-2025,https://www.mineducacion.gov.co/1780/articles-426215_recurso_29.pdf,
+2026,fin_de_anio,2026-11-30,2026-12-20,Res. 0992 del 29-10-2025,https://www.mineducacion.gov.co/1780/articles-426215_recurso_29.pdf,

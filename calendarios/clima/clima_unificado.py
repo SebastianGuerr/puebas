@@ -49,6 +49,16 @@ COMPLETITUD_MINIMA = 0.8
 # debajo se usa la correccion de todos los meses juntos.
 SOLAPE_MINIMO = 30
 
+# Falla del pluviometro (2026-09-29): desde oct-2025 La Nubia reporta 0 mm dias
+# enteros mientras NASA marca 100-240 mm/mes. No falta el dato: es falso. En los 34
+# meses sanos la razon pluviometro/NASA va de 0,27 a 1,42 (mediana 0,54); en los
+# fallidos, < 0,04. Se marca falla cuando, en 31 dias centrados, el pluviometro
+# suma menos del 10% de NASA y NASA supera 60 mm. Ventana de un mes y no un dia:
+# un dia seco aislado es real. Ver calendarios/docs/CLIMA.md.
+FALLA_VENTANA_DIAS = 31
+FALLA_RAZON_MAXIMA = 0.10
+FALLA_NASA_MINIMA_MM = 60.0
+
 LLUVIA_DIA_MM = 1.0       # 'dia de lluvia' de la OMM
 # 'lluvia_fuerte' es el 5% mas lluvioso de cada mes. Con 20 mm fijos era cierta
 # el 0,7% de los dias: 17 dias en seis anos, una bandera que no discrimina.
@@ -81,6 +91,16 @@ def preparar_ideam(ideam):
     ideam.loc[incompleto, "precipitacion_mm"] = np.nan
     ideam.loc[fuera, "estacion_clima"] = np.nan
     return ideam
+
+
+def pluviometro_fallido(clima):
+    """Dias en que el pluviometro reporta (casi) cero mientras NASA registra lluvia."""
+    ambos = clima["precipitacion_mm"].notna() & clima["np_PRECTOTCORR"].notna()
+    ventana = dict(window=FALLA_VENTANA_DIAS, center=True, min_periods=15)
+    suma_pluv = clima["precipitacion_mm"].where(ambos).rolling(**ventana).sum()
+    suma_nasa = clima["np_PRECTOTCORR"].where(ambos).rolling(**ventana).sum()
+    fallo = ambos & (suma_nasa >= FALLA_NASA_MINIMA_MM) & (suma_pluv < FALLA_RAZON_MAXIMA * suma_nasa)
+    return fallo.fillna(False)
 
 
 # ==========================================================
@@ -144,6 +164,11 @@ def unir():
     for fuente in (ideam, openmeteo, nasa, iem):
         clima = clima.merge(fuente, on="fecha", how="left")
     clima = clima.set_index("fecha")
+
+    # La falla se quita ANTES de todo: si no, tambien contamina los factores con que
+    # se escala NASA mes a mes (corregir() los calcula sobre el solape).
+    clima["pluviometro_fallido"] = pluviometro_fallido(clima)
+    clima.loc[clima["pluviometro_fallido"], "precipitacion_mm"] = np.nan
 
     # Referencias en tierra. La estacion IDEAM de La Nubia y el METAR del mismo
     # aeropuerto coinciden (r = 0,81, sesgo -0,29 C); donde falta una, la otra.

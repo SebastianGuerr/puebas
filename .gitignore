@@ -138,6 +138,32 @@ _[!_]*
 !calendarios/eventos_manizales_2020_2026.csv
 !calendarios/vigilancia_salud_manizales_caldas.csv
 
+# Las series SIVIGILA (evento 995) agregadas a semana epidemiologica, y los
+# totales semanales por institucion de Manizales. Las escribe
+# calendarios/vigilancia/sivigila.py, pero rehacerlas exige bajar ~1,5 GB de
+# Excel del portal del INS, y el INS puede cambiar o retirar los archivos: se
+# versionan como el clima unificado. No llevan ni una columna de persona: solo
+# conteos por municipio, semana e institucion (una IPS no es dato personal).
+# Ver calendarios/docs/VIGILANCIA.md.
+!calendarios/vigilancia_sivigila.csv.gz
+!calendarios/vigilancia_sivigila_instituciones.csv.gz
+
+# Los eventos SIVIGILA de ficha individual (intento de suicidio, violencias,
+# agresiones por animales, intoxicaciones...) agregados a semana, y el censo de
+# casos de Manizales por evento y ano con el que se eligieron. Las escribe
+# calendarios/vigilancia/eventos.py a partir de ~4 GB de Excel. Mismo motivo
+# que las de arriba, y tampoco llevan persona: conteos por municipio y semana.
+!calendarios/vigilancia_sivigila_eventos.csv.gz
+!calendarios/vigilancia_sivigila_eventos_censo.csv
+
+# Las descargas de los tableros Power BI del INS, una carpeta por fecha
+# (calendarios/vigilancia/powerbi.py). Son agregados: evento x semana de
+# Manizales, sumas de conteos y la medida Casos; ninguna columna de persona.
+# Se versionan porque NO se pueden rehacer: el INS reescribe el tablero cada
+# semana y las 2-3 ultimas semanas cambian con la notificacion tardia, asi que
+# lo que se sabia en cada fecha solo existe si se guardo ese dia.
+!/calendarios/vigilancia/powerbi/
+
 # Las anclas son la IDENTIDAD de los temas: definen las unidades con las que se
 # cuenta la serie diaria. Las escribe un script, pero si se pierden, las series
 # calculadas antes dejan de ser comparables con las nuevas y no hay forma de
@@ -158,6 +184,9 @@ _[!_]*
 !/salidas/triage_nivel.parquet
 !/salidas/triage_edad.parquet
 !/salidas/triage_estancia.parquet
+# Por entidad administradora (EPS, SOAT, ARL), anadida el 2026-09-28 con el mismo
+# criterio: conteo dia x hora x entidad; la entidad es una organizacion, no una persona.
+!/salidas/triage_entidad.parquet
 
 # La tabla de notas sin nada que lleve a la persona (NLP/nube/tabla.py; el
 # porque en NLP/docs/TABLA.md): id aleatorio, dia, nivel, banda de edad y la
@@ -187,3 +216,10 @@ _[!_]*
 *.duckdb
 *.duckdb.wal
 /NLP/salidas/nube/
+# Los microdatos SIVIGILA tal como los publica el INS: ademas de los conteos
+# traen nombre, cargo, telefono, correo y numero de documento de la persona
+# que notifica. Solo se leen para agregarlos (calendarios/vigilancia/sivigila.py
+# descarta esas columnas en el mismo paso de lectura) y nunca salen del equipo.
+# Los resumenes que se guardan al lado (*.resumen.parquet, *.pais.parquet,
+# *.notas.json) no llevan persona, pero son cache: se rehacen del crudo.
+/calendarios/vigilancia/crudo/
