@@ -45,6 +45,14 @@ es el **triage total**; lo respiratorio era solo un ejemplo. El entregable centr
   Las acciones del propietario están en la decisión #10.
 - **Regla nueva:** en el total, un día sin filas es una caída del registro, no cero pacientes.
 
+**HECHO (30-09): `notebooks/11_cruces_del_entorno.ipynb`**, con más cruces de la ciudad.
+- **Principio de parsimonia** (propietario): no explorar de más, porque sobreajusta.
+- Entra al repertorio: frío y humedad del último mes (+8-10 % de IRA por desviación típica), enero
+  como periodo respiratorio, y calendario festivo y lluvia para la calle.
+- El resto queda de contexto.
+- **Siguiente:** resumen de todo y conversación sobre **cómo hacer las predicciones**.
+- Las preguntas al superior (código 9, habilitación, obstetricia) quedan descartadas por ahora.
+
 **HECHO (30-09): perfil del hospital, `notebooks/10_perfil_del_hospital.ipynb`**, con datos
 enmascarados.
 - Se genera con `python -m extraccion --perfil`: solo agregados y casillas < 5 ocultas. Se

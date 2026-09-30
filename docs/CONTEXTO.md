@@ -14,6 +14,82 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-09-30 — Cuaderno 11: más cruces del entorno, y lo que entra al repertorio
+
+Archivo: `notebooks/11_cruces_del_entorno.ipynb`, 21 celdas, sin errores, sin datos del hospital.
+Las preguntas son las preregistradas en `variables.csv` el mismo día.
+
+**Resultados:**
+1. **Frío y humedad → IRA de la ciudad**, media de las 5 semanas previas, 2022-2025, HAC:
+   **+7,6 a +9,9 % (frío) y +6,8 a +9,7 % (humedad) por desviación típica**, significativo. **La
+   interacción con colegio abierto no aparece** (p = 0,57 y 0,45).
+   - **Corrección dentro del cuaderno:** la primera versión daba +33 % porque medía por grado y no
+     por desviación típica (sd = 0,33 °C).
+2. **Tras la Feria, la IRA de la ciudad sube** +19 / +37 / +20 % a 1-3 semanas; sin 2022, +26 / +57
+   / +34 %. **No se atribuye a la Feria**: cae siempre en las mismas semanas, y el año de
+   referencia incluye 2015-2019, cuando los eventos no están marcados. Lo que sí queda es que
+   **en los años recientes enero trae una ola respiratoria** tras la temporada festiva, que el
+   cuaderno 10 ve también en el hospital (respiratorio en enero, 1,26).
+3. **Puentes → IRA:** +3 a +9 %, sin forma. **Semana Santa → IRA registrada −14 a −35 %**: menos
+   consulta.
+4. **El receso escolar, medido desde su inicio, no baja la IRA**, cuando el cuaderno 09 (por semanas
+   de receso) sí lo veía. **Resultado no robusto al método.**
+5. **Lluvia → lesiones personales −5,7 %** [−10,1; −1,1] con el calendario descontado. La violencia
+   intrafamiliar y el tránsito no responden al clima.
+6. **Salud mental:** el intento de suicidio baja en enero-febrero (0,77-0,83) y sube en
+   agosto-octubre (1,11-1,14). Festivos y quincena no mueven de forma clara ni el intento de
+   suicidio ni las intoxicaciones.
+7. **ENSO:** a IRA −0,10 a −0,13 y a EDA +0,15 a +0,18 a 2-4 meses. Nada pasa el umbral (~0,32):
+   es contexto de fondo.
+8. **Policía frente a SIVIGILA:** la violencia de género y la violencia intrafamiliar van juntas año
+   a año (0,79) y algo por semana (0,23). **Trampa:** el intento de suicidio y la violencia
+   intrafamiliar dan 0,86 anual por tendencia compartida de notificación, pero 0,03 semanal.
+
+**Decisión, por parsimonia: qué entra al repertorio del modelo.**
+- **Frío y humedad del último mes.**
+- **Enero como periodo respiratorio.**
+- **Calendario festivo y lluvia para la calle.**
+
+**Queda de contexto, sin entrar:** ENSO, salud mental, puentes, las series de la Policía como
+predictor.
+
+---
+
+## 2026-09-30 — Parsimonia: no explorar de más, y más cruces del entorno antes de volver al hospital
+
+**Decisiones del propietario:**
+1. **Las preguntas para el superior se descartan por ahora** (código 9, «no habilitación», alza
+   obstétrica). No hay forma de consultarlas hoy. No bloquean nada.
+2. **No profundizar innecesariamente.** Una exploración demasiado fina da al modelo demasiado
+   contexto. El riesgo es el **sobreajuste**: predicciones con probabilidades demasiado altas que
+   no se sostienen fuera de muestra.
+   - **Principio que queda:** pocas variables, cada una con un mecanismo plausible y respaldo en
+     la literatura o en la medición, preregistradas.
+   - No se añade una variable porque «podría explicar algo».
+3. **El perfil del hospital (cuaderno 10) se va completando** a medida que aparezcan limitaciones,
+   sin abrir otra exploración a fondo.
+4. **Siguiente: más cruces entre contextos externos**, para entender mejor la ciudad y tener un
+   repertorio más amplio antes de volver a enfrentarlo contra el hospital. Después, un resumen de
+   todo lo encontrado y la conversación sobre cómo hacer las predicciones.
+
+**Por qué importa el punto 2 para la tesis.** Con ~236 semanas útiles (2022-2026) y un residuo
+semanal con autocorrelación de +0,62, el número efectivo de semanas independientes es del orden
+de 75. **Un modelo con decenas de variables externas se ajusta al ruido.** La literatura de
+pronóstico de urgencias muestra ganancias pequeñas por variables externas (revisión en
+`calendarios/docs/LITERATURA_ENTORNO.md`). Un modelo que prometa mucho más es sospechoso por
+construcción.
+
+**Alcance de los cruces nuevos (cuaderno 11)**, a propósito acotado a preguntas con mecanismo y
+literatura detrás:
+- ¿Las fuentes de la ciudad cuentan lo mismo? Policía frente a SIVIGILA.
+- ¿Las aglomeraciones siembran contagio? Feria, puentes y Semana Santa → IRA a 1-3 semanas.
+- ¿El frío pesa más con los colegios abiertos? Es la «suma de factores» dentro de la ciudad.
+- ¿El clima mueve la violencia?
+- Salud mental e intoxicaciones frente al calendario.
+- ¿El ENSO precede a la IRA o a la EDA?
+
+---
+
 ## 2026-09-30 — Cuaderno 10: el perfil del hospital, con datos enmascarados
 
 **Decisiones del propietario:**
