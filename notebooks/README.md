@@ -26,7 +26,7 @@ del SES Hospital Universitario de Caldas, y por qué?* El desenlace es siempre e
 | **08** Los picos | ¿Cuándo son, de qué tipo y qué los rodea? | **Tres relojes:** la noche festiva (baja de día, **sube de madrugada**, y el día siguiente sube), el arranque de año (3 de enero +14 %) y la **temporada de mitad de año** (vacaciones +6,5 %). Fiestas de pueblos lejanos: +2 % | Corrige lo dicho sobre la mitad de año: el control descontaba las vacaciones |
 
 | **09** El entorno | ¿Cómo se relacionan los contextos externos entre sí, sin el hospital? | El calendario mueve la violencia (domingo ×1,78; noche festiva ×1,96; quincena → violencia intrafamiliar ×1,20). **Frío → IRA de la ciudad a 4 semanas**, humedad y lluvia a 5, y el receso escolar la corta. Estados: calma (febrero-mayo), frío y húmedo, seco y cálido (El Niño), decembrino y Feria. Todo contrastado con 86 estudios | Pendiente: enfrentar los estados y sus interacciones contra el hospital |
-| *10* | *Perfil del hospital* | *en espera: el propietario consulta con su superior* | |
+| **10** Perfil del hospital | ¿Qué hospital es el SES y qué pasa con quien llega? | **Recibe todo y se queda con un tercio** (la mitad hasta 2023); ingresa a los mayores y remite a los niños. Atiende síntomas, trauma, embarazo (creciente), urinario, respiratorio. **Series por diagnóstico desde 2020 sin NLP**: respiratorio (mayo-julio y enero), diarrea (marzo-abril), trauma (diciembre). Remite por falta de especialidad o de convenio con la EPS. Solo agregados, casillas < 5 ocultas | Preguntas: el código 9 de causa, la «no habilitación», el alza obstétrica |
 
 ---
 

@@ -187,6 +187,19 @@ _[!_]*
 # Por entidad administradora (EPS, SOAT, ARL), anadida el 2026-09-28 con el mismo
 # criterio: conteo dia x hora x entidad; la entidad es una organizacion, no una persona.
 !/salidas/triage_entidad.parquet
+# Perfil del hospital (cuaderno 10), anadido el 2026-09-30: solo conteos por mes, semana o
+# anio y por categoria de catalogo, con TODA casilla < 5 oculta (columna 'suprimido'). Lo
+# autorizo el propietario ("enmascarar lo mejor posible"). La tabla diaria por capitulo
+# CIE-10 (perfil_dx_diario) NO lleva supresion y por eso NO se versiona: queda local.
+!/salidas/perfil_ingreso_banda.parquet
+!/salidas/perfil_ingreso_nivel.parquet
+!/salidas/perfil_area_mensual.parquet
+!/salidas/perfil_causa_mensual.parquet
+!/salidas/perfil_dx_semanal.parquet
+!/salidas/perfil_dx_edad_anual.parquet
+!/salidas/perfil_dx_codigo_mensual.parquet
+!/salidas/perfil_remisiones_motivo.parquet
+!/salidas/perfil_remisiones_servicio.parquet
 
 # La tabla de notas sin nada que lleve a la persona (NLP/nube/tabla.py; el
 # porque en NLP/docs/TABLA.md): id aleatorio, dia, nivel, banda de edad y la

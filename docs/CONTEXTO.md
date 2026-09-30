@@ -14,6 +14,72 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-09-30 — Cuaderno 10: el perfil del hospital, con datos enmascarados
+
+**Decisiones del propietario:**
+- **No existe diccionario de códigos de la base.** La causa de ingreso se rotula solo donde hay
+  evidencia: 3 = enfermedad general (probable), 6 = tránsito, 10 = laboral. El resto queda como
+  «código N (sin catálogo)».
+- **Solo interesa qué pasa y en qué estado**, nunca quién. Enmascarar lo mejor posible.
+- Commit y push para no perder el progreso.
+
+**Cómo se enmascara** (`python -m extraccion --perfil`, en `extraccion/__main__.py`):
+- **Solo conteos** por mes, semana o año y por categoría de catálogo. Los ingresos, folios y
+  diagnósticos se unen dentro de la consulta.
+- **Toda casilla con menos de 5 casos se oculta**; la columna `suprimido` la marca.
+- **Cruces elegidos gruesos a propósito.** Con mes × motivo × servicio se ocultaba el 81 % de las
+  casillas, y con semana × capítulo × edad el 53 %. Con cruces de dos dimensiones se oculta el
+  7-36 %.
+- **Los diagnósticos se agrupan en los 22 capítulos de la CIE-10** (`extraccion/cie10.py`). El
+  código de 3 caracteres solo sale **por mes y con ≥ 5**, rotulado con la subcategoría más usada
+  del hospital, porque el catálogo de la base no trae el nombre de la categoría.
+- **Se versionan** las 9 tablas con supresión. **No se versiona** `perfil_dx_diario` (día ×
+  capítulo, sin supresión), que se queda en este equipo para el análisis de mecanismos.
+- El texto libre (`MotivoRemision`, notas) **no se consulta nunca**. `MOTIVO` solo se extrae si
+  sigue siendo un catálogo de ≤ 10 valores y ≤ 60 caracteres; se comprueba en cada corrida.
+
+**Resultados** (`notebooks/10_perfil_del_hospital.ipynb`, 19 celdas, sin errores):
+1. **Fracción de triages que pasan a ingreso:** 51,6 % (2020), 49,5 % (2023), **35,2 % (2024),
+   30,0 % (2025)**, 34,3 % (2026). **El hospital sigue recibiendo, pero se queda con menos.**
+2. **Por edad**, se ingresan más los mayores y mucho menos los niños (estabilizar y remitir). **El
+   nivel de triage es la decisión**: I, II y IIIU 92-95 %; IV 14 %; V 0 %.
+3. **La unidad obstétrica crece** (2.349 → 5.554 ingresos entre 2020 y 2024) mientras Urgencias cae
+   desde 2023.
+4. **El código 9 de causa de ingreso, sin catálogo, pasa del 18 % al 31 %** de los ingresos
+   (2020-2026). Accidentes de tránsito: 600-1.000 al año, estable. Laborales: de 238 a 6 (2025).
+5. **Diagnósticos por edad:**
+   - 0-4: respiratorio 26 %, trauma 22 %, perinatal 21 %;
+   - 5-14: trauma 33 %;
+   - 15-44: embarazo 24 %;
+   - 65+: circulatorio 13 % y respiratorio 10 %.
+6. **Perfil anual por capítulo** (2022-2025, 1 = media del año):
+   - **respiratorio: junio 1,36, enero 1,26, mayo 1,19**; febrero 0,75;
+   - **diarrea: marzo-abril 1,30-1,33**;
+   - **trauma: diciembre 1,21**, agosto 1,10;
+   - el embarazo casi no varía.
+
+   **Cada mecanismo del entorno tiene su huella en lo que se atiende, y en su época.**
+7. **Remisiones**, 2023-2026:
+   - falta de especialidad: 1.913;
+   - **no hay convenio con la EPS: 1.209**;
+   - camas: 444;
+   - **«no habilitación» aparece de golpe (0 → 21 → 110 en 2024-2026)**.
+
+**Hallazgo de método.** Hay **series de desenlace específico diarias desde 2020, con diagnóstico
+médico y sin NLP**: respiratorio (J), diarrea (A09), trauma (S) y embarazo (O). Es lo que
+`CLAUDE.md` esperaba del NLP, con 6 años en vez de 20 meses. **Límite:** solo cubren al grupo que
+se ingresa (30-50 % del triage).
+
+**Rareza sin interpretar:** «perinatal» aparece en el 17 % de los ingresos de 5-14 años.
+Probablemente viene de cómo se registra la edad cuando un ingreso agrupa a madre y recién nacido.
+
+**Preguntas para el propietario y su superior:**
+- qué es el código 9;
+- qué servicio dejó de estar habilitado en 2025-2026;
+- si el alza de obstetricia es de la ciudad o del cierre de otra maternidad.
+
+---
+
 ## 2026-09-29 — Exploración de la base para el perfil del hospital: primeros resultados
 
 Se siguió el protocolo:

@@ -45,7 +45,21 @@ es el **triage total**; lo respiratorio era solo un ejemplo. El entregable centr
   Las acciones del propietario están en la decisión #10.
 - **Regla nueva:** en el total, un día sin filas es una caída del registro, no cero pacientes.
 
-**EN CURSO (29-09, noche): el entorno conectado consigo mismo**, que es la decisión del propietario.
+**HECHO (30-09): perfil del hospital, `notebooks/10_perfil_del_hospital.ipynb`**, con datos
+enmascarados.
+- Se genera con `python -m extraccion --perfil`: solo agregados y casillas < 5 ocultas. Se
+  versionan 9 tablas; `perfil_dx_diario` se queda local.
+- **El SES recibe todo y se queda con un tercio** (la mitad hasta 2023).
+- Obstetricia crece.
+- Hay **series de diagnóstico desde 2020 sin NLP**: respiratorio, diarrea, trauma y embarazo, cada
+  una con su época del año.
+- Remite por falta de especialidad o de convenio con la EPS.
+- Preguntas abiertas en `CONTEXTO.md` (30-09): el código 9, la «no habilitación», la obstetricia.
+- **Siguiente natural:** enfrentar los estados del entorno (cuaderno 09) y sus interacciones
+  contra el triage total **y** contra las series por diagnóstico, preregistrando antes. La primera
+  es frío × virus × mayores sobre respiratorio.
+
+**HECHO (29-09, noche): el entorno conectado consigo mismo**, que es la decisión del propietario.
 - `notebooks/09_el_entorno.ipynb` está hecho, sin errores y sin datos del hospital. Trae el
   calendario → violencia, las cadenas clima → IRA con rezago y los estados del entorno (calma,
   frío y húmedo, seco y cálido, decembrino, Feria).
@@ -455,8 +469,8 @@ estancia. Cada figura con su lectura y sus límites.
 | 4 | **Reordenar la cola del NLP por hash del OID** (parar y relanzar la corrida) | Muestra uniforme de 20 meses en ~5 días en vez de 70 días en orden cronológico |
 | 6 | **Limpiar el historial de git**: repo nuevo con un commit limpio (recomendado) o `git filter-repo` + `push --force`. El 2026-09-24 el propietario eligió subir al repo actual y dejarlo para después | Hoy un clon copia 6.501 notas crudas con OID y otros bancos de notas. Irreversible: lo decide el propietario |
 | 7 | **¿Se congela el NLP y se sigue sin motivo?** (2026-09-28, conversación con el superior). La medición apoya congelarlo *para el pronóstico*; lo que se pierde es solo la vía respiratoria adulta. Si se sigue sin motivo, lo que falta no es modelo sino **mejores externas**: series semanales reales de vigilancia (no ventanas fijas), pronóstico de clima, y un calendario **institucional** (EPS, cierres de la red, directrices) | Decide en qué se gasta la GPU y el tiempo de las próximas semanas |
-| 14 | **Perfil del hospital, decisiones abiertas** (2026-09-29, tras explorar la base; resultados en `CONTEXTO.md`, «Exploración de la base para el perfil»): (a) el diccionario de códigos de `DIM_INGRESO.AINCAUING` (causa de ingreso: se saben el 3, el 6 y el 10) y `AINTIPING`; (b) la granularidad que se persiste de los diagnósticos: capítulo CIE-10 por día, capítulo × edad por semana, código mensual con supresión < 5; (c) **no versionar** esas series en GitHub sin autorización | Con eso se construye el cuaderno 10 y se obtienen las series de desenlace específico (J, A09, S, O) sin NLP |
-| 13 | **Perfil del hospital: EN ESPERA** (2026-09-29). El propietario habla con su superior para conseguir documentación de base (servicios, qué se reporta, qué se atiende) antes de construirlo. Tablas candidatas ya vistas en el esquema: `DIM_INGRESO` (causa de ingreso, servicio, cama), `CONTROL_DIAGNOSTICO` (CIE-10) y `SEGUIMIENTO_REMISIONES_DW` (con datos personales: solo agregados) | Define qué factores deberían importarle al SES y qué es el 40 % que sí se atiende |
+| 14 | ~~Perfil del hospital, decisiones abiertas~~ **RESUELTA el 30-09**: no existe diccionario, se enmascara con supresión < 5 y cruces gruesos, y se versionan las tablas suprimidas (no la diaria). Cuaderno 10 hecho. **Queda preguntar**: el código 9 de causa de ingreso, la «no habilitación» de 2025-2026 y el alza de obstetricia | — |
+| 13 | ~~Perfil del hospital: en espera~~ **RESUELTA el 30-09**: el superior dio el contexto y se hizo el cuaderno 10. Texto original: (2026-09-29). El propietario habla con su superior para conseguir documentación de base (servicios, qué se reporta, qué se atiende) antes de construirlo. Tablas candidatas ya vistas en el esquema: `DIM_INGRESO` (causa de ingreso, servicio, cama), `CONTROL_DIAGNOSTICO` (CIE-10) y `SEGUIMIENTO_REMISIONES_DW` (con datos personales: solo agregados) | Define qué factores deberían importarle al SES y qué es el 40 % que sí se atiende |
 | 12 | **Informes del CRUE (remisiones), a mano** (2026-09-29): 119 informes mensuales en `saluddecaldas.gov.co/documentos/338/referencia-y-contrarreferencia-caldas/`, con reCAPTCHA en cada descarga. Empezar por diciembre, enero, junio y julio. Derecho de petición propuesto en `calendarios/docs/CONTEXTO_PICOS.md` §4.3 | Es la única vía para medir la hipótesis «lo que el pueblo no atiende termina en Manizales» |
 | 11 | **Fechas de la relación SES-Nueva EPS** (2026-09-28): ¿qué pasó a mediados de noviembre de 2025, en marzo de 2026 y en julio de 2026 (suspensión, reanudación, cambio de contrato)? Y revisar `salidas/entidades_clasificadas.csv` | Es la variable de mayor efecto (±40-55 % del triage de Nueva EPS) y se conoce por adelantado |
 | 10 | **Acciones de fuentes que solo puede hacer el propietario** (2026-09-28; detalle en `calendarios/docs/FUENTES_EXTERNAS.md`): (a) calidad del aire del CDIAC: la red institucional lo bloquea como «Malicious Websites»; pedir a TI que lo reclasifique, bajarlo desde casa o pedírselo a Corpocaldas; (b) registro en ACLED para la API de protestas; (c) derecho de petición a la DTSC con alertas hospitalarias, novedades REPS de urgencias, hospitalización y UCI, y ocupación, 2020-2026; (d) serie histórica de afiliados por EPS de MinSalud; (e) histórico de medidas de la Supersalud; (f) aceptar o no las API no documentadas (ESPN, SGC); (g) autorizar que se empiece a guardar la foto mensual de la BDUA | Sin (c) no hay calendario del sistema de salud, que es la familia que coincide con las semanas más extremas. (g) pierde historia cada mes |
