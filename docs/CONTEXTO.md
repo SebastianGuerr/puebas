@@ -14,6 +14,164 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-09-30 — Resultado de los barridos (cuadernos 12 y 13): el entorno general no predice el triage total; el camino es el desenlace respiratorio
+
+**Qué se decidió.** No entra al modelo del total ninguna variable de clima ni de vigilancia como
+predictor firme.
+- **Entra a prueba** una sola: el cambio de radiación solar a 2 semanas, de la misma semana.
+  Se retira si no mejora el control de calendario con origen rodante.
+- **Candidato principal para el desenlace respiratorio:** la presión respiratoria de la ciudad
+  (PC1 del SIVIGILA, en su mayor parte la IRA de Manizales por edad), con el resto de Caldas como
+  adelanto de una semana.
+
+**Por qué.** Se aplicó el método preregistrado (entrada siguiente y filas `barrido_*` de
+`variables.csv`), sin cambiarlo después de mirar.
+
+**Evidencia del clima (cuaderno 12)**
+- **693 pruebas:** 11 variables base, 77 derivadas y 9 rezagos.
+- **Descubrir:**
+  - 84 pruebas con p < 0,05, cuando el azar daría unas 35; 34 sobreviven a BH q = 0,10.
+  - Casi todas son un solo patrón a rezago 0: la semana soleada, seca y cálida trae +1-2 %.
+- **Confirmar:**
+  - 18 repiten el signo, **1 se confirma** (el azar daría 0,85) y 0 pasan BH dentro de la
+    confirmación.
+  - El efecto en confirmar es, en mediana, el 4 % del de descubrir.
+  - Tiene más pluviómetro válido que descubrir (53,2 % frente a 35,8 %): la falta de confirmación
+    no es por peor medida.
+- **La que se confirma:** el cambio de radiación a 2 semanas, +1,4 % → +1,2 %, y +1,0 % con el mes
+  fijo (p = 0,001). Por ser de la misma semana, se lee como acceso al hospital, no como contagio.
+- **Estados del clima** (PCA ajustada en descubrir, 90 % de la varianza):
+  - soleado y seco (51,6 %);
+  - bochorno húmedo (24,6 %);
+  - racha seca en calma (7,6 %);
+  - ventoso (6,2 %).
+
+  Contra el total no se confirma ninguno, y contra respiratorio, infecciosas y trauma sobreviven
+  0 de 216 pruebas.
+- **Sequía de 2026:**
+  - real frente a lo normal del mes: abril −35 %, mayo −45 %, julio −52 %;
+  - **gira en agosto a +44 %**, y la semana del 2026-08-16 cumple la regla de fin de sequía;
+  - 4 episodios parecidos con triage: las 4-8 semanas siguientes quedaron en −0,6 % (sd 4,7) en el
+    total y −2,1 % en respiratorio.
+
+**Evidencia de la vigilancia (cuaderno 13)**
+- **Inventario:** 88 series semanales.
+  - El SES aporta entre el 0 % y el 0,22 % de la IRA de Manizales, así que la IRA de la ciudad no
+    contiene al hospital.
+  - **La SE53 de 2025 del 998 es un error de la fuente** (EDA de Manizales 2.495, unas 7 veces lo
+    normal). Se anuló solo en memoria.
+- **531 pruebas:** 13 sobreviven a BH, 10 con rezago ≥ 1 (5 series).
+  - 3 se confirman en 2025, todas de una sola serie: EDA hospitalizada de Caldas a 4-6 semanas,
+    +1,6 a +2,0 %.
+  - **Al quitar la estación del desenlace cae a −0,3 / −0,5 %**, y el triage la «predice» igual de
+    bien 2 semanas antes (p = 0,031). **Acompaña a la estación, no la anticipa**: se descarta.
+- **Presión epidemiológica** (4 componentes, 44 % de la varianza):
+  - PC1, respiratorio;
+  - PC2, gastro;
+  - PC3, salud mental e intoxicaciones;
+  - PC4, violencia y lesiones.
+
+  PC3 y PC4 son inestables entre periodos.
+- **Contra los desenlaces:**
+  - Contra el total, ningún componente pasa de ±1,7 %.
+  - **PC1 → respiratorio del hospital:**
+    - a rezago 0: +11,5 % en descubrir y +14,4 % en 2025;
+    - **a 1 semana: +8,7 % → +10,6 %, con p = 0,055 en 2025.** No pasa el criterio y no se ajusta
+      nada para que pase.
+  - **La dilución está medida:** la misma ola da +11-14 % en el respiratorio del hospital y menos
+    de +2 % en el total.
+  - PC3 → respiratorio a 5 semanas se «confirma», pero sin mecanismo ni sostén en descubrir: se
+    trata como azar.
+- **Adelantos:**
+  - el resto de Caldas se adelanta una semana a la IRA de Manizales (p = 0,009, sin corrección
+    múltiple; con Bonferroni sobre 8 pruebas, ~0,07);
+  - Colombia no se adelanta;
+  - ninguna geografía se adelanta al triage total.
+- **Operación:** los microdatos llegan ~8 meses tarde. La IRA de Manizales de Power BI se puede
+  calcular a tiempo, y su anomalía correlaciona 0,989 con la de los microdatos. Pero la anomalía
+  operativa (sin la media del año entero, que en operación no se conoce) correlaciona 0,806 con la
+  del cuaderno, así que **todo resultado se re-mide con la anomalía operativa**.
+
+**Qué cambia en el método desde hoy (añadido tras mirar, se declara como tal).** Antes de dar algo
+por confirmado se exigen dos pruebas más:
+- que el efecto sobreviva con el desenlace **sin estación**;
+- que el triage **no «prediga» la variable** a rezagos negativos.
+
+Motivo: la EDA hospitalizada cumplía el criterio preregistrado y era estacionalidad compartida. Se
+aplica a ambos cuadernos. La radiación del cuaderno 12 la resiste: con el mes fijo sigue en
++1,0 %.
+
+**Lectura.** La pregunta del proyecto sigue en pie, pero la evidencia desplaza dónde buscar:
+- El **nivel** lo mueve la red (Nueva EPS), y ya está medido.
+- Los **picos del total** los mueven el calendario y los mecanismos puntuales de 07 y 08.
+- El **entorno general** actúa sobre la **fracción respiratoria**, donde el efecto es del 10-14 %,
+  y se diluye en el total.
+
+Esto confirma con datos el argumento de dilución de `CLAUDE.md`, ahora con los diagnósticos del
+cuaderno 10, que existen desde 2020 sin NLP.
+
+**Calidad de datos encontrada:**
+- **Horas de lluvia de Open-Meteo:** inservibles (mediana de 24 h al día; r = 0,18 con el
+  pluviómetro).
+- **Consenso de lluvia:** llueve el 66 % de los días donde el pluviómetro dice 43 %. Por eso las
+  rachas secas dependen de la fuente del día.
+- **Radiación del consenso:** es solo NASA POWER.
+
+Anotado en `calendarios/docs/CLIMA.md`.
+
+**Pendiente de decisión del propietario:**
+1. Corregir la SE53-2025 del 998 en `sivigila.py`.
+2. Programar una instantánea semanal de Power BI, que es lo único que permite confirmar PC1 en 2026
+   y operarlo.
+
+---
+
+## 2026-09-30 — Cambio de enfoque: variables generales y exploración ancha con método, no casos puntuales
+
+**Lo que dijo el propietario tras el resumen.** Siente que el trabajo se fue a **casos demasiado
+específicos** (colegios, Feria, accidentes), mientras **el clima completo y el SIVIGILA completo
+casi no se han explotado**: «no hemos usado ni el 10 %». Pide mirar **las variables generales que
+afectan a toda Manizales**:
+- los estados climáticos completos: precipitación, calor, humedad, ambiente, y sus cambios;
+- las épocas del año, por ejemplo **la sequía que está terminando ahora**, con lo que eso puede
+  traer;
+- toda la vigilancia.
+
+También pide **pensar en predicción a más largo plazo**. Los casos puntuales llevan a predicciones
+condicionadas a situaciones concretas, y eso es sobreajuste. Excepción clara: la red de salud (EPS),
+que sí es general.
+
+**Lectura honesta de la sesión.** El propietario tiene razón en el diagnóstico:
+- se midieron muchos mecanismos puntuales (07, 08, 11) y se barrió poco;
+- de las ~40 columnas de clima y de las 3 fuentes crudas se usaron 4-5 variables de nivel;
+- de los 84 eventos del SIVIGILA se integraron 14 y se usaron 2-3.
+
+**Decisión de método**, que responde a la vez a la amplitud y al sobreajuste:
+1. **Barrido ancho por familia de fuente.** Cada variable se prueba en nivel, anomalía contra la
+   climatología del mes, cambio brusco (1, 2 y 4 semanas) y extremos, con rezagos de 0 a 8 semanas.
+   **Se controla la tasa de falsos descubrimientos con Benjamini-Hochberg** sobre todas las pruebas
+   de la familia.
+2. **Reducción a pocos índices generales.** Componentes principales del clima («estados del clima»)
+   y de la vigilancia («presión epidemiológica»). **Al modelo entran índices, no cientos de
+   variables.**
+3. **Descubrir y confirmar en periodos distintos.** Se descubre en 2022-03 a 2024-12 y se confirma
+   en 2025-01 a 2026-08. **Lo que no se confirma no entra.** Es la defensa directa contra el
+   sobreajuste que preocupa al propietario.
+4. **Desenlace:** triage total semanal (log), sin calendario y **sin los cortes de nivel de la red**
+   (efecto por año y escalones de Nueva EPS en 2024-04, 2025-11 y 2026-07), **conservando la
+   estacionalidad**, porque el clima y la vigilancia pueden explicarla. Como desenlaces
+   secundarios, las series de diagnóstico del cuaderno 10: respiratorio, infecciosas, trauma.
+5. **Horizonte largo:** además de 0-8 semanas, índices de temporada. Por ejemplo, el **fin de la
+   sequía**: lluvia acumulada de 4-8 semanas contra la climatología, y su giro.
+
+**Cuadernos:**
+- 12, «El clima completo»;
+- 13, «La vigilancia completa».
+
+Método preregistrado en `patrones/datos/variables.csv` (filas `barrido_*` del 2026-09-30).
+
+---
+
 ## 2026-09-30 — Cuaderno 11: más cruces del entorno, y lo que entra al repertorio
 
 Archivo: `notebooks/11_cruces_del_entorno.ipynb`, 21 celdas, sin errores, sin datos del hospital.

@@ -6,7 +6,52 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-09-28.**
+**Última actualización: 2026-09-30.**
+
+---
+
+## EN CURSO (2026-09-30): barrido ancho de clima y vigilancia — cuadernos 12 y 13
+
+**Cambio de enfoque del propietario:** el resumen anterior le pareció «relleno». Pide:
+- aprovechar **todo** el clima y **todo** el SIVIGILA;
+- quedarse con **variables generales de la ciudad**, no con casos puntuales como los colegios.
+
+El método está fijado antes de mirar:
+- decisión en `CONTEXTO.md`, entrada «Cambio de enfoque»;
+- filas `barrido_clima`, `barrido_vigilancia`, `indices_generales` y `fin_de_sequia` de `variables.csv`.
+
+Cómo se trabaja:
+- **Desenlace común:** `notebooks/desenlace.py`. Es el triage semanal sin calendario ni escalones de la red, con estacionalidad, más las series respiratoria, infecciosa y de trauma.
+- **Periodos:** descubrir de 2022-03 a 2024-12 y confirmar de 2025-01 a 2026-08 (el SIVIGILA solo hasta 2025-12).
+- **Control:** BH con q = 0,10. **Solo cuenta lo que se confirma.**
+
+**Estado: HECHOS, los dos, y ejecutados con 0 errores.** El resultado está en `CONTEXTO.md`, en
+la entrada «Resultado de los barridos».
+
+**Clima (cuaderno 12)**
+- 693 pruebas, 34 sobreviven a BH y **se confirma 1**: el cambio de radiación a 2 semanas, a la
+  misma semana.
+- La sequía de 2026 termina en agosto. Los precedentes no anuncian ola.
+
+**Vigilancia (cuaderno 13)**
+- 531 pruebas y **0 predictores válidos del total**. La EDA hospitalizada se confirmaba, pero era
+  estación compartida.
+- La presión respiratoria de la ciudad da **+10,6 % en el respiratorio del hospital a 1 semana**,
+  con p = 0,055. Es el mejor candidato.
+
+**Regla de método nueva, desde el 2026-09-30:** antes de dar algo por confirmado, el efecto tiene
+que sobrevivir sin estación y sin causalidad inversa (el triage no puede «predecir» la variable
+hacia atrás).
+
+**Lectura:** el entorno general actúa sobre la **fracción respiratoria** y se diluye en el total.
+
+**Esperando al propietario:**
+1. ¿Se corrige la SE53-2025 del 998 en `sivigila.py`? Hoy solo se anula en memoria.
+2. ¿Se programa una instantánea semanal de Power BI?
+3. **Cómo se predice:** si se pronostica el total directamente, o el total más la fracción
+   respiratoria.
+
+**Siguiente paso:** la discusión de predicción.
 
 ---
 

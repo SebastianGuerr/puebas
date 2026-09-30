@@ -192,6 +192,20 @@ Todo lo calculado sobre la versión anterior de `precip_consenso_mm`, `precip_7d
 - Las 8 y 24 rupturas seca→lluviosa y su efecto medido, en `CLAUDE.md`.
 - Las cifras de clima de `patrones/calendario.py` y `clustering/fechas.py`.
 
+## Límites conocidos, medidos el 2026-09-30 (cuaderno 12)
+
+- **Las horas de lluvia de Open-Meteo no sirven.** La mediana es de 24 horas al día, y la
+  correlación semanal con el pluviómetro es de 0,18. Quedan fuera de todo índice.
+- **El consenso sobreestima los días con lluvia.** En los días con pluviómetro válido, el
+  pluviómetro marca lluvia el 43,0 % de los días; el consenso, el 66,0 %. La mediana entre
+  fuentes promedia el pluviómetro con la llovizna de NASA.
+  - Las rachas secas que salen del consenso son más cortas de lo real y dependen de la fuente
+    que tenga cada día: en 2025, el 32,6 % de los días con pluviómetro son secos, contra el
+    14,9 % de los que no lo tienen.
+  - Para rachas secas, usar solo los días con pluviómetro válido o los acumulados.
+- **La radiación del consenso es exactamente la de NASA POWER.** Open-Meteo trae vacías la
+  radiación, el viento y la evapotranspiración.
+
 ## Cómo comprobar que sigue bien
 
 El script imprime una auditoría al final. Lo que hay que mirar:

@@ -30,6 +30,9 @@ del SES Hospital Universitario de Caldas, y por qué?* El desenlace es siempre e
 
 | **11** Más cruces del entorno | ¿Qué más hace la ciudad consigo misma? | **Frío y humedad del último mes → IRA de la ciudad +8-10 % por desviación típica**, con y sin colegios. En los años recientes, enero trae una ola respiratoria que no se puede atribuir a la Feria. La lluvia baja las riñas (−5,7 %). La salud mental baja en enero y sube en agosto-octubre. El ENSO es solo contexto de fondo | El efecto del receso escolar no es robusto al método |
 
+| **12** El clima completo | ¿Mueve el clima, entero y con método, el triage total? | Se hicieron **693 pruebas**. En 2022-2024 **34** sobreviven a BH (semana soleada y seca: +1-2 % a la vez). En 2025-2026 **se confirma 1**; el azar daría 0,85. Cuatro estados del clima: soleado y seco, bochorno húmedo, racha seca en calma y ventoso. **Ninguno se confirma**, tampoco contra respiratorio ni trauma. **La sequía de 2026 fue real** (julio −52 %) y **termina en agosto** (+44 %). En 4 episodios parecidos, las 4-8 semanas siguientes quedaron en −0,6 % | El clima mueve la IRA de la ciudad (11), pero no llega de forma medible al triage de este hospital |
+| **13** La vigilancia completa | ¿Anticipa el SIVIGILA el triage? | Se hicieron **531 pruebas**; 13 sobreviven a BH y 3 se confirman, que son una sola serie: EDA hospitalizada de Caldas. **Pierde el efecto al quitarle la estación**, así que acompaña a la estación y no la anticipa. **Presión respiratoria de la ciudad → respiratorio del hospital, +11-14 %** a la vez, y **+8,7 → +10,6 % a 1 semana** (p 0,055 en 2025, justo fuera del criterio). Contra el total, menos de 2 %: la dilución está medida. El resto de Caldas se adelanta 1 semana a la IRA de Manizales | Nada entra aún como predictor del total. El candidato mejor situado es la IRA de la ciudad para el desenlace respiratorio, a confirmar en 2026 con Power BI |
+
 ---
 
 ## Tres ideas que atraviesan todos los cuadernos
