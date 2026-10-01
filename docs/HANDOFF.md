@@ -6,7 +6,112 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-09-30.**
+**Última actualización: 2026-10-01.**
+
+---
+
+## EN CURSO (2026-10-01): presentación de avances del 2026-10-02
+
+**El propietario quiere contar la historia a su manera.** Su versión manda (`CONTEXTO.md`, entrada
+«La trayectoria contada por el propietario»): 4 etapas, de los registros a la predicción.
+
+**HECHO: `notebooks/00_la_trayectoria.ipynb`, versión 2.** En primera persona, una prueba por etapa,
+0 errores. Generador en el scratchpad de la sesión (`c00/hacer_nb.py`). Qué tiene y por qué:
+`CONTEXTO.md`, entrada «Cuaderno 00, versión 2».
+
+**Falta:**
+- que el propietario lo revise, y después **armar con él el monólogo** de la exposición;
+- **corregir los cuadernos 12, 13 y 14**, que él considera mal medidos. Sigue pendiente;
+- el mecanismo Feria → «llegan porque son tantos» **no está probado**: necesita los datos del CRUE
+  (pendiente #12 de este archivo).
+
+---
+
+## PAUSADO (2026-10-01, noche): el modelo de predicción, cuaderno 15 «predicciones tempranas»
+
+**Dónde quedó.** El propietario cortó la sesión. Las corridas se detuvieron sin pérdida, porque
+cada modelo escribe su archivo al terminar. El cuaderno
+`notebooks/15_predicciones_tempranas.ipynb` está ejecutado con lo que hay (0 errores) y **es
+preliminar**.
+
+- Resultados y errores corregidos: `CONTEXTO.md`, entrada del 2026-10-01 (noche).
+- Decisiones del propietario: entradas «Arranca el modelo de predicción» (30-09) y «Contexto
+  completo, todos los años y prueba sobre 2026» (01-10).
+
+**Qué hay.** El motor es `notebooks/pronostico.py`:
+- experimentos `--exp e0|e1|e2`, año a ciegas `--anio` y orígenes espaciados `--cada N`;
+- e0 = 2022-24 sin contexto, e1 = 2020-25 con la COVID marcada, e2 = e1 + 49 variables externas.
+
+Los resultados están en `salidas/pronostico/`, que **no se versiona**: está solo en este equipo.
+
+| | Hecho | Falta |
+|---|---|---|
+| E0 (2025-2026) | los 8 modelos | — |
+| E1 (2026) | regresión, Prophet, LightGBM | **SARIMAX, Chronos-2 + calendario** |
+| E2 (2026) | regresión, Prophet, Chronos-2 (`_cada7`), MedGemma servidor | **LightGBM, SARIMAX** |
+| Año a ciegas | todo, en e1 y e2 | — |
+
+**Para retomar**, en este orden. Son procesos largos: lanzarlos con `Start-Process` y seguir el
+log, porque las tareas de fondo de la herramienta se cortan antes de una hora.
+
+```
+python notebooks/pronostico.py --exp e2 --modelos lightgbm sarimax       (~2,5 h; SARIMAX E2 ~2 min por reentrenamiento)
+python notebooks/pronostico.py --exp e1 --modelos sarimax chronos2_cal   (~1,5 h; se puede correr en paralelo con el anterior)
+python notebooks/construir/15_predicciones_tempranas.py                   (rehace el .ipynb)
+python -m jupyter nbconvert --to notebook --execute --inplace notebooks/15_predicciones_tempranas.ipynb
+```
+
+Después hay que actualizar las lecturas en `notebooks/construir/15_lecturas.json`. El ganador puede
+cambiar.
+
+**Siguiente, ya decidido con el propietario:**
+1. **Depurar el contexto:** pocas variables por familia en lugar de 49. Las que más usa LightGBM:
+   - peso y cambio de Nueva EPS;
+   - lesiones personales;
+   - IRA de Manizales;
+   - intento de suicidio;
+   - violencia intrafamiliar.
+2. **Probar el jerárquico:** Nueva EPS y el resto, cada uno con su modelo, y sumarlos.
+3. Calibrar LightGBM: su cobertura del 80 % es del 71 %.
+4. Repetir la prueba de la hora con el ganador.
+5. Congelar el ganador y hacer la prueba prospectiva con datos nuevos (re-extraer el triage).
+
+**Lo que hay que saber:**
+- **Criterio de «mejor»**: decide si acierta que sube o baja frente al calendario (meta 60-70 %), junto
+  con la mejora de la probabilidad (BSS) y la cobertura del 80 % entre 75 y 85 %. El MAPE solo sirve
+  para comunicar. El propietario lo aceptó.
+- **MedGemma** (servidor `medgemma:latest` en `172.16.121.14:8080`, también en `NLP/modelo.py`):
+  - probada con 19 consultas; **no sirve para pronosticar**;
+  - el propietario pidió no cargar ese servidor.
+  - La MedGemma local no se corrió, a propósito.
+- **Chronos-2 con contexto completo en CPU** tarda ~60 s por origen. Se usa `--cada 7`.
+- Librerías nuevas en `requirements.txt`: `lightgbm`, `prophet`, `chronos-forecasting`.
+
+---
+
+## EN CURSO (2026-09-30, tarde): cuaderno 14, los estados del triage contra todo el entorno
+
+**Qué pidió el propietario.** Enfrentar todos los datos externos a los estados del triage (picos,
+bajos, normalidad y estabilidad), por día y sin hora, conversando y concluyendo entre los dos para
+saber con qué se empieza el modelo.
+
+**Estado: primera vuelta HECHA**, en `notebooks/14_los_estados_del_triage.ipynb` (24 celdas, sin
+errores). Método en la fila `estados_diarios` de `variables.csv`. Resultado en `CONTEXTO.md`, entrada
+«Resultado del cuaderno 14».
+- En corto: el calendario es el 72 % del día. Un pico es de toda la demanda, no de un grupo.
+  Ninguna fuente externa anticipa los estados de forma estable.
+- La firma de «día soleado» se rompe en 2025.
+- Hay una hipótesis de transición (mes cálido → semana fresca) que solo aparece en 2025-2026.
+
+**Esperando al propietario** (sección 7 del cuaderno):
+- **A.** ¿Se mide el clima dentro de cada asegurador (`triage_entidad.parquet`) para ver si el cambio
+  de 2025 es Nueva EPS?
+- **B.** ¿El primer modelo se arma con calendario, estación, red y memoria corta como base, y lo
+  externo entra solo si mejora fuera de muestra?
+- **C.** ¿Se repite el enfoque de estados sobre la serie respiratoria?
+
+La sección 7 se completa con lo que se concluya. El generador del cuaderno está en el scratchpad de
+la sesión (`c14/hacer_nb.py`). Si se pierde, se edita el `.ipynb` directamente.
 
 ---
 

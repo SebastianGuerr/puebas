@@ -18,7 +18,7 @@ pyarrow==25.0.1
 # archivo local, sin servidor.
 duckdb==1.5.5
 scipy==1.14.1
-python-dateutil==2.9.0
+python-dateutil==2.9.0.post0
 requests==2.32.3
 # lee los Excel de microdatos SIVIGILA (calendarios/vigilancia/sivigila.py).
 # Motor en Rust: ~50 s y poca memoria por archivo de 250.000 filas, donde
@@ -29,6 +29,17 @@ python-calamine==0.8.2
 # certificate in chain' contra la API de Power BI del INS
 # (calendarios/vigilancia/powerbi.py). Instalado el 2026-09-28.
 truststore==0.10.4
+
+# --- Prediccion (notebooks/pronostico.py, cuaderno 15) --------------------------
+# Instalados el 2026-09-30. Todo corre en CPU.
+#   lightgbm             arboles con refuerzo, un modelo por cuantil
+#   prophet              serie de tiempo por componentes (trae cmdstanpy)
+#   chronos-forecasting  Chronos-2 de Amazon: modelo fundacional de series de
+#                        tiempo, sin entrenar. Baja ~480 MB de Hugging Face la
+#                        primera vez (trae accelerate y einops)
+lightgbm==4.7.0
+prophet==1.4.0
+chronos-forecasting==2.3.2
 
 # --- Base clinica (SOLO en el equipo del hospital) ---------------------------
 # extraccion/, NLP/procesar.py y NLP/nube/ hablan con SQL Server (DWSES) por

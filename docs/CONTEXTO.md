@@ -14,6 +14,429 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-01 (noche) — Cuaderno 15, predicciones tempranas: resultados preliminares y corte de la sesión
+
+`notebooks/15_predicciones_tempranas.ipynb`, 38 celdas, 0 errores. Se generó con
+`notebooks/construir/15_predicciones_tempranas.py` y las lecturas de `15_lecturas.json`. **Es
+preliminar:** el propietario cortó la sesión con 4 corridas sin terminar, que se detuvieron sin
+pérdida. Cada modelo escribe su archivo al terminar.
+
+**Resultados en 2026, a 1-7 días** (acierto en si sube o baja / mejora de la probabilidad / cobertura
+del 80 %):
+
+| Modelo | E0 (2022-24) | E1 (2020-25) | E2 (E1 + contexto) |
+|---|---|---|---|
+| SARIMAX | **65,7 % / +17,2 % / 80 %** | sin terminar | sin terminar |
+| LightGBM | 60 % / +1,6 % / 71 % | **68 % / +15,9 % / 71 %** | sin terminar |
+| Regresión binomial negativa | 64 % / +9,1 % / 79 % | 65 % / +14,5 % / 84 % | 60 % / +6,3 % / 78 % |
+| Chronos-2 + calendario | 63 % / +9,6 % / 82 % | sin terminar | 70 % / +15,9 % / 79 % (37 orígenes) |
+| Prophet | 41 % / −38,7 % | 43 % / −35,1 % | 57 % / −17,1 % |
+
+**Lo que se concluye por ahora:**
+1. **Más años ayudan** a los modelos que aprenden de ejemplos: LightGBM de +1,6 a +15,9; la regresión
+   de +9,1 a +14,5.
+2. **Todo el contexto de golpe sobreajusta a la regresión** (de +14,5 a +6,3). Chronos-2 lo aprovecha
+   sin daño. Con LightGBM, el contexto pesa un 26 % de la ganancia. Las externas que más usa:
+   - peso y cambio de Nueva EPS;
+   - lesiones personales;
+   - IRA de Manizales;
+   - intento de suicidio.
+3. **Los buenos quedan en 60-70 % de acierto**, lo que esperaba el propietario.
+4. **Año a ciegas** (predicho el 31-12-2025): error medio del mes del 8,9 % para Chronos-2 (E1) y del
+   9,8 % para SARIMAX (E1).
+   - Los errores siguen los escalones de Nueva EPS (marzo y julio).
+   - Ahí el contexto no ayuda: SARIMAX E2, 14,0 %.
+5. **Hora:** hora pico con ±1 hora en el 62 % de los días; error por hora del 35 %, casi todo ruido de
+   conteos pequeños.
+6. **MedGemma** (servidor, `medgemma:latest`, 19 consultas): error del 19,7 %, el peor de todos.
+   Responde con escaleras y números consecutivos: **rellena números, no pronostica**. Se descarta para
+   esto.
+
+**Errores de método encontrados y corregidos en la sesión:**
+- **Año a ciegas:** se puso en cero todo el contexto pasado como «año típico». Eso incluía variables de
+  nivel (peso de Nueva EPS, ENSO), y equivalía a decir «Nueva EPS desaparece». Ahora esas se congelan
+  en el valor del origen (`NIVELES` en `pronostico.py`). SARIMAX E2 pasó de 25 % a 17 % de error
+  diario.
+- **Empalme del SIVIGILA:** el tablero de Power BI trae una SE53 parcial en años de 52 semanas. Se suma
+  a la SE1 siguiente.
+- **Chronos-2 con 61 covariables** en CPU tarda horas por origen diario. Se corrió con un origen cada 7
+  días, y todos los modelos se comparan en esos mismos orígenes.
+- **No se corrió MedGemma local:** la del servidor responde la pregunta, y en CPU habría frenado las
+  colas.
+
+**Depuración provisional:**
+- **Se quedan:** SARIMAX y Chronos-2 + contexto (candidatos principales); la regresión (complemento,
+  con pocas variables); LightGBM (a prueba, hay que calibrarlo).
+- **Salen:** Prophet (a corto plazo), Chronos-2 sin calendario y MedGemma.
+
+---
+
+## 2026-10-01 — Cuaderno 00, versión 2: en primera persona y con una prueba por etapa
+
+**Lo que pidió el propietario.** Los textos de la versión 1 sonaban a IA y estaban en tercera
+persona. Tiene que leerse **como si lo hubiera escrito él**. Y cada una de las 4 etapas tiene que
+mostrar **una prueba concreta**, desglosada de forma sencilla.
+
+**Estructura de la versión 2** (`notebooks/00_la_trayectoria.ipynb`, 0 errores; generador en el
+scratchpad, `c00/hacer_nb.py`):
+- **Línea de tiempo** de las 4 etapas.
+- **Etapa 1.** Tabla de los calendarios manuales iniciales:
+  - vigilancia a mano, 321 filas, y el **67 %** de las ventanas con las mismas fechas cada año;
+  - eventos, 99 filas; desastres, 17.
+  - Gráfica de barras semanal, «los lunes llega más gente»: **lo único que se podía decir**.
+- **Etapa 2.**
+  - Tabla de ejemplos de frases difíciles y de alucinaciones.
+  - Figura de calidad del texto y tabla de intentos.
+  - El mapa viejo del agrupamiento (`clustering/salidas/mapa.png`, 15-sep, `bge-m3`), con una
+    gráfica de barras: los temas 2 y 10 agrupaban **textos largos** (mediana de 28 y 25 palabras,
+    contra 4 a 9 en los demás). Agrupaban por longitud, no por motivo.
+  - Validación a ciegas: **2 de 16** notas difíciles bien, **5 de 40** estropeadas.
+- **Etapa 3.** Tabla de fuentes y tres hipótesis (abajo).
+- **Etapa 4.** Tabla de los 8 modelos con la técnica en lenguaje sencillo, una gráfica pequeña por
+  modelo con las predicciones a 1 día de junio a septiembre de 2026, tabla de métricas y barras.
+
+**Privacidad: los ejemplos de notas no salen de pacientes.** Regla 1 de `CLAUDE.md`: `HCTMOTCON`
+nunca se imprime en crudo. Las frases vienen de:
+- `NLP/tests/test_fidelidad.py`: frases escritas a mano con la forma de las notas reales. Una,
+  «ME INDICAN CONSULTAR POR URGENCIAS», está marcada ahí como caso real del banco. Es una frase de
+  trámite, sin identidad.
+- Frases ya documentadas en este archivo y en `NLP/docs/`: «no me baja el azúcar», «oídos tapados»,
+  «entumida» → «entubada».
+
+**Hipótesis que se mantienen para la exposición, con sus cifras:**
+1. **Feria → SOAT en el SES.** Los 5 primeros días: **+36,9 % ± 5,5**, contra +12,5 % ± 8,5 en otros
+   52 regresos de vacaciones. Cada una de las 5 Ferias (2020, 2023, 2024, 2025, 2026) queda entre
+   **+27 % y +45 %**, más o menos. Mismo método que el cuaderno 07.
+   - **Se quitó el panel de la ciudad (Policía).** Su promedio de Feria, +62,7 % ± 50,8, lo arrastra
+     **solo 2020** (+163 %). Los demás años parecen un regreso normal.
+   - Por eso **no está probado** que «llegan aquí porque son tantos». Haría falta el dato de
+     remisiones del CRUE.
+2. **IRA 0-4 de Manizales (SIVIGILA 995) contra triage 0-4 del SES**, semanal, 2020-2025, 312 semanas:
+   **r = 0,70** en conteos y **0,81** con cada año contra su propia media. La ciudad va a la par o un
+   poco adelante (r 0,69 a una semana de adelanto, 0,70 a cero).
+3. **Nueva EPS.** Las mismas cifras de la entrada de abajo.
+
+**Hipótesis que se dejó fuera de la exposición, y por qué.**
+- Una prueba sencilla de «semana más fría de lo normal → más niños en el SES» **no mostró efecto**:
+  anomalía de temperatura contra la misma semana del año, residuo contra año × mes, rezagos de 0 a
+  4 semanas, terciles. Diferencias entre **−3 % y +2 %**, sin patrón.
+- Clima → IRA de la ciudad, con agrupación simple, tampoco dio un efecto monótono limpio.
+- El cuaderno 11 encontró **+8 a +10 %** con una regresión. O sea, **el efecto depende del método**.
+- No se graficó para no mostrar una prueba débil. **Es un matiz medido, no la conclusión de que el
+  clima no importa.** El propietario no comparte ese tipo de conclusión (ver la entrada de abajo).
+
+**Corrección de la lectura de una métrica.** «Acierta si sube o baja» se compara contra el **55 %**,
+no contra el 50 %:
+- solo el **45 %** de los días sube por encima del calendario, así que decir siempre «no sube» ya
+  acierta el 55 %;
+- el control de calendario saca **54,8 %**;
+- SARIMAX saca **62,4 %**: **7 puntos** por encima de la regla trivial, sin datos externos.
+
+La entrada de abajo dice «dentro del 60-70 %» sin esta base. Sigue siendo cierto, pero **siempre se
+dice junto a la referencia del 55 %**.
+
+---
+
+## 2026-10-01 — La trayectoria contada por el propietario, y el cuaderno 00
+
+**Por qué esta entrada.** El propietario presenta avances el 2026-10-02. Al proponerle un guion,
+Claude contó el recorrido de una forma que no es la suya. Él corrigió la lectura, y esta es **su
+versión**, que manda sobre cualquier resumen anterior:
+
+1. **Etapa 1, registros y calendario básico.** Con el conteo y los festivos no había forma de
+   comprobar ninguna hipótesis: por ejemplo, que una temporada de frío trae problemas respiratorios
+   que llegan al triage. Tampoco había un conocimiento real de qué casos llegan más.
+2. **Etapa 2, el motivo de triage.** Por eso se buscó el motivo. Al desarrollarlo se vio que el
+   texto es **demasiado natural, inexacto o irrelevante**, que gran parte de la base es así, y que ni
+   las reglas ni los modelos pudieron interpretarlo, por esa misma razón. Hablado con los datos y con
+   el superior: **aunque se lograra limpiarlo, seguirían siendo datos poco confiables**, y las
+   predicciones se harían sobre invenciones o inexactitudes. **Por eso nunca se predijo con el
+   motivo**: la conclusión salió de los resultados de la limpieza, no de un pronóstico fallido.
+3. **Etapa 3, el contexto externo** (SIVIGILA, calendario de Colombia, epidemias y enfermedades a lo
+   largo de la historia, el perfil y la identidad del hospital). Con eso aparecen los patrones, y las
+   hipótesis **coinciden con los datos**: aumentos de triage o de enfermedad con clima, fiestas y
+   demás.
+4. **Etapa 4, la predicción.** Hoy se usa **un solo dato** a propósito, porque lo que se está
+   decidiendo es **cómo predecir**: qué técnicas y qué modelos son los más adecuados. Las demás
+   variables entran después. Aun así, ya se ven tendencias de qué técnica sirve.
+
+**Desacuerdo registrado.** El propietario **no comparte** la conclusión de los cuadernos 12, 13 y 14
+(«nada externo anticipa el total de forma estable»). Ya lo había dicho en otra sesión: le parece mal
+medida, con situaciones demasiado específicas que no determinan nada, cuando hay que tomar el
+panorama completo. Pidió corregirlos, y **no se corrigieron**. Siguen pendientes.
+
+**Qué se hizo: `notebooks/00_la_trayectoria.ipynb`**, la puerta de entrada del proyecto, con esta
+historia y sus pruebas (27 celdas, 10 figuras, 0 errores). Generador en el scratchpad de la sesión
+(`c00/hacer_nb.py`); si se pierde, se edita el `.ipynb`. Cifras que se midieron aquí y no estaban
+escritas:
+- **Calidad del texto**, sobre las 95.424 notas sin identidad y sin imprimir ninguna:
+  - mediana de **5 palabras** por nota; el 25,9 % tiene 3 o menos, y el 57,0 % tiene 6 o menos;
+  - el 87,9 % está toda en mayúsculas;
+  - el **40,2 %** trae al menos una sigla, errata o coloquialismo de los diccionarios de
+    `NLP/recursos/`. Es un piso, porque los diccionarios son incompletos.
+- **Cobertura:** 94.952 de 433.258 triages hasta el 2026-09-20 (21,9 %) tienen texto.
+- **Por asegurador** (triages por día de 2024, 2025 y 2026):
+  - Nueva EPS: 125,6 → 115,8 → 72,2;
+  - el resto: 101,3 → 83,8 → 100,4.
+  - **Matiz a «la caída del volumen es de Nueva EPS»:** vale para 2025-2026. **El pico de 2024 y su
+    bajada a 2025 son del resto de aseguradores**, y su causa no se conoce.
+- **Estacionalidad por edad, 2021-2025** (mes más alto / mes más bajo − 1): 0-4 años **+122 %**,
+  5-14 años +66 %, 15 años y más +15 %. El método es distinto del 72,5 % de antes (amplitud
+  estacional), así que no se comparan.
+- **Fase A, recalculada desde los archivos:** coincide con la entrada de abajo. Dato nuevo:
+  **SARIMAX acierta si el día sube o baja frente al calendario el 62,4 % de las veces** (control
+  54,8 %), dentro del 60-70 % que el propietario fijó como confiabilidad creíble.
+
+---
+
+## 2026-10-01 — Contexto completo, todos los años y prueba sobre 2026: decisiones del propietario
+
+**Lo que dijo el propietario.** Los resultados de la fase A le parecen razonables, pero predecir solo
+con la serie del triage es proyección con un modelo. Pide:
+1. **Meter todo el contexto** que se exploró y tiene historia: salud (SIVIGILA), clima, social
+   (seguridad), eventos, catástrofes, EPS, temporadas.
+2. **Ampliar el entrenamiento a todos los años con registro**, para que el modelo vea situaciones de
+   todo tipo: COVID, EPS, catástrofes.
+3. **Enfrentarlo contra 2026**, que es lo reciente y controlado.
+4. **Seguir con todos los modelos y técnicas.** Con las variables nuevas el ganador puede cambiar.
+   Depurar e ir contando qué técnica y qué modelo dan resultados más correctos.
+5. Juntar esto con su visión anterior:
+   - la prueba del **año a ciegas** («en julio habrá X triages al día»);
+   - la **hora de saturación**;
+   - la confiabilidad esperada de **60-70 %**. Más que eso le haría desconfiar de sobreajuste.
+6. **Cuaderno 15 = predicciones tempranas.** Lo que salga, bueno o malo, para saber qué falta.
+7. **Curiosidad:** probar `medgemma:latest` del servidor de su superior (`NLP/modelo.py`), sin
+   cargarlo mucho.
+
+**Qué cambia frente a lo decidido antes.** La fase B preregistrada (5 variables, por parsimonia, 30-09)
+**queda sustituida** por decisión del propietario: entran todas las familias. Para que «más
+variables» no se convierta en sobreajuste:
+- se mide por separado **qué aporta tener más años** y **qué aporta el contexto**;
+- la cobertura de los intervalos queda como alarma de exceso de confianza.
+
+**Diseño:**
+- **E0:** fase A recortada a los orígenes de 2026. Entrena desde 2022-03, sin externas.
+- **E1:** entrena desde 2020-01, con la COVID como variable (fuerte: 2020-03-15 a 2020-08-31; parcial:
+  hasta 2022-02-28), sin externas.
+- **E2:** E1 más todo el contexto externo (fila `contexto_completo` de `variables.csv`).
+- **Prueba 1, corto plazo:** origen rodante del 2025-12-31 al 2026-09-13, de 1 a 7 días. 257
+  orígenes.
+- **Prueba 2, año a ciegas:** desde el 2025-12-31 se predice todo 2026 hasta el 20-09. Solo con lo
+  que se conoce por adelantado (calendario, eventos programados, estación). El clima y el SIVIGILA
+  futuros no se conocen y van como «año típico».
+- **Prueba 3, la hora:** la predicción del día × el perfil horario por día de la semana del último
+  año.
+- **Fuentes de 2026:** SIVIGILA por la instantánea de Power BI del 2026-09-28.
+  - Riesgo: las semanas tempranas pudieron revisarse después (notificación tardía). Se declara.
+  - Sin SIVIGILA 2026: EDA, IRA de Caldas e IRAG hospitalizada. La IRAG solo viene de otra tabla,
+    sin solape para verificar el empalme. Esas tres quedan fuera.
+
+---
+
+## 2026-10-01 — Fase A, 7 de 8 modelos: resultados, y el criterio de «el mejor» estaba mal puesto
+
+**Estado.** La corrida del 30-09 se cortó con el cierre de sesión durante SARIMAX. No fue un error del
+código. Los otros 7 modelos quedaron completos (4.354 predicciones fuera de muestra cada uno).
+SARIMAX se relanzó el 01-10.
+
+**Corrección de Claude sobre su propio criterio.** Durante la corrida se ordenó a los modelos por la
+pérdida de cuantiles y el MAPE. **Eso premia acertar el calendario, que es proyección.** El
+propietario preguntó si se estaba midiendo bien, y no del todo:
+- el control solo ya tiene un MAPE del 9,9 %, y el mejor modelo, 9,5 %;
+- casi todo el error que queda es lo que no se puede anticipar, así que el MAPE apenas distingue
+  modelos y no contesta «¿va a subir?».
+
+**Métricas alineadas con el objetivo.** Se calcularon después de ver la fase A y se declaran como
+tales.
+
+| Modelo | R² del desvío | BSS sube | BSS pico | AUC pico | Cobertura 80 % | MAPE |
+|---|---|---|---|---|---|---|
+| Regresión binomial negativa | **9,3 %** (h1: 15,6) | **+4,0** | **+4,2** | 0,66 | 77,7 | **9,51** |
+| Chronos-2 + calendario | 8,6 % (h1: 14,9) | **+4,1** | +2,6 | **0,71** | 78,5 | 9,57 |
+| Control | 0 | −0,9 | −0,2 | — | 72,8 | 9,94 |
+| Chronos-2 | −11,7 | −1,3 | −7,6 | 0,68 | 79,0 | 10,47 |
+| LightGBM | −13,0 | −9,1 | −9,0 | 0,66 | 64,9 | 10,87 |
+| Prophet | −30,2 | −22,5 | −19,7 | 0,41 | 64,2 | 11,18 |
+| Ingenuo | −83,4 | −13,4 | −31,4 | 0,64 | 77,1 | 13,07 |
+
+Cómo se lee cada columna:
+- **R² del desvío:** de lo que el calendario NO explica (log real / lo que anunciaba el control),
+  cuánto anticipó el modelo. Un valor negativo es peor que decir «lo que diga el calendario».
+- **BSS** (*Brier skill score*): mejora de la probabilidad frente a decir siempre la tasa base
+  (sube 45 %, pico 15 %). Positivo = la probabilidad sirve.
+
+**Lo que se concluye:**
+- **Solo dos modelos anticipan algo de lo que el calendario no explica:** la regresión y Chronos-2 +
+  calendario.
+  - Anticipan el 9 % del desvío (el 15 % a 1 día) y mejoran la probabilidad un 4 % sobre la tasa
+    base.
+  - Es una señal real y modesta.
+- Los demás dan probabilidades **peores que no tener modelo**.
+- **Por año:** el R² del desvío de los dos mejores es del 2-5 % en 2025 y del 14-16 % en 2026.
+- **Semana contra semana** (¿la próxima semana tendrá más que esta?): todos están cerca del azar,
+  entre 52 y 61 % frente a una base de 52 %.
+- **Señal sobre el control:** la tasa de «sube» es del 45 %, no del 50 %. El nivel de 28 días va por
+  detrás de una serie que cae, y el control sobreestima.
+
+**SARIMAX, terminado el 01-10, gana en casi todo:**
+- **R² del desvío: 17,1 %** (21,8 % a 1 día);
+- **BSS sube: +9,0**; **BSS pico: +5,0**; AUC de pico 0,70;
+- cobertura del 80 %: 78,0 %;
+- **MAPE: 9,12 %**; pérdida de cuantiles: 2,24.
+
+Le saca el doble a la regresión y a Chronos-2 + calendario en lo que el calendario no explica. Lectura
+probable: es el único que **actualiza su estado cada día** con la memoria corta del residuo
+(autocorrelación +0,26 a 1 día, cuaderno 14).
+
+Nota de método: la corrida se relanzó arrancando cada ajuste desde los parámetros del anterior
+(`start_params`). La especificación del modelo no cambia, solo el punto de partida del optimizador.
+Antes no convergía en 100 iteraciones y tardaba más de 45 min.
+
+**Propuesta de jerarquía de criterios** (espera confirmación del propietario):
+1. **Decide:** BSS de sube y de pico, más la calibración.
+2. R² del desvío.
+3. Pérdida de cuantiles.
+4. MAPE, solo para comunicar.
+5. Requisito: cobertura del 80 % entre 75 y 85 %.
+
+---
+
+## 2026-09-30 — Arranca el modelo de predicción: decisiones del propietario y protocolo fijado antes de mirar
+
+**Aclaración del propietario (corrige una lectura de Claude).** No hay dos proyectos. El proyecto
+es **uno: predecir la tendencia del registro de triage**. La exploración (cuadernos 01-14) sirvió
+para saber **con qué entrenar** y **cómo comprobar la fiabilidad**, y ahora empieza la fase de
+modelado. Claude había planteado «predecir contra explicar» como una disyuntiva; no lo es. Las
+razones de cada predicción son parte de la salida, no otro proyecto.
+
+**Decisiones (propietario, 2026-09-30):**
+- **D1. «Aumentar»** se mide contra lo que anuncia el calendario. Pico = z > +1 del residuo del
+  control, como en el cuaderno 14. Además se da un umbral operativo.
+- **D2.** Ventana diaria, horizonte de 1 a 7 días, y la suma semanal.
+- **D3. La salida es una distribución** (cuantiles), y de ahí salen la probabilidad de pico y el
+  intervalo. **La clasificación no aplica.** La regresión entra como **complemento**, para
+  identificar patrones y como modelo explicable, no como método principal.
+- **D4. Primero series de tiempo, y en competencia con otras familias**, cada una usada como le
+  corresponde. El propietario pregunta si puede probar **MedGemma 4B**.
+- **D5-D8, como los recomendó Claude:**
+  - desde 2022-03, con régimen, y **solo lo disponible el día de la predicción**;
+  - origen rodante y después una prueba prospectiva congelada;
+  - mejora sobre el control y calibración;
+  - razones descompuestas por capa.
+- **Formato: un cuaderno con todas las fases de la predicción**, para revisar el paso a paso, lo que
+  se tuvo en cuenta y la interpretación de cada resultado.
+
+**Protocolo, fijado antes de ver ningún resultado:**
+- **Desenlace:** triage diario del 2022-03-01 al 2026-09-20. La caída de registro de marzo de 2024 va
+  como nula.
+- **Evaluación de origen rodante:**
+  - un origen por día del 2025-01-01 al 2026-09-13, prediciendo t+1 a t+7;
+  - el entrenamiento arranca en 2022-03-01 y crece;
+  - **todos los modelos se reentrenan cada 7 orígenes, con la misma regla.** Entre reentrenamientos
+    usan los datos nuevos solo si su estructura lo permite (estado o rezagos).
+- **Entradas por capas**, todas conocidas en el origen:
+  1. calendario;
+  2. estación;
+  3. nivel reciente (28 días) en lugar de fechas de escalones, porque un escalón futuro no se
+     conoce;
+  4. memoria (rezagos del conteo);
+  5. externas.
+- **Fase A:** capas 1-4 en todos los modelos. **Fase B:** la capa 5 se suma a los mejores y se mide
+  cuánto aporta. **Lo externo solo entra con información anterior al origen**: no hay pronóstico
+  histórico del clima, así que se usa el clima observado hasta el origen.
+- **Métricas:**
+  - MAPE de la mediana, y mejora sobre el control de calendario (1 − error / error del control);
+  - CRPS aproximado por pérdida de cuantiles;
+  - cobertura de los intervalos del 50, 80 y 90 %;
+  - probabilidad de pico con Brier, AUC y diagrama de fiabilidad.
+  - Todo por horizonte.
+- **Bases obligatorias:** el mismo día de la semana anterior, y el control de calendario (MAPE
+  10,13 % en la medición de 2026-09-17).
+- **Nada del periodo de evaluación se usa para elegir hiperparámetros.** Si hace falta afinar, se
+  afina dentro de 2022-2024.
+
+**Los modelos, especificados a priori** (`notebooks/pronostico.py`). Salida: 9 cuantiles, de 0,02 a
+0,98.
+
+| Modelo | Familia | Especificación |
+|---|---|---|
+| Ingenuo | base | Mismo día de la semana anterior × cuantiles históricos del salto semanal |
+| Control | base | Log-lineal: día de semana + calendario + nivel de 28 días. Residuo empírico |
+| GLM binomial negativa | regresión (complemento, con razones) | Las 4 capas. Un modelo por horizonte |
+| LightGBM | árboles con refuerzo | Las 4 capas. Un modelo por cuantil y horizonte. 300 árboles, 15 hojas, tasa 0,03. Sin afinar |
+| SARIMAX | serie de tiempo | (1,0,1)(0,1,1)₇ sobre log. Exógenas: calendario + Fourier anual de 3 armónicos |
+| Prophet | serie de tiempo | Tendencia con cambios (`changepoint_range` 0,95), semana, año y calendario como regresores |
+| Chronos-2 | modelo fundacional de series (IA preentrenada) | Sin entrenar. Contexto: toda la historia hasta el origen |
+| Chronos-2 + calendario | igual | Con el calendario como covariable conocida a futuro |
+
+**Sobre MedGemma 4B (pregunta del propietario).** Es un modelo de lenguaje médico: lee y escribe
+texto. No está hecho para series numéricas: para él una serie es una cadena de dígitos. La
+literatura (LLMTime, 2023, y sus réplicas) muestra que un modelo de lenguaje puede pronosticar sin
+entrenamiento, pero peor que los modelos hechos para eso, y que el conocimiento médico no aporta
+nada a ese pronóstico. **La «IA» diseñada para esto es un modelo fundacional de series de tiempo
+(Chronos-2)**, y por eso entra en la competencia. MedGemma se prueba igual, a pedido del
+propietario, como experimento pequeño y marcado como tal.
+
+---
+
+## 2026-09-30 — Resultado del cuaderno 14 (primera vuelta): a nivel día, ninguna fuente externa anticipa los estados de forma estable
+
+`notebooks/14_los_estados_del_triage.ipynb`, 24 celdas, sin errores. Método de la fila
+`estados_diarios`, sin cambiarlo después de mirar.
+
+**Evidencia:**
+- **El calendario explica el 72 % de la variación diaria** (el día de la semana solo, el 57 %). De
+  264 picos del conteo, solo 116 (44 %) siguen siendo pico sin el calendario. Lo que queda se
+  reparte parejo en la semana.
+- **Estados:** pico +17,3 % (15 % de los días), bajo −15,5 %. Racha media de 1,4 días.
+  P(pico mañana | pico hoy) = 29 %, contra una base del 15 %.
+- **Estación:** mayo, 30 % de días pico y 4,5 % de bajos. Febrero y octubre, 7 % de picos. Diciembre,
+  24 % de bajos.
+- **Un pico es de toda la demanda:** todas las bandas de edad suben entre +16 y +27 %, y la
+  composición del día no cambia (15-44 años: 53 % en pico, normal y bajo). Apunta a acceso y red, no
+  a epidemia.
+- **Agitación** (desviación típica de 14 días, tercil alto): diciembre 65 %, enero 47 %; trimestres
+  2025-T4 63 % y 2026-T1 50 %. Es festiva o institucional.
+- **326 pruebas, 55 con p < 0,05 (el azar daría 16), 36 sobreviven a BH y 3 se confirman.**
+  - Vigilancia, días especiales, eventos, fiestas y desastres: 0 sobreviven.
+  - Las 3 confirmadas (temperatura mínima, temperatura media y viento a 15-28 días) **no aguantan
+    año por año**: están cerca de cero en cada año, salvo el viento en 2026. **No se toman como
+    hallazgo.**
+- **El clima del mismo día cambia en 2025:** la temperatura máxima en el pico da +0,26 / +0,26 /
+  +0,32 en 2022-2024 y −0,18 / −0,09 en 2025-2026. La radiación aguanta mejor (+0,28 en 2026).
+  Lectura: era una firma de **acceso** que el cambio de la red de 2025 alteró. **Sin verificar.**
+- **Transición «mes cálido y seco → semana fresca y húmeda»**, a posteriori y declarada: +0,28
+  (p = 0,02) en 2025-2026 y −0,10 en 2022-2024. **Es hipótesis, no hallazgo.**
+
+**Qué se decide.** A nivel día, lo que sostiene un primer modelo es calendario, estación, nivel de la
+red y memoria corta. Lo externo queda pendiente de la conversación con el propietario (preguntas
+A-C de la sección 7 del cuaderno).
+
+---
+
+## 2026-09-30 — Cuaderno 14: los estados del triage a nivel día contra todas las fuentes externas
+
+**Qué pide el propietario.** Enfrentar **todos** los datos externos contra el triage para ver qué
+pasa en cada estado: picos, bajas y normalidad o estabilidad. A nivel **año-mes-día, sin hora**,
+para no empezar demasiado fino. Y hacerlo en conversación, sacando conclusiones entre los dos para
+saber qué hay para empezar el modelo de predicción.
+
+**Qué se decidió (método, fila `estados_diarios` de `variables.csv`, escrito antes de mirar):**
+- **El estado se define sobre lo que el calendario no explica**, no sobre el conteo crudo. Sobre el
+  crudo, los picos son lunes y las bajas domingos, y eso es proyección. El control es el
+  calendario completo más el nivel de la red. **La estación se conserva**, porque el clima y la
+  vigilancia pueden explicarla.
+- **Estados:** pico z > +1, bajo z < −1, normal |z| ≤ 0,5. La **estabilidad** es un tramo: la
+  desviación típica móvil de 14 días del residuo.
+- **Confrontación:** cada exposición contra los estados, con y sin mes fijo. Se descubre en 2022-2024
+  y se confirma en 2025-2026. Cuenta solo lo confirmado con el mes fijo.
+
+**Por qué el día y no la semana.** Los cuadernos 12 y 13 barrieron a nivel semana, y la semana
+promedia los picos, que son de uno o dos días (cuaderno 08). El día es la escala a la que el
+propietario quiere ver los estados.
+
+---
+
 ## 2026-09-30 — Resultado de los barridos (cuadernos 12 y 13): el entorno general no predice el triage total; el camino es el desenlace respiratorio
 
 **Qué se decidió.** No entra al modelo del total ninguna variable de clima ni de vigilancia como
