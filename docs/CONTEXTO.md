@@ -14,6 +14,70 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 — ¿Sesgo hacia SARIMAX? Se prueba con datos, y el líder pasa a ser la combinación SARIMAX + LightGBM
+
+**La pregunta del propietario.** Preguntó si Claude se había «casado» con SARIMAX, porque ve que los otros
+modelos dan muy buenos resultados. Se respondió con pruebas de significancia, que hasta hoy no se habían
+hecho entre modelos: remuestreo por bloques de 7 orígenes, 2.000 veces, en 2026 con E1.
+
+**Resultado: SARIMAX contra cada modelo.**
+- **Acierta sube/baja:** **ninguna diferencia es significativa.** Están empatados.
+  - LightGBM: +0,9 puntos, IC [−6,2, +7,7].
+  - Chronos: −1,2.
+  - Regresión: −1,8.
+- **En abril-junio, LightGBM supera a SARIMAX por +10,2 puntos** (IC [−0,5, +21,0]), casi significativo.
+- **Lo que SARIMAX sí gana con significancia** es pequeño:
+  - el error del número, por 0,5-1 punto de MAPE, frente a todos;
+  - el Brier de «sube», frente a la regresión, Chronos y XGBoost afinado. Frente a LightGBM, el Brier no
+    es significativo.
+
+**Corrección de Claude.** Llamar a SARIMAX «el mejor» exageró un **empate en la dirección**.
+- Su ventaja venía de la jerarquía de criterios que Claude propuso: probabilidad y calibración primero.
+  Eso favorece a los modelos con rangos honestos.
+- Esa jerarquía tiene sentido para el objetivo, pero no justifica el tono de «ganador claro».
+- El propietario tenía razón en dudar.
+
+**La combinación** (fila `combinacion_modelos`, fijada antes de calcularla): promedio de cuantiles, con pesos
+iguales, de SARIMAX y LightGBM E1.
+
+| | Acierta | BSS sube | BSS pico | R² del desvío | Cobertura 80 % | MAPE | Abril-junio |
+|---|---|---|---|---|---|---|---|
+| **Vara de 28 días** | **69,4 %** | **+21,1** | **+16,5** | 27,2 % | **80,3 %** | 8,9 % | 58,6 %; +5,9 |
+| **Vara rápida** | 64,1 % | +9,3 | — | — | — | — | — |
+
+Con los cuatro modelos promediados: 68,9 %; +19,3; cobertura del 82,4 %.
+
+**Significancia de la combinación:**
+- **frente a SARIMAX:** mejor en todo y **significativa en abril-junio** (+7,8 puntos de acierto, IC
+  [+2,5, +13,6]; Brier −13,5, IC [−27,2, −0,5]);
+- **frente a LightGBM:** Brier significativamente mejor (−13,0, IC [−26,4, −1,1]) y acierto empatado.
+
+**Lectura.** Los dos modelos se equivocan en días distintos:
+- SARIMAX sigue el nivel y da rangos honestos;
+- LightGBM capta combinaciones de factores en los meses estables.
+
+Promediar sus distribuciones se queda con lo mejor de ambos. Es el resultado clásico de combinar
+pronósticos.
+
+**Decisión: el modelo líder pasa a ser la combinación SARIMAX + LightGBM (E1).**
+
+**Árboles afinados, terminados el 05-10** (acierta; BSS sube; abril-junio; cobertura del 80 %):
+
+| Árbol | Configuración elegida en 2024 | Acierta | BSS sube | Abril-junio | Cobertura 80 % |
+|---|---|---|---|---|---|
+| LightGBM | 15 hojas, 20 por hoja, 600 árboles | 66,7 % | +13,1 | 61,1 % | 76,7 % |
+| XGBoost | profundidad 2, 500 árboles, tasa 0,1 | 65,0 % | +11,6 | 56,8 % | 77,4 % |
+| GradientBoosting | profundidad 3, 500 árboles, tasa 0,1 | 64,5 % | +10,3 | 56,7 % | 76,5 % |
+| **LightGBM original, sin afinar** | parámetros por defecto | **67,8 %** | **+15,9** | 63,3 % | 71,2 % |
+
+- **Afinar con 2024 no mejoró a ningún árbol en 2026.** Lo que mejor rindió en 2024 no fue lo mejor en 2026,
+  que es otro régimen (Nueva EPS).
+- **La calibración con los errores de 2025 mejoró la cobertura** (de 71 % a ~77 %), pero se queda corta:
+  2026 trajo choques más fuertes que 2025.
+- Se conserva LightGBM sin afinar dentro de la combinación.
+
+---
+
 ## 2026-10-02 (noche) — El propietario aprueba: vara justa (control rápido) y árboles afinados
 
 **Qué se decidió.** El propietario aprobó las dos propuestas. Quedan preregistradas antes de correr nada

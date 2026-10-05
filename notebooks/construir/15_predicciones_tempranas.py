@@ -78,7 +78,9 @@ COLOR = {"ingenuo": MUDO, "control": TINTA2, "glm_binneg": AZUL, "lightgbm": VER
 NOMBRE = {"ingenuo": "Ingenuo (semana pasada)", "control": "Control (calendario + nivel)", "glm_binneg": "Regresión binomial negativa",
           "lightgbm": "LightGBM (árboles)", "sarimax": "SARIMAX (serie de tiempo)", "prophet": "Prophet (serie de tiempo)",
           "chronos2": "Chronos-2 solo", "chronos2_cal": "Chronos-2 (IA de series)", "anio_pasado": "Igual que el año pasado",
-          "regresion_anual": "Regresión anual (calendario + nivel)"}
+          "regresion_anual": "Regresión anual (calendario + nivel)", "lightgbm_afinado": "LightGBM afinado",
+          "xgboost_afinado": "XGBoost afinado", "gbr_afinado": "GradientBoosting afinado",
+          "comb_sarimax_lightgbm": "SARIMAX + LightGBM (combinación)", "comb_4_modelos": "Combinación de 4 modelos"}
 CRIT = ["BSS sube %", "BSS pico %", "R2 desvio %", "acierta sube/baja %", "AUC pico", "cob80 %", "error <=10 %", "MAPE %", "n"]
 SEM = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 color = lambda m: COLOR.get(m.split("_cada")[0], COLOR["llm"] if m.startswith("llm") else MUDO)
@@ -86,6 +88,7 @@ color = lambda m: COLOR.get(m.split("_cada")[0], COLOR["llm"] if m.startswith("l
 def leer(exp, desde="2025-12-31", modelos=None):
     P, U = pr.leer(exp=exp)
     P = P[(P.origen >= desde) & ~P.modelo.str.startswith("llm") & ~P.modelo.str.contains("_cada")]
+    if not modelos: P = P[~P.modelo.str.startswith("comb_") & ~P.modelo.str.endswith("_afinado")]
     if modelos: P = P[P.modelo.isin(modelos)]
     return P, U
 
@@ -282,8 +285,96 @@ display(a.groupby(a.fecha.dt.month)[["real", "q50"]].mean().round(0).T)
 """)
 lec("p1_jerarquico")
 
+
 md(r"""
-## 5.4 ¿Se puede creer la probabilidad? Calibración del mejor de cada familia
+## 5.4 La vara justa: seguir el nivel no es anticipar el día
+
+El control de calendario usa el nivel de los últimos 28 días. Cuando Nueva EPS salta (marzo, julio,
+septiembre), queda corrido un 10-13 % durante semanas, y cualquier modelo que se adapte rápido «acierta».
+Por eso hay una **segunda vara**, el **control rápido**: calendario + nivel de 28 días + desvío de la
+última semana (fila `control_rapido` de `variables.csv`).
+
+**Cómo se lee:**
+- con la vara de 28 días se mide **seguir el nivel de la red**;
+- con la rápida, **anticipar el día**;
+- en los meses estables (abril-junio) la vara justa es la de 28 días, porque la rápida persigue la
+  última semana, que luego se revierte.
+""")
+code(r"""
+def tabla_varas(lista):
+    partes = []
+    for e, ms in lista:
+        P, _ = pr.leer(ms, exp=e); partes.append(P[P.origen >= "2025-12-31"].assign(modelo=lambda d, e=e: NOMBRE.get(d.modelo.iloc[0], d.modelo.iloc[0]) + " · " + e))
+    Pall = pd.concat(partes); res = {}
+    for vara, nom in [("calendario", "vara de 28 días"), ("rapido", "vara rápida")]:
+        _, U = pr.leer(["control"], exp="e0", vara=vara)
+        _, T = pr.metricas(Pall, U); _, Te = pr.metricas(Pall[Pall.fecha.dt.month.isin([4, 5, 6])], U)
+        res[nom] = pd.DataFrame({"acierta %": T["acierta sube/baja %"], "BSS sube %": T["BSS sube %"], "BSS pico %": T["BSS pico %"],
+                                 "acierta abr-jun %": Te["acierta sube/baja %"], "BSS abr-jun %": Te["BSS sube %"]})
+    R = pd.concat(res, axis=1)
+    R[("rango y error", "cob80 %")] = T["cob80 %"]; R[("rango y error", "MAPE %")] = T["MAPE %"]
+    return R.sort_values(("vara de 28 días", "BSS sube %"), ascending=False).round(1)
+lista = [("e1", [m]) for m in ["sarimax", "lightgbm", "glm_binneg", "chronos2_cal", "lightgbm_afinado", "xgboost_afinado", "gbr_afinado", "comb_sarimax_lightgbm", "comb_4_modelos"]]
+lista += [("e3", ["sarimax"]), ("e3", ["chronos2_cal"]), ("e3", ["lightgbm"])]
+TV = tabla_varas(lista); TV
+""")
+lec("p1_vara")
+
+md(r"""
+## 5.5 ¿Hay un ganador de verdad? Pruebas de significancia
+
+Cada modelo se compara contra SARIMAX día por día. Se remuestrea 2.000 veces por bloques de 7 orígenes
+(conserva la dependencia entre días cercanos) para obtener el intervalo del 95 % de la diferencia. **Si el
+intervalo cruza el cero, es un empate.**
+""")
+code(r"""
+P, U = pr.leer(["sarimax", "lightgbm", "glm_binneg", "chronos2_cal", "comb_sarimax_lightgbm"], exp="e1")
+P = P[P.origen >= "2025-12-31"]; _, U = pr.leer(["control"], exp="e0")
+PS, _ = pr.metricas(P, U)
+PS["acierta"] = ((PS.p_sobre > .5) == (PS.sobre == 1)).astype(float) * 100
+PS["brier x1000"] = (PS.p_sobre - PS.sobre) ** 2 * 1000
+PS["error %"] = (PS.q50 - PS.real).abs() / PS.real * 100
+rng = np.random.default_rng(0); filas = []
+for sub, D in [("todo 2026", PS), ("abril-junio", PS[PS.fecha.dt.month.isin([4, 5, 6])])]:
+    for m in ["lightgbm", "chronos2_cal", "glm_binneg", "comb_sarimax_lightgbm"]:
+        for col, mayor in [("acierta", True), ("brier x1000", False), ("error %", False)]:
+            w = D.pivot_table(index=["origen", "h"], columns="modelo", values=col)[["sarimax", m]].dropna()
+            d = (w[m] - w["sarimax"]).groupby(level=0).mean(); g = np.arange(len(d)) // 7
+            G = [np.where(g == x)[0] for x in np.unique(g)]
+            B = np.array([d.values[np.concatenate([G[j] for j in rng.integers(0, len(G), len(G))])].mean() for _ in range(2000)])
+            lo, hi = np.percentile(B, [2.5, 97.5])
+            filas.append({"periodo": sub, "modelo": NOMBRE[m], "criterio": col, "modelo − SARIMAX": round(d.mean(), 2),
+                          "IC 95 %": f"[{lo:.2f}, {hi:.2f}]",
+                          "resultado": "empate" if lo <= 0 <= hi else (f"gana {NOMBRE[m]}" if (d.mean() > 0) == mayor else "gana SARIMAX")})
+pd.DataFrame(filas)
+""")
+lec("p1_significancia")
+
+md(r"""
+## 5.6 LazyPredict y los árboles afinados
+
+**LazyPredict** ajustó de una vez 42 regresores de scikit-learn, más XGBoost y LightGBM, con sus parámetros
+por defecto. Se entrenaron hasta el 31-12-2025, quedaron congelados y se probaron en 2026, a 1 día
+(`notebooks/lazypredict_barrido.py`).
+
+Los **árboles afinados** (`notebooks/arboles.py`) siguen tres etapas:
+- se afinan con 2024;
+- calibran su rango con los errores reales de 2025;
+- se prueban en 2026 con origen rodante.
+""")
+code(r"""
+import json
+for e in ["e1", "e3"]:
+    L = pd.read_csv(pr.SALIDA / f"lazypredict_{e}.csv", index_col=0)
+    print(f"LazyPredict, entradas {e} ({'triage + calendario' if e == 'e1' else '+ 8 externas'}): 10 primeros de {len(L)}")
+    display(L[["acierta sube/baja %", "acierta abr-jun %", "MAPE %", "R-Squared"]].head(10).round(1))
+cfg = {f: json.loads((pr.SALIDA / "e1" / f"_afinado_{f}_etapas.json").read_text(encoding="utf-8"))["elegida"] for f in ["xgboost", "gbr", "lightgbm"]}
+pd.Series(cfg, name="configuración elegida con 2024").to_frame()
+""")
+lec("p1_lazy_arboles")
+
+md(r"""
+## 5.7 ¿Se puede creer la probabilidad? Calibración del mejor de cada familia
 
 Se agrupan los días por la probabilidad de «sube» que dio el modelo, y se mira cuántas veces subió
 de verdad. Un modelo calibrado cae sobre la diagonal.
@@ -303,7 +394,7 @@ plt.tight_layout(); plt.show()
 lec("p1_calibracion")
 
 md(r"""
-## 5.5 Los picos de 2026: ¿se vieron venir la víspera?
+## 5.8 Los picos de 2026: ¿se vieron venir la víspera?
 """)
 code(r"""
 mejor = T2.sort_values("BSS sube %", ascending=False).index[0]
