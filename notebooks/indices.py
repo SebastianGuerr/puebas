@@ -153,6 +153,62 @@ def red_diaria(fin="2026-09-20"):
     return V.ffill()
 
 
+# ---------------------------------------------------------------- familias operativas (cuaderno 22)
+FAMILIAS_OPERATIVAS = ["respiratoria", "violencias_y_agresiones", "salud_mental_e_intoxicaciones", "materno_perinatal", "inmunoprevenibles"]
+
+
+def _sem_epi(anio, semana_):
+    e4 = pd.Timestamp(year=int(anio), month=1, day=4)
+    return e4 - pd.Timedelta(days=(e4.dayofweek + 1) % 7) + pd.Timedelta(weeks=int(semana_) - 1)
+
+
+def familias_operativas(foto=None):
+    """Las familias que existen AL PREDECIR en 2026 (fila reentrenamiento_holistico): microdatos hasta 2025 y la
+    foto del Power BI del INS para 2026. Fuera la digestiva (sin 2026) y la IRAG hospitalizada (no empalma)."""
+    import glob
+    foto = foto or sorted(glob.glob(str(RAIZ / "calendarios/vigilancia/powerbi/20*")))[-1]
+    S = series_sivigila().drop(columns=[c for c in series_sivigila().columns if c.startswith("998") or "irag" in c])
+    t = pd.read_csv(Path(foto) / "ira_995_tablero.csv"); t.index = [_sem_epi(a, w) for a, w in zip(t.anio, t.semana)]
+    t = t.groupby(level=0).sum()
+    S = S.reindex(S.index.union(pd.date_range(S.index.max(), t.index.max(), freq="7D")))   # sitio para 2026
+    def empalme(col, nueva):
+        comun = S[col].dropna().index.intersection(nueva.index)
+        k = (S.loc[comun, col] / nueva[comun].replace(0, np.nan)).median() if len(comun) else 1.0
+        S[col] = S[col].combine_first(nueva * k)
+    empalme("995_consultas_ira_total", t.grup_total.astype(float))
+    empalme("995_consultas_ira_0_4", (t.grupo_1 + t.grupo_2 + t.grupo_3).astype(float))
+    empalme("995_consultas_ira_60_mas", t.grupo_7.astype(float))
+    for ev in ("300", "356", "831", "875"):
+        p = pd.read_csv(Path(foto) / f"evento_{ev}.csv"); p.index = [_sem_epi(a, w) for a, w in zip(p.anio, p.semana)]
+        empalme(f"{ev}_casos", p.groupby(level=0).casos.sum().astype(float))
+    ru = pd.read_csv(Path(foto) / "rutinaria_manizales.csv")
+    for ev in ("365", "549"):
+        r = ru[ru.cod_eve.eq(int(ev))].groupby("semana").casos.sum()
+        r = pd.Series(r.reindex(range(1, int(ru.semana.max()) + 1)).fillna(0).values,
+                      index=[_sem_epi(2026, w) for w in range(1, int(ru.semana.max()) + 1)]).astype(float)
+        S[f"{ev}_casos"] = S[f"{ev}_casos"].combine_first(r)
+    S = S.sort_index().apply(anomalia_operativa)
+    Z = (S - S.loc[:REF_FIN].mean()) / S.loc[:REF_FIN].std()
+    out = pd.DataFrame(index=Z.index)
+    for fam in FAMILIAS_OPERATIVAS:
+        cols = [f"{ev}_{var or 'casos'}" for ev, var in FAMILIAS[fam] if f"{ev}_{var or 'casos'}" in Z]
+        out[fam] = Z[cols].mean(axis=1, skipna=True).where(Z[cols].notna().any(axis=1))
+    return out
+
+
+def contexto_holistico(dias):
+    """Las 24 variables de H por dia, lo que se sabe ESE dia (se usan desplazadas al origen en pronostico.py)."""
+    dias = pd.DatetimeIndex(dias)
+    H = indices_clima(diario=True).reindex(dias).ffill(limit=30)
+    F = familias_operativas()
+    domingo = dias - pd.to_timedelta((dias.dayofweek + 1) % 7, unit="D")
+    for c in F: H[f"fam_{c}"] = F[c].reindex(domingo - pd.Timedelta(weeks=1)).values      # ultima semana completa
+    H = H.join(red_diaria().reindex(dias).ffill(limit=30))
+    R = regimenes_diarios(str(max(dias.max(), pd.Timestamp("2026-09-30")).date())).reindex(dias)
+    H = H.join(R[["oni", "el_nino", "la_nina", "sismo_fuerte_7d"]])
+    return H.add_prefix("ext_h_").fillna(0)
+
+
 # ---------------------------------------------------------------- regimenes y fenomenos (cuaderno 20)
 def regimenes_diarios(fin="2026-09-30"):
     """Estados que duran y se repiten, por dia, todos conocidos al predecir (fila regimenes de variables.csv)."""

@@ -36,13 +36,53 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 | — | **Captura automática semanal** (`calendarios/capturas.py`; tarea de Windows `triage_capturas_semanales`, lunes 08:00) | **HECHO**. Detalle en `calendarios/docs/CAPTURAS.md` |
 | 17 | **Clima completo** (`calendarios/clima_completo.csv.gz`) | **HECHO** |
 | 18 | **Panel de todas las EPS** | **HECHO** |
-| 19 | Familias de enfermedades como índices | **EN CURSO** |
-| 20 | Regímenes y fenómenos como estados | pendiente |
-| 21 | Jerárquico por tipo de consulta | pendiente |
-| 22 | Volver a entrenar y predecir con el protocolo limpio | pendiente |
+| 19 | Familias de enfermedad como índices (`notebooks/indices.py`) | **HECHO** |
+| 20 | Regímenes y fenómenos como estados; **hipótesis prospectiva de El Niño** (fila `hipotesis_el_nino_2026`) | **HECHO** |
+| 21 | Jerárquico por tipo de consulta: se eligen las **bandas de edad** | **HECHO** |
+| 22 | Volver a entrenar y predecir con el protocolo limpio (fila `reentrenamiento_holistico`) | **EN CURSO** |
+
+**Cuaderno 22, estado (05-10, noche).**
+- **Diseños:**
+  - **C0:** combinación sin contexto (ya corrida en 2025 y 2026);
+  - **C1:** combinación con las 24 variables de H, experimentos `h_2025` y `h`;
+  - **C2:** LightGBM con H por banda de edad (`hb<banda>_2025` y `hb<banda>`), sumados por cópula.
+- **Corriendo la validación en 2025:** tres colas `Start-Process` con logs `c14/v22_q1|q2|q3.log`:
+  - q1: `h_2025 sarimax`;
+  - q2: `h_2025 lightgbm` y las bandas 04 y 514;
+  - q3: las bandas 1544, 4564 y 65.
+- **Después:**
+  1. elegir con la regla preregistrada (promedio del BSS de «sube» con las dos varas, cobertura del 80 % entre
+     75 y 88 %);
+  2. correr **solo el elegido** en 2026;
+  3. comparar contra C0.
+- Si las colas se cortan, se relanza lo que falte en `salidas/pronostico/<exp>/`.
 
 **Protocolo de los cuadernos 22 en adelante:** afinar con 2020-2024, elegir con 2025, probar una sola vez en
 2026, y la prueba prospectiva.
+
+**Cuaderno 23, HECHO (05-10, tarde): catálogo de variables + validación en 4 años + técnicas de la investigación.**
+- **Ejecutado, sin errores.** Lecturas en `notebooks/construir/23_lecturas.json`. Resultados en `CONTEXTO.md`, entrada «Cuaderno 23».
+- Resultados:
+  - no se mezclan días al azar (se demostró que engaña);
+  - T0, objetivo relativo al nivel, se queda;
+  - ninguna técnica T1-T5 ni Platt se adopta;
+  - ninguna capa aporta al total en 3 de 4 años; salud pública aporta en 2 de 4;
+  - confiabilidad honesta de alrededor del 62 %;
+  - «más de 80 %» acierta el 68 %.
+- **Siguiente:** fila nueva para corregir el objetivo de LightGBM en `pronostico.py` y rehacer la combinación. Después, el modelo global por bandas y Giacomini-White por régimen.
+
+Detalle de cómo se construyó:
+- Generador `notebooks/construir/23_catalogo_y_validacion_multianual.py`; módulo `notebooks/anual.py`.
+- El cálculo pesado se hace con `python notebooks/anual.py` (unos 30 min) y produce
+  `salidas/pronostico/anual_tecnicas.parquet` y `anual_capas.parquet`. El cuaderno solo los lee.
+- Filas preregistradas: `validacion_por_capas_multianual` y `tecnicas_de_entrenamiento` (con una enmienda
+  hecha antes de calcular).
+- **Hallazgo de método:** el LightGBM del motor aprende log(y) y no extrapola un nivel no visto. En 2024, con
+  el modelo congelado, da BSS −105 %. Con objetivo log(y) − nivel (T0) la base de 2024 pasa a +4,1 %.
+  **`pronostico.py` sigue con el defecto.** Las colas del 22 no se tocan porque están preregistradas.
+  Corregir el motor es el siguiente experimento.
+- Con T0, **ninguna capa externa aporta en 3 de 4 años**. Salud pública aporta en 2 de 4.
+- La investigación bibliográfica, con las referencias, está en `CONTEXTO.md`, entrada «Cuaderno 23».
 
 **Lo que dejaron los cuadernos 17 y 18:**
 - **Clima:** el clima mueve la IRA de la ciudad (+6-7 % con un mes húmedo y nublado) y llega diluido al triage

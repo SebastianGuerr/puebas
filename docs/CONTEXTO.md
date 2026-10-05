@@ -14,6 +14,107 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 (noche) — Cuaderno 23: la mezcla aleatoria no es legítima; la investigación fija las técnicas, y aparece un error de método
+
+**Pedido del propietario.** Un cuaderno «resumen» con todas las variables que quedan y por qué, que el modelo vea
+«datos escogidos y aleatorios» de cada contexto, y validar todo con probabilidades razonables (60-70 %). Al saber
+que la mezcla al azar filtra el futuro, pidió hacerlo «de la manera más adecuada posible, a base de
+investigaciones».
+
+**Decisión 1: no se mezclan días al azar para medir.** Evidencia bibliográfica: Bergmeir, Hyndman y Koo (2018,
+*CSDA* 120:70-83) muestran que el k-fold aleatorio solo es válido si el modelo es autorregresivo puro, su residuo
+no tiene memoria y la serie es estable. Aquí no se cumple ninguna: el residuo tiene +0,42 a 1 día, hay COVID,
+tendencia y el escalón de Nueva EPS, y el modelo usa variables externas. Cerqueira, Torgo y Mozetič (2020,
+*Machine Learning* 109) encuentran que con series no estacionarias solo los métodos que respetan el orden dan
+estimaciones fieles. El cuaderno 23 lo demuestra con los datos (sección 3).
+
+**Decisión 2: el equivalente legítimo de «escogidos y aleatorios».** Fila `tecnicas_de_entrenamiento`,
+preregistrada:
+- «escogidos» = **pesos por contexto** (Sugiyama et al. 2007; Pesaran, Pick y Pranovich 2013): peso 0,1 al
+  COVID, decaimiento por recencia y peso doble a los contextos raros;
+- «aleatorios» = **remuestreo de bloques de 28 días dentro del entrenamiento** (Bergmeir, Hyndman y Benítez 2016);
+- la prueba siempre es hacia adelante: un año a ciegas por año de prueba (2023-2026).
+
+El k-fold por bloques con purga de 7 días y embargo de 35 (López de Prado 2018) queda reservado para afinar
+hiperparámetros dentro del entrenamiento, nunca para reportar.
+
+**Decisión 3, una desviación registrada: el objetivo de LightGBM pasa a ser el desvío frente al nivel.** La
+primera corrida de `validacion_por_capas_multianual` dio una base con BSS de sube −105 % en 2024, acierto del
+42 % y cobertura del 80 % del 33 %. La causa: el árbol aprende log(y) con el nivel como entrada, y un árbol no
+predice valores que no vio. El nivel de 2024 (226/día) superó todo el entrenamiento, y en 2026 el peso de
+Nueva EPS se hundió bajo su mínimo. Con objetivo log(y) − nivel, la base de 2024 pasa a BSS +4,1 %, acierto
+66,3 % y cobertura del 73,3 %. Hewamalage, Ackermann y Bergmeir (2023, *DMKD* 37) describen exactamente este
+riesgo. **El cambio es de método, no de variables**, y se reportan las dos versiones.
+
+Consecuencia que sigue viva: el LightGBM del motor (`pronostico.py`) tiene el mismo defecto. Con reentrenamiento
+semanal se nota poco, pero existe. Las colas del cuaderno 22, ya preregistradas, siguen como están; la corrección
+del motor va como experimento aparte.
+
+**Decisión 4: enmienda antes de calcular.** La marca de «contexto raro» de T3 incluía El Niño y La Niña, que
+juntos cubren el 67 % de los días de 2020-2026. Salen de la marca y quedan crisis de la red, ola respiratoria y
+racha seca (673 días). Se cambió antes de calcular ningún resultado de técnicas.
+
+**Lo que dice la literatura de urgencias, para leer los resultados.**
+- Añadir clima casi nunca mejora el error del total:
+  - Wargon et al. 2009, revisión de 9 estudios;
+  - Marcilio, Hajat y Gouveia 2013, São Paulo: 10,8 % sin temperatura y 11,5 % con ella;
+  - Calegari et al. 2016;
+  - Vollmer et al. 2021;
+  - Tuominen et al. 2022.
+- Lo que ayuda es el **estado del sistema**:
+  - avisos prehospitalarios, −6 puntos (Asheim et al. 2019);
+  - camas de la red (Tuominen et al. 2022);
+  - epidemia de influenza (Murtas et al. 2022).
+- La calibración se juzga con BSS y fiabilidad, no con el porcentaje de acierto. Para pocos casos, Platt o beta
+  y no la isotónica (Niculescu-Mizil y Caruana 2005; Kull et al. 2017).
+
+**Primer resultado (T0, antes de las técnicas).** Con el método corregido, **ninguna capa aporta en 3 de 4 años**.
+Salud pública mejora a la base en 2025 y 2026 (+1,1 puntos cada año); el clima solo en 2025. La capa de red
+empeora la probabilidad de pico en 2026 (BSS de pico +7,0 → +1,6). Es coherente con la literatura: en el total, lo
+externo aporta poco y de forma inestable.
+
+**Resultado de las técnicas (fila `tecnicas_de_entrenamiento`): no se adopta ninguna; T0 se queda.** BSS de sube
+con todo H, frente a T0:
+
+| Técnica | Resultado |
+|---|---|
+| T1, COVID con peso 0,1 | empeora los 4 años, de −2 a −6 puntos |
+| T2, recencia | empeora 3 de 4 años |
+| T3, peso doble a contextos raros | mejora 2 de 4 años (2023 +3,7; 2025 +0,5); cobertura 72-78 % |
+| T4, remuestreo de bloques | empeora 4 de 4 años |
+| T5, todo junto | la peor, de −5 a −14 puntos |
+
+Con esto, el equivalente legítimo de «escogidos y aleatorios» **queda probado y descartado con evidencia**.
+Platt con el año anterior baja el Brier en 1 de 4 años con T0: no se adopta.
+
+**La confiabilidad honesta y las probabilidades.** Con la base sola y T0, el acierto en sube/baja fue 57, 66, 60 y
+66 % en 2023-2026 (media 62 %), con BSS de −9, +4, +2 y +11. Las probabilidades altas están exageradas (T0 con H,
+1.349 días):
+
+| El modelo dice | Acierta de verdad |
+|---|---|
+| > 80 % (289 días) | 68 % |
+| 70-80 % | 62 % |
+| 60-70 % | 63 % |
+| 50-60 % | 52 % |
+
+Hay que presentarlas comprimidas o en bandas: un «70 % o más» vale lo que un 65 % real.
+
+**Demostración con los datos de que mezclar al azar engaña.**
+- Hasta 2025, la mezcla infla el acierto de 57-60 % a 66 %.
+- En 2026, con el árbol sobre el desvío del nivel, la mezcla dice que H ayuda: 67,0 % contra 66,0 % de la base.
+  Hacia adelante perjudica: 61,2 % contra 66,2 %.
+- Con el árbol sobre el conteo en 2026, la mezcla esconde el desplome: dice 63,5 % cuando en realidad es 52 %.
+
+**Lo que no se concluye: «lo externo no sirve».** En las partes, los cuadernos 17-21 midieron efectos de hasta 3
+veces el del total. **Siguiente, en orden:**
+1. corregir el objetivo del motor (fila nueva);
+2. un modelo global por bandas de edad (Montero-Manso y Hyndman 2021);
+3. la prueba condicional de Giacomini-White, por régimen;
+4. vigilancia tal como estaba publicada en el origen.
+
+Referencias de la investigación, completas, en el cuaderno 23, sección 4.
+
 ## 2026-10-05 (noche) — Cuaderno 21: jerárquico por edad; el contexto actúa hasta 3 veces más fuerte en las partes
 
 **Particiones posibles** (fila `jerarquico_tipo`):

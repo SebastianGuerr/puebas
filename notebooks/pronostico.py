@@ -62,6 +62,14 @@ EXPERIMENTOS = {
     "j_ne": dict(ini="2020-01-01", contexto=False, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "j_ne", serie="nueva_eps"),
     "j_resto": dict(ini="2020-01-01", contexto=False, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "j_resto", serie="resto"),
 }
+# reentrenamiento holistico (fila reentrenamiento_holistico, cuaderno 22): H = 24 variables de notebooks/indices.py.
+# C1 = 'h' (total con H); C2 = 'hb<banda>' (cada banda de edad con H). '_2025' = validacion; sin sufijo = prueba 2026.
+BANDAS = {"04": "0-4", "514": "5-14", "1544": "15-44", "4564": "45-64", "65": "65-+"}
+for _suf, _ors in [("_2025", ("2024-12-31", "2025-12-30")), ("", ("2025-12-31", ULTIMO_ORIGEN))]:
+    EXPERIMENTOS[f"h{_suf}"] = dict(ini="2020-01-01", contexto="holistico", origenes=_ors, carpeta=SALIDA / f"h{_suf}")
+    for _k, _b in BANDAS.items():
+        EXPERIMENTOS[f"hb{_k}{_suf}"] = dict(ini="2020-01-01", contexto="holistico", origenes=_ors,
+                                             carpeta=SALIDA / f"hb{_k}{_suf}", serie=f"edad:{_b}")
 EXP = EXPERIMENTOS["e0"]                      # el experimento activo; lo cambia usar()
 ANIO_ORIGEN = "2025-12-31"
 
@@ -80,7 +88,11 @@ def cargar():
     dias = pd.date_range(EXP["ini"], FIN)
     t = pd.read_parquet(RAIZ / "salidas/triage_diario.parquet").assign(dia=lambda d: pd.to_datetime(d.dia))
     y = t.set_index("dia")["triages"].reindex(dias).astype(float)
-    if EXP.get("serie"):                                             # jerarquico: Nueva EPS o el resto
+    if str(EXP.get("serie", "")).startswith("edad:"):                # jerarquico por banda de edad (cuaderno 22)
+        ed = pd.read_parquet(RAIZ / "salidas/triage_edad.parquet")
+        ed = ed[ed.banda.eq(EXP["serie"].split(":", 1)[1])]
+        y = ed.groupby(pd.to_datetime(ed.dia))["n"].sum().reindex(dias).fillna(0).astype(float)
+    elif EXP.get("serie"):                                           # jerarquico: Nueva EPS o el resto
         te = pd.read_parquet(RAIZ / "salidas/triage_entidad.parquet", columns=["dia", "entidad", "n"])
         ent = te.entidad.fillna("")
         es_ne = ent.str.contains(r"NUEVA EMPRESA PROMOTORA|NUEVA EPS", regex=True) & ~ent.str.contains("COMPLEMENTARIOS")
@@ -239,7 +251,11 @@ def contexto(dias):
 
 
 def contexto_exp(dias):
-    """El contexto del experimento activo: el completo, o solo la seleccion depurada si el experimento la trae."""
+    """El contexto del experimento activo: el completo, la seleccion depurada, o el holistico H (cuaderno 22)."""
+    if EXP.get("contexto") == "holistico":
+        import indices
+        PAS = indices.contexto_holistico(dias)
+        return PAS, pd.DataFrame(index=PAS.index)
     PAS, FUT = contexto(dias)
     sel = EXP.get("seleccion")
     if sel:

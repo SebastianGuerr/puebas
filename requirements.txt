@@ -40,6 +40,12 @@ truststore==0.10.4
 lightgbm==4.7.0
 prophet==1.4.0
 chronos-forecasting==2.3.2
+# Instalados el 2026-10-02 (notebooks/arboles.py y notebooks/lazypredict_barrido.py).
+#   xgboost      arboles afinados por rejilla
+#   lazypredict  barrido de ~40 regresores; se instala con --no-deps porque fija
+#                versiones viejas de sus dependencias, que ya estan arriba
+xgboost==3.2.0
+# pip install --no-deps lazypredict==0.3.0
 
 # --- Base clinica (SOLO en el equipo del hospital) ---------------------------
 # extraccion/, NLP/procesar.py y NLP/nube/ hablan con SQL Server (DWSES) por
