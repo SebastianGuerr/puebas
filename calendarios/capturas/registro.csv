@@ -1,0 +1,44 @@
+fecha_hora,fuente,accion,archivo,filas,sha256,detalle
+2026-10-05T10:41:14,bdua,nuevo,calendarios/capturas/bdua/bdua_caldas_contributivo_2026-10-02.csv.gz,4523.0,d62cc1c25cce9299,"contributivo, corte 2026-10-02, 473394 afiliados en Caldas"
+2026-10-05T10:41:15,bdua,error,,,,"AttributeError(""'DataFrame' object has no attribute 'afiliados'"")"
+2026-10-05T10:41:17,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/CTFT21-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-forzosa-administrativa-para-administrar-EPS.xlsx,,0eee5b494938ac1e,CTFT21-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-for
+2026-10-05T10:41:18,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/CTFT21-programa-de-recuperacion.xlsx,,df83b7ece11cfaee,CTFT21-programa-de-recuperacion.xlsx
+2026-10-05T10:41:18,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/M3-FT-1 entidades-en-proceso-de-liquidacion.xlsx,,566514b1086c7257,M3-FT-1 entidades-en-proceso-de-liquidacion.xlsx
+2026-10-05T10:41:19,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/M3-FT-2 Base-de-Datos-de-Entidades-Liquidadas-no-Ordenadas-por-la-SNS.xlsx,,3d1c585d19e48c61,M3-FT-2 Base-de-Datos-de-Entidades-Liquidadas-no-Ordenadas-por-la-SNS.xlsx
+2026-10-05T10:41:20,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/M4-FT-16-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-forzosa-administrativa-para-administrar-IPS.xlsx,,ebf3cc59f5ff99f4,M4-FT-16-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-f
+2026-10-05T10:41:20,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/M4-FT-16-listado-de-entidades-en-medida-preventiva-y-entidades-en-administracion-forzosa(1).xlsx,,fb52f8ce748600ec,M4-FT-16-listado-de-entidades-en-medida-preventiva-y-entidades-en-administracion
+2026-10-05T10:41:21,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/M4-FT-17 listado-de-entidades-liquidadas-por-Intervencion-forzosa-administrativa.xlsx,,bd975cca3e467483,M4-FT-17 listado-de-entidades-liquidadas-por-Intervencion-forzosa-administrativa
+2026-10-05T10:41:21,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/M4-FT-18 entidades-en-intervencion.xlsx,,4b8ca503efe1c535,M4-FT-18 entidades-en-intervencion.xlsx
+2026-10-05T10:41:22,medidas,nuevo,calendarios/capturas/crudo/medidas/2026-10-05/M5-FT-26_listado-de-entidades-en-acuerdo-de-reestructuracion.xlsx,,85731ff4cba1b866,M5-FT-26_listado-de-entidades-en-acuerdo-de-reestructuracion.xlsx
+2026-10-05T10:41:26,oni,nuevo,calendarios/capturas/oni/oni_2026-10-05.txt,,5d6fa3a2f857d916,enso_oni.csv rehecho
+2026-10-05T10:41:53,bdua,sin_cambios,,,,"contributivo, corte 2026-10-02"
+2026-10-05T10:42:22,bdua,nuevo,calendarios/capturas/bdua/bdua_caldas_subsidiado_2026-10-02.csv.gz,4198.0,c3d5b7281e04c771,"subsidiado, corte 2026-10-02, 435507 afiliados en Caldas"
+2026-10-05T10:43:13,powerbi,nuevo,calendarios/vigilancia/powerbi/2026-10-05,,,
+2026-10-05T10:43:18,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-agosto-2025.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:43:24,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-julio-2025.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:43:28,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-oct2025.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:43:37,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-septiembre-2025.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:43:44,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-dic-2025.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:43:48,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-julio-2026.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:43:52,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-nov-2025.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:43:58,afiliacion,error,,,,"cifra-afiliacion-salud-enero-2026.zip: ValueError('Excel file format cannot be determined, you must specify an engine manually.')"
+2026-10-05T10:44:02,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-mayo2026.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:44:06,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-abr-2026.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:44:11,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-agosto2026.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:44:17,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-feb-2026.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:44:20,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-jun-2026.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:44:25,afiliacion,descargado_sin_extraer,calendarios/capturas/crudo/afiliacion/cifras-afiliacion-salud-marzo-2026.zip,,,formato no reconocido; revisar a mano
+2026-10-05T10:46:54,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-agosto-2025_caldas.csv.gz,4305.0,07b5c33c17572737,cifras-afiliacion-salud-agosto-2025.zip
+2026-10-05T10:46:58,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-julio-2025_caldas.csv.gz,4338.0,a01231b30c53ab7e,cifras-afiliacion-salud-julio-2025.zip
+2026-10-05T10:47:01,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-oct2025_caldas.csv.gz,4485.0,c44c9ece3bd1622f,cifras-afiliacion-salud-oct2025.zip
+2026-10-05T10:47:05,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-septiembre-2025_caldas.csv.gz,4401.0,dbf1079efda7a648,cifras-afiliacion-septiembre-2025.zip
+2026-10-05T10:47:08,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-dic-2025_caldas.csv.gz,4316.0,7f1d0b82c5ed05bd,cifras-afiliacion-salud-dic-2025.zip
+2026-10-05T10:47:13,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-julio-2026_caldas.csv.gz,2462.0,b12f85d6da070db4,cifras-afiliacion-salud-julio-2026.zip
+2026-10-05T10:47:15,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-nov-2025_caldas.csv.gz,4335.0,e09f2bfb06388a22,cifras-afiliacion-salud-nov-2025.zip
+2026-10-05T10:47:19,afiliacion,nuevo,calendarios/capturas/afiliacion/cifra-afiliacion-salud-enero-2026_caldas.csv.gz,4290.0,4fd34fdaddef49a9,cifra-afiliacion-salud-enero-2026.zip
+2026-10-05T10:47:22,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-mayo2026_caldas.csv.gz,2454.0,3562aa06b4c7e8b9,cifras-afiliacion-mayo2026.zip
+2026-10-05T10:47:26,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-abr-2026_caldas.csv.gz,2430.0,5006c06362026881,cifras-afiliacion-salud-abr-2026.zip
+2026-10-05T10:47:29,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-agosto2026_caldas.csv.gz,2439.0,77e93104decf30bf,cifras-afiliacion-salud-agosto2026.zip
+2026-10-05T10:47:33,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-feb-2026_caldas.csv.gz,2472.0,841567e41b4eaf50,cifras-afiliacion-salud-feb-2026.zip
+2026-10-05T10:47:36,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-jun-2026_caldas.csv.gz,2466.0,49cbd4f1e07c4542,cifras-afiliacion-salud-jun-2026.zip
+2026-10-05T10:47:40,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-marzo-2026_caldas.csv.gz,2472.0,d7f9f8bb046a76f5,cifras-afiliacion-salud-marzo-2026.zip

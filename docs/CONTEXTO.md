@@ -14,6 +14,54 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 (noche) — El propietario aprueba las 6 propuestas; captura automática semanal y clima completo (cuaderno 17)
+
+**Decisión del propietario.** Aprueba las seis propuestas del cuaderno 16 y pide desarrollarlas en cuadernos
+separados (17-21) y después repetir el entrenamiento y la predicción (22). También pide automatizar las
+capturas de las fuentes que no guardan historia, para no depender de correrlas a mano.
+
+**Captura automática.**
+- **Pieza:** `calendarios/capturas.py` con su envoltorio `capturas.cmd`. La tarea de Windows es
+  **`triage_capturas_semanales`**: los lunes a las 08:00, y al encender el equipo si estaba apagado.
+- **Fuentes:**
+  - BDUA de Caldas;
+  - Power BI del INS;
+  - zips de afiliación de MinSalud (se extrae Caldas);
+  - Excel de medidas de la Supersalud;
+  - ONI.
+- **Guardado:** solo si la huella cambió.
+- **Primera corrida:**
+  - BDUA, corte del 2026-10-02: 473.394 afiliados en el contributivo y 435.507 en el subsidiado;
+  - 9 Excel de medidas;
+  - **13 meses de afiliación por EPS × municipio** (julio de 2025 a agosto de 2026);
+  - ONI.
+- **Sin automatizar todavía:** PQRD (la página no expone descargas) y ADRES.
+- Detalle en `calendarios/docs/CAPTURAS.md`.
+
+**Clima completo (cuaderno 17, fila `clima_completo`).**
+- **Datos:** `calendarios/clima/clima_completo.py`, desde 2010.
+- **Validación:**
+  - **la lluvia del ERA5 está rota en Manizales:** ~16.000 mm al año, con correlación −0,02 frente al
+    pluviómetro. Se descartó;
+  - **la de NASA POWER** da ~2.060 mm al año y correlaciona 0,30 por día, 0,52 por semana y 0,80 por mes.
+    Solo se usa en ventanas de 7 días o más;
+  - temperatura, humedad y radiación del ERA5 concuerdan (0,5-0,77);
+  - horas de sol y nubosidad, de forma moderada (0,54 y −0,43).
+- **Barrido** (2010-2024; 266 pruebas por desenlace; mes y año fijos; BH q = 0,10):
+
+  | Desenlace | Sobreviven a BH | Lectura |
+  |---|---|---|
+  | **IRA de Manizales** (2012-2024) | **53** (el azar daría ~13) | Un **mes** lluvioso, nublado, húmedo y con poco sol trae **+6-7 % de IRA a 1-5 semanas**. Horas de sol (−7 %) y déficit de presión de vapor (−6,7 %), que son variables nuevas, están entre las más fuertes |
+  | **Triage total** (2022-2024) | 36, con efectos de **1,5-2,4 %** | Diluido. Pesan una semana muy lluviosa reciente, las rachas secas y el calor del último mes |
+  | **Ingresos respiratorios del hospital** (2021-2024) | **0** | Son ingresos (un tercio de lo que llega, ~33 por semana), no triage |
+
+- **Índices:** 4 componentes de estado del clima (86 % de la varianza) y 3 de cambio brusco (81 %), ajustados
+  con 2010-2024. El primero, «soleado y seco frente a nublado y húmedo», da −4 % de IRA a 1-3 semanas.
+- **Decisión:** al modelo entran índices y dos o tres rachas, no 38 variables. **La vía del clima al hospital
+  pasa por la IRA de la ciudad.**
+
+---
+
 ## 2026-10-05 (tarde) — El propietario cuestiona el entrenamiento: variables pocas, demasiado específicas y poco escalables
 
 **Lo que plantea el propietario.** Aunque la combinación predice bien 2026, las variables le parecen pocas,

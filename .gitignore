@@ -236,3 +236,8 @@ _[!_]*
 # Los resumenes que se guardan al lado (*.resumen.parquet, *.pais.parquet,
 # *.notas.json) no llevan persona, pero son cache: se rehacen del crudo.
 /calendarios/vigilancia/crudo/
+
+# Capturas periodicas de fuentes sin historico (calendarios/capturas.py, calendarios/docs/CAPTURAS.md).
+# Se versiona todo calendarios/capturas/ (agregados, sin persona; no se pueden rehacer) MENOS crudo/:
+# los zips nacionales de MinSalud (pesados; de ellos se versiona solo lo de Caldas) y el log de la tarea.
+/calendarios/capturas/crudo/

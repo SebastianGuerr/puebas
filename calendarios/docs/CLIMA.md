@@ -215,3 +215,28 @@ El script imprime una auditoría al final. Lo que hay que mirar:
   enero-febrero y septiembre.
 - **«Nivel medio según cuántas fuentes hubo»**: los valores deben parecerse. Si divergen,
   hay una fuente fuera de escala colándose en la mediana.
+
+
+## Clima completo para el cuaderno 17 (2026-10-05)
+
+`calendarios/clima/clima_completo.py` escribe `calendarios/clima_completo.csv.gz`: datos de 2010 a hoy en La
+Nubia, con horas de sol, nubosidad, punto de rocío, déficit de presión de vapor, humedad, rachas, extremos y la
+transición de seco a lluvioso.
+
+**La lluvia del ERA5 (Open-Meteo Archive) está rota en Manizales.**
+- Da ~16.000 mm al año, 10 veces lo real.
+- Su correlación diaria contra el pluviómetro válido es de −0,02.
+- **No se usa.**
+
+**La lluvia sale de NASA POWER (PRECTOTCORR):**
+- da ~2.060 mm al año;
+- contra el pluviómetro válido correlaciona 0,30 por día, 0,52 por semana y 0,80 por mes;
+- por eso toda variable de lluvia del clima completo usa **ventanas de 7 días o más**.
+
+**Las demás variables del ERA5, frente al clima unificado:**
+- temperatura media, 0,75;
+- humedad, 0,69;
+- radiación, 0,69;
+- temperatura mínima, 0,52;
+- horas de sol frente a la radiación, 0,54;
+- nubosidad frente a la radiación, −0,43.
