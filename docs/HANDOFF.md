@@ -27,37 +27,37 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 
 ---
 
-## EN CURSO (2026-10-05, tarde): hacia un entrenamiento holístico, cuaderno 16
+## EN CURSO (2026-10-05, noche): las 6 propuestas del cuaderno 16, una por cuaderno (17-21), y después volver a entrenar (22)
 
-**El propietario cuestiona el entrenamiento:** variables pocas, demasiado específicas y poco escalables (solo
-Nueva EPS, clima incompleto, solo IRA, sin regímenes) y la sospecha de que «se le dieron las respuestas de
-2026». Pidió un cuaderno nuevo.
+**El propietario aprobó las 6 propuestas** y pidió automatizar las capturas. Estado:
 
-**HECHO: `notebooks/16_hacia_un_entrenamiento_holistico.ipynb`** (28 celdas, 0 errores; generador y lecturas en
-`notebooks/construir/16_*`). Trae:
-- la combinación y por qué funciona;
-- las preocupaciones medidas;
-- el inventario de fuentes (incluida una revisión web el 05-10, anotada en `calendarios/docs/FUENTES_EXTERNAS.md`);
-- cuánto contexto cabe sin sobreajustar;
-- el método de rejilla explicado;
-- una propuesta de diseño.
+| # | Pieza | Estado |
+|---|---|---|
+| — | **Captura automática semanal** (`calendarios/capturas.py`; tarea de Windows `triage_capturas_semanales`, lunes 08:00) | **HECHO**. Detalle en `calendarios/docs/CAPTURAS.md` |
+| 17 | **Clima completo** (`calendarios/clima_completo.csv.gz`) | **HECHO** |
+| 18 | **Panel de todas las EPS** | **HECHO** |
+| 19 | Familias de enfermedades como índices | **EN CURSO** |
+| 20 | Regímenes y fenómenos como estados | pendiente |
+| 21 | Jerárquico por tipo de consulta | pendiente |
+| 22 | Volver a entrenar y predecir con el protocolo limpio | pendiente |
 
-**Hallazgos clave (en `CONTEXTO.md`, 05-10, tarde):**
-- **Validación 2025** (`--exp e1_2025`):
-  - la combinación vuelve a ser la mejor, pero con 59,9 % y BSS +5,9, frente a 69,4 % y +21,1 en 2026;
-  - **expectativa honesta: ~60 %**. El 69 % era propio de 2026.
-- **SURA EPS pasó de 8 % a 36 % del triage** (2020-2026). El modelo solo veía a Nueva EPS.
-- **~670 días independientes** y **~4 episodios ENSO**: no se aprende un fenómeno con 4 ejemplos.
-  Hay que resumirlo por regímenes y familias.
+**Protocolo de los cuadernos 22 en adelante:** afinar con 2020-2024, elegir con 2025, probar una sola vez en
+2026, y la prueba prospectiva.
 
-**Espera al propietario:** por dónde empezar la propuesta del cuaderno 16, sección 7.
-1. **Panel externo de EPS:** afiliación mensual de MinSalud, medidas de la Supersalud, PQRD y giros de ADRES.
-   Hay que empezar a guardar ya la foto mensual de la BDUA, que no tiene histórico.
-2. **Clima completo con rachas, transiciones y pronóstico** (Open-Meteo Previous Runs, que trae horas de sol).
-3. **Familias de enfermedades como índices** y una **tarea semanal que congele el Power BI del INS**.
-4. **Jerárquico por tipo de consulta** (`perfil_dx_diario`, local).
-5. **Pendientes del propietario:** aclarar la discrepancia de Sanitas en FENIX; usuario de SISPRO (RIPS);
-   acceso a la API de Google Trends.
+**Lo que dejaron los cuadernos 17 y 18:**
+- **Clima:** el clima mueve la IRA de la ciudad (+6-7 % con un mes húmedo y nublado) y llega diluido al triage
+  total (1,5-2,4 %). Al modelo entran 4 + 3 índices, no 38 variables.
+- **EPS:** la caída de Nueva EPS es sobre todo de acceso (−20 % de afiliados, −60 % de triage). Al modelo entran
+  6 variables de red.
+
+**Rama `modelos-afinados`, sin subir** (main está en `73d9dbd`).
+
+**Pendientes del propietario:**
+1. el **calendario de contratación SES-EPS** (#11), que es lo que más error explicaría;
+2. la discrepancia de Sanitas en FENIX;
+3. el usuario de SISPRO;
+4. la API de Google Trends;
+5. las quejas (PQRD) y los giros de ADRES, a mano.
 
 **Qué hay.** El motor es `notebooks/pronostico.py`:
 - experimentos `--exp e0|e1|e2`, año a ciegas `--anio` y orígenes espaciados `--cada N`;

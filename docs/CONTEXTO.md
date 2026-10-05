@@ -14,6 +14,48 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 (noche) — Cuaderno 19: seis familias de enfermedad; el clima mueve a las transmisibles, el hospital las ve diluidas
+
+**Qué se hizo** (fila `familias_enfermedad`).
+- Seis índices semanales de Manizales en el SIVIGILA:
+  - respiratoria;
+  - digestiva;
+  - violencias y agresiones;
+  - salud mental e intoxicaciones;
+  - materno-perinatal;
+  - inmunoprevenibles.
+- Cada índice usa anomalías operativas y se define en `notebooks/indices.py`, el módulo compartido de los
+  cuadernos 17-22. Ese módulo trae también los índices de clima y las variables de red.
+- **Cinco familias tienen dato de 2026 al predecir** (Power BI). **La digestiva no:** solo hay microdatos, con ~8
+  meses de retraso.
+
+**Resultados** (2012-2024):
+- **Las familias son casi independientes** semana a semana: ninguna correlación pasa de 0,19.
+- **Clima → familia** (índices del cuaderno 17, rezagos de 0 a 6 semanas, BH):
+  - **digestiva:** 12 de 63 sobreviven; las semanas largas sin lluvia fuerte la suben **+15,7 %**;
+  - **respiratoria:** 4; una racha seca la baja **−9,5 %** a 3 semanas;
+  - **varicela:** 5;
+  - **violencias:** 1;
+  - **salud mental y materno-perinatal:** 0.
+- **Familia → hospital** (rezagos de 0 a 4 semanas, BH):
+  - **triage total:** 4 de 30 sobreviven, con efectos de 1-3 %;
+  - **ingresos respiratorios, infecciosos, digestivos y por trauma:** 0;
+  - **ingresos por embarazo y por salud mental:** hay asociaciones que pasan BH, pero sin mecanismo y con
+    signos que se alternan. **No se toman como hallazgo.**
+
+**Decisión: arquitectura del modelo para los cuadernos 21-22.**
+
+| Capa | Qué mueve |
+|---|---|
+| Clima | Las familias transmisibles de la ciudad |
+| Familias | Su parte del triage |
+| Red | El nivel |
+| Calendario | El día a día |
+
+En el total, clima y familias llegan diluidos (1-3 %).
+
+---
+
 ## 2026-10-05 (noche) — Cuaderno 18: el panel de todas las EPS; la caída de Nueva EPS es sobre todo de acceso
 
 **Privacidad, corregido antes de subir.**
