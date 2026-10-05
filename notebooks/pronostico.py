@@ -26,6 +26,8 @@ import argparse, logging, os, re, sys, time, warnings
 from pathlib import Path
 
 os.environ.setdefault("LOKY_MAX_CPU_COUNT", "4")
+for _v in ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS"):   # varias colas en paralelo: cada una
+    os.environ.setdefault(_v, "2")                                         # con pocos hilos, o se estorban (02-10)
 import numpy as np
 import pandas as pd
 
@@ -49,6 +51,14 @@ EXPERIMENTOS = {
     "e0": dict(ini=INI, contexto=False, origenes=(PRIMER_ORIGEN, ULTIMO_ORIGEN), carpeta=SALIDA),
     "e1": dict(ini="2020-01-01", contexto=False, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "e1"),
     "e2": dict(ini="2020-01-01", contexto=True, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "e2"),
+    # e3: e1 + el contexto depurado (fila contexto_depurado de variables.csv: elegido con datos <= 2025-12-31)
+    "e3": dict(ini="2020-01-01", contexto=True, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "e3",
+               seleccion=["ext_sal_ira_total", "ext_sal_consultas_todas", "ext_cli_radiacion_cambio", "ext_cli_temp_28d",
+                          "ext_soc_lesiones_personales", "ext_soc_violencia_intrafamiliar", "ext_red_nueva_peso",
+                          "ext_red_nueva_cambio"]),
+    # jerarquico (fila jerarquico): Nueva EPS y el resto, cada una con las entradas de e1; el total = suma de cuantiles
+    "j_ne": dict(ini="2020-01-01", contexto=False, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "j_ne", serie="nueva_eps"),
+    "j_resto": dict(ini="2020-01-01", contexto=False, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "j_resto", serie="resto"),
 }
 EXP = EXPERIMENTOS["e0"]                      # el experimento activo; lo cambia usar()
 ANIO_ORIGEN = "2025-12-31"
@@ -68,6 +78,12 @@ def cargar():
     dias = pd.date_range(EXP["ini"], FIN)
     t = pd.read_parquet(RAIZ / "salidas/triage_diario.parquet").assign(dia=lambda d: pd.to_datetime(d.dia))
     y = t.set_index("dia")["triages"].reindex(dias).astype(float)
+    if EXP.get("serie"):                                             # jerarquico: Nueva EPS o el resto
+        te = pd.read_parquet(RAIZ / "salidas/triage_entidad.parquet", columns=["dia", "entidad", "n"])
+        ent = te.entidad.fillna("")
+        es_ne = ent.str.contains(r"NUEVA EMPRESA PROMOTORA|NUEVA EPS", regex=True) & ~ent.str.contains("COMPLEMENTARIOS")
+        ne = te[es_ne].groupby(pd.to_datetime(te.dia[es_ne]))["n"].sum().reindex(dias).fillna(0)
+        y = ne if EXP["serie"] == "nueva_eps" else y - ne
     y["2024-03-19":"2024-03-21"] = np.nan
     idx = pd.date_range(EXP["ini"], pd.Timestamp(FIN) + pd.Timedelta(days=H))
     cal = (pd.read_csv(RAIZ / "calendarios/calendario_Colombia.csv", parse_dates=["fecha"]).set_index("fecha")
@@ -220,6 +236,15 @@ def contexto(dias):
     return PAS.reindex(dias).fillna(0), FUT.reindex(dias).fillna(0)
 
 
+def contexto_exp(dias):
+    """El contexto del experimento activo: el completo, o solo la seleccion depurada si el experimento la trae."""
+    PAS, FUT = contexto(dias)
+    sel = EXP.get("seleccion")
+    if sel:
+        PAS, FUT = PAS[[c for c in PAS if c in sel]], FUT[[c for c in FUT if c in sel]]
+    return PAS, FUT
+
+
 def rasgos(y, cal, h, ctx=None):
     """Entradas para predecir t desde el origen o = t - h. Lo que no es calendario ni conocido por adelantado
     sale de <= o. ctx = (PAS, FUT) de contexto(), o None."""
@@ -247,7 +272,7 @@ class Modelo:
     nombre = ""
     def __init__(self, y, cal):
         self.y, self.cal = y, cal
-        self.ctx = contexto(cal.index) if EXP["contexto"] else None
+        self.ctx = contexto_exp(cal.index) if EXP["contexto"] else None
     def ajustar(self, o): ...
     def predecir(self, o): ...          # -> array (H, len(QL)) de cuantiles del conteo
 
@@ -293,6 +318,13 @@ class Control(_Directo):
         return [(float(self.predecir_h(self.m[h], self.fila(h, o))[4]), self.m[h][2]) for h in range(1, H + 1)]
 
 
+class ControlRapido(Control):
+    """Segunda vara (fila control_rapido): calendario + nivel de 28 dias + desvio de la ultima semana. Sigue los
+    escalones de la red en pocos dias, asi que 'sube' contra este control mide anticipar el dia, no seguir el nivel."""
+    nombre = "control_rapido"
+    columnas = ["dow_", "es_", "nivel", "mem_semana"]
+
+
 class Ingenuo(Modelo):
     """Base 1: el mismo dia de la semana anterior, con la dispersion historica de ese salto."""
     nombre = "ingenuo"
@@ -324,7 +356,8 @@ class LightGBM(_Directo):
     """Arboles con refuerzo (gradient boosting), un modelo por cuantil. Capta interacciones."""
     nombre = "lightgbm"
     PARAM = dict(n_estimators=300, learning_rate=0.03, num_leaves=15, min_child_samples=30,
-                 subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1)
+                 subsample=0.8, subsample_freq=1, colsample_bytree=0.8, verbose=-1,
+                 n_jobs=2)                                     # 2 hilos: con varias colas en paralelo, mas hilos se estorban
     def ajustar_h(self, X, yy):
         import lightgbm as lgb
         return [lgb.LGBMRegressor(objective="quantile", alpha=q, **self.PARAM).fit(X, np.log(yy)) for q in QL]
@@ -402,6 +435,7 @@ class Chronos2(Modelo):
     def ajustar(self, o):
         if Chronos2._pipe is None:
             from chronos import Chronos2Pipeline
+            import torch; torch.set_num_threads(int(os.environ.get("OMP_NUM_THREADS", "2")))
             Chronos2._pipe = Chronos2Pipeline.from_pretrained("amazon/chronos-2", device_map="cpu")
     def lote(self, origenes, n=H, pasado_tipico=False):
         """Chronos no se entrena: se predicen todos los origenes en lotes. Con contexto, lo conocido por
@@ -463,9 +497,9 @@ def rodar(nombre, y, cal, avisar=print, cada=1):
     return pd.DataFrame(filas)
 
 
-def umbrales(y, cal):
+def umbrales(y, cal, clase=None):
     """Para cada (origen, h): lo que anuncia el control (mediana) y su desviacion. Define 'pico' en operacion."""
-    C = Control(y, cal); filas = []
+    C = (clase or Control)(y, cal); filas = []
     for i, o in enumerate(origenes()):
         if i % REENTRENO == 0: C.ajustar(o)
         for h, (c, sd) in enumerate(C.centro_y_sd(o), 1):
@@ -483,7 +517,7 @@ def anio_a_ciegas(nombre, y, cal):
         Q = np.vstack([y[t - pd.Timedelta(weeks=52)] * np.exp(salto) for t in fechas])
     elif nombre == "regresion_anual":                                # calendario + estacion + eventos + nivel del origen
         X = calendario(cal.index, cal)
-        if EXP["contexto"]: X = X.join(contexto(cal.index)[1])
+        if EXP["contexto"]: X = X.join(contexto_exp(cal.index)[1])
         ly = np.log(y).reindex(X.index)
         X["nivel"] = ly.rolling(28, min_periods=20).mean().shift(1)
         Xtr = X.loc[:o]; ok = Xtr.notna().all(axis=1) & ly.loc[:o].notna()
@@ -539,14 +573,14 @@ def metricas(P, U):
     return P, P.groupby("modelo").apply(tabla)
 
 
-def leer(modelos=None, exp="e0", anio=False):
+def leer(modelos=None, exp="e0", anio=False, vara="calendario"):
     """Predicciones de un experimento. Los umbrales de 'sube' y 'pico' son siempre los del control de E0,
     para que todos los experimentos se midan contra la misma vara."""
     car = EXPERIMENTOS[exp]["carpeta"] / ("anio" if anio else "")
     fs = sorted(car.glob("*.parquet"))
     fs = [f for f in fs if not f.stem.startswith("_") and (modelos is None or f.stem in modelos)]
     P = pd.concat([pd.read_parquet(f) for f in fs]).assign(exp=exp)
-    return P, pd.read_parquet(SALIDA / "_umbrales.parquet")
+    return P, pd.read_parquet(SALIDA / ("_umbrales.parquet" if vara == "calendario" else "_umbrales_rapido.parquet"))
 
 
 if __name__ == "__main__":
@@ -561,6 +595,8 @@ if __name__ == "__main__":
     y, cal = cargar()
     if a.exp == "e0" and not a.anio and not (SALIDA / "_umbrales.parquet").exists():
         umbrales(y, cal).to_parquet(SALIDA / "_umbrales.parquet")
+    if a.exp == "e0" and not a.anio and not (SALIDA / "_umbrales_rapido.parquet").exists():
+        umbrales(y, cal, ControlRapido).to_parquet(SALIDA / "_umbrales_rapido.parquet")
     for m in a.modelos:
         t = time.time(); print(f"{a.exp} {m}{' (ano a ciegas)' if a.anio else ''}...", flush=True)
         try:

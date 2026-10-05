@@ -193,7 +193,7 @@ md(r"""
 """)
 code(r"""
 tablas = []
-for e in ["e0", "e1", "e2"]:
+for e in ["e0", "e1", "e2", "e3"]:
     P, U = leer(e)
     P2, T = pr.metricas(P, U)
     tablas.append(T.assign(exp=e).reset_index())
@@ -206,9 +206,10 @@ display(tab.round(1))
 fig, axes = plt.subplots(1, 3, figsize=(16, 4.2), sharey=True)
 mods = [m for m in ["sarimax", "glm_binneg", "chronos2_cal", "lightgbm", "prophet"] if m in set(R.modelo)]
 for ax, (c, t) in zip(axes, [("acierta sube/baja %", "Acierta si sube o baja (%)"), ("BSS sube %", "Mejora de la probabilidad (BSS, %)"), ("cob80 %", "Cobertura del rango del 80 % (%)")]):
-    for j, e in enumerate(["e0", "e1", "e2"]):
+    for j, e in enumerate(["e0", "e1", "e2", "e3"]):
         v = R[R.exp == e].set_index("modelo").reindex(mods)[c]
-        ax.barh(np.arange(len(mods)) + (j - 1) * .26, v.values, height=.24, color=[MUDO, AZUL, NARANJA][j], label={"e0": "E0: 2022-24, sin contexto", "e1": "E1: 2020-25, sin contexto", "e2": "E2: 2020-25 + contexto"}[e])
+        ax.barh(np.arange(len(mods)) + (j - 1.5) * .2, v.values, height=.19, color=[MUDO, AZUL, NARANJA, VERDE][j],
+                label={"e0": "E0: 2022-24, sin contexto", "e1": "E1: 2020-25, sin contexto", "e2": "E2: + las 49 externas", "e3": "E3: + 8 externas elegidas"}[e])
     ax.set_title(t, fontsize=10)
     base = R[(R.exp == "e0") & (R.modelo == "control")][c].iloc[0]
     ax.axvline(base, color=TINTA, lw=1, ls="--")
@@ -231,7 +232,7 @@ P7, U7 = pr.leer(exp="e2")
 cada7 = sorted(P7[P7.modelo.str.endswith("_cada7")].origen.unique())
 if cada7:
     partes = [P7[P7.modelo.str.endswith("_cada7")].assign(modelo=lambda d: d.modelo + " · e2")]
-    for e in ["e0", "e1", "e2"]:
+    for e in ["e0", "e1", "e2", "e3"]:
         P, _ = leer(e); partes.append(P[P.origen.isin(cada7)].assign(modelo=lambda d, e=e: d.modelo + " · " + e))
     _, T7 = pr.metricas(pd.concat(partes), U7)
     display(T7[CRIT].sort_values("BSS sube %", ascending=False).round(1))
@@ -241,13 +242,54 @@ else:
 lec("p1_chronos")
 
 md(r"""
-## 5.3 ¿Se puede creer la probabilidad? Calibración del mejor de cada familia
+## 5.3 El jerárquico: Nueva EPS y el resto por separado
+
+Nueva EPS (58 % del triage) salta a escalones que el resto no tiene. Se predice cada parte con el mismo
+modelo y las entradas de E1, y se arma el total de dos formas, preregistradas (filas `jerarquico` y
+`jerarquico_correlado` de `variables.csv`):
+- **suma de cuantiles:** supone que las dos partes se mueven siempre juntas;
+- **cópula:** usa la correlación real entre las dos, medida en enero de 2026 y congelada.
+""")
+code(r"""
+from scipy.stats import spearmanr, norm
+CORTE = pd.Timestamp("2026-01-28")
+def jerarquico(modelo, metodo):
+    a, _ = pr.leer([modelo], exp="j_ne"); b, _ = pr.leer([modelo], exp="j_resto")
+    m = a.merge(b, on=["origen", "h", "fecha"], suffixes=("_ne", "_re"))
+    c0 = m[(m.origen < CORTE) & (m.h == 1)].dropna(subset=["real_ne", "real_re"])
+    rho = spearmanr(np.log(c0.real_ne / c0.q50_ne), np.log(c0.real_re / c0.q50_re))[0]
+    out = m[["origen", "h", "fecha"]].copy(); out["modelo"] = f"{NOMBRE[modelo]} · jerárquico ({metodo})"
+    if metodo == "suma":
+        for c in pr.QCOL: out[c] = m[c + "_ne"] + m[c + "_re"]
+    else:
+        u = norm.cdf(np.random.default_rng(0).multivariate_normal([0, 0], [[1, rho], [rho, 1]], size=4000))
+        Qa, Qb = m[[c + "_ne" for c in pr.QCOL]].values, m[[c + "_re" for c in pr.QCOL]].values
+        tot = np.array([np.quantile(np.interp(u[:, 0], pr.QL, x) + np.interp(u[:, 1], pr.QL, z), pr.QL) for x, z in zip(Qa, Qb)])
+        for j, c in enumerate(pr.QCOL): out[c] = tot[:, j]
+    return out, rho
+P1, U1 = leer("e1"); real = P1[["fecha", "real"]].drop_duplicates("fecha")
+lista = []
+for mod in ["sarimax", "glm_binneg"]:
+    for metodo in ["suma", "cópula"]:
+        o, rho = jerarquico(mod, metodo); lista.append(o.merge(real, on="fecha"))
+    lista.append(P1[P1.modelo == mod].assign(modelo=NOMBRE[mod] + " · sobre el total"))
+    print(f"{NOMBRE[mod]}: correlación de Spearman entre Nueva EPS y el resto, en enero = {rho:.2f}")
+_, TJ = pr.metricas(pd.concat(lista), U1)
+display(TJ[CRIT].sort_values("BSS sube %", ascending=False).round(1))
+a, _ = pr.leer(["sarimax"], exp="j_ne"); a = a[a.h == 1]
+print("Nueva EPS en 2026: media real por mes y predicción de SARIMAX a 1 día")
+display(a.groupby(a.fecha.dt.month)[["real", "q50"]].mean().round(0).T)
+""")
+lec("p1_jerarquico")
+
+md(r"""
+## 5.4 ¿Se puede creer la probabilidad? Calibración del mejor de cada familia
 
 Se agrupan los días por la probabilidad de «sube» que dio el modelo, y se mira cuántas veces subió
 de verdad. Un modelo calibrado cae sobre la diagonal.
 """)
 code(r"""
-P, U = leer("e2"); P2, T2 = pr.metricas(P, U)
+P, U = leer("e1"); P2, T2 = pr.metricas(P, U)
 fig, ax = plt.subplots(figsize=(6.5, 5.5)); ax.plot([0, 1], [0, 1], color=MUDO, ls="--", lw=1)
 bins = np.linspace(0, 1, 11)
 for m in T2.sort_values("BSS sube %", ascending=False).index[:4]:
@@ -255,19 +297,19 @@ for m in T2.sort_values("BSS sube %", ascending=False).index[:4]:
     g = d.groupby(pd.cut(d.p_sobre, bins)).agg(p=("p_sobre", "mean"), f=("sobre", "mean"), n=("sobre", "size")).query("n >= 25")
     ax.plot(g.p, g.f, "-o", color=color(m), lw=1.8, ms=5, label=NOMBRE.get(m, m))
 ax.set_xlabel("probabilidad de «sube» que dio el modelo"); ax.set_ylabel("frecuencia con que subió")
-ax.set_title("Calibración en 2026 (E2)", fontsize=10); ax.legend(fontsize=8); ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+ax.set_title("Calibración en 2026 (E1: 2020-2025)", fontsize=10); ax.legend(fontsize=8); ax.set_xlim(0, 1); ax.set_ylim(0, 1)
 plt.tight_layout(); plt.show()
 """)
 lec("p1_calibracion")
 
 md(r"""
-## 5.4 Los picos de 2026: ¿se vieron venir la víspera?
+## 5.5 Los picos de 2026: ¿se vieron venir la víspera?
 """)
 code(r"""
 mejor = T2.sort_values("BSS sube %", ascending=False).index[0]
 d = P2[(P2.modelo == mejor) & (P2.h == 1)].copy()
 d["día"] = d.fecha.dt.dayofweek.map(dict(enumerate(SEM)))
-print(f"Modelo: {NOMBRE.get(mejor, mejor)} (E2), a 1 día")
+print(f"Modelo: {NOMBRE.get(mejor, mejor)} (E1: 2020-2025), a 1 día")
 top = d.nlargest(12, "d_real")[["fecha", "día", "real", "esperado_cal", "q50", "q10", "q90", "p_sobre", "p_pico", "pico"]]
 display(top.rename(columns={"esperado_cal": "anunciaba el calendario", "q50": "predijo", "p_sobre": "P(sube)", "p_pico": "P(pico)"}).round(2))
 avisos = pd.DataFrame([{"avisar si P(pico) ≥": f"{u:.0%}", "avisos": int((d.p_pico >= u).sum()),
@@ -398,7 +440,7 @@ llm = PL[PL.modelo.str.startswith("llm")]
 if len(llm):
     ors_llm = llm.origen.unique()
     comp = []
-    for e in ["e0", "e1", "e2"]:
+    for e in ["e0", "e1", "e2", "e3"]:
         P, _ = leer(e); comp.append(P[P.origen.isin(ors_llm)].assign(modelo=lambda d, e=e: d.modelo + " · " + e))
     comp.append(llm)
     CP, TL = pr.metricas(pd.concat(comp), UL)

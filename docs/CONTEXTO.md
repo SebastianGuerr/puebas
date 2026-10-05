@@ -14,6 +14,234 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-02 (noche) — El propietario aprueba: vara justa (control rápido) y árboles afinados
+
+**Qué se decidió.** El propietario aprobó las dos propuestas. Quedan preregistradas antes de correr nada
+(filas `control_rapido` y `arboles_afinados` de `variables.csv`):
+1. **Control rápido**, como segunda vara.
+   - Qué es: calendario + nivel de 28 días + desvío de la última semana.
+   - **Por qué:** el control de 28 días regala acierto tras cada escalón de Nueva EPS.
+   - Cómo se reporta: por separado, «seguir el nivel» y «anticipar el día».
+2. **Árboles afinados** (XGBoost, GradientBoosting, LightGBM), en tres etapas que no se mezclan:
+   - afinar con 2024;
+   - calibrar los rangos con los errores fuera de muestra de 2025;
+   - probar en 2026.
+   - **Por qué:** LazyPredict mostró que los ensambles de árboles son la única familia con 58-60 % de
+     acierto en los meses estables; con parámetros de fábrica se sobreajustan (XGBoost, 62,6 %), y LightGBM
+     con cuantiles se sobreconfía (cobertura del 80 % de 71 %).
+   - **Calibración:** se toman los cuantiles de errores reales fuera de muestra de 2025, en lugar de
+     cuantiles aprendidos por el árbol. Así el rango queda honesto por construcción.
+
+**Resultado de la vara justa** (control rápido; `_umbrales_rapido.parquet`; 2026):
+- **El sesgo tras los escalones se reduce a la mitad:**
+  - marzo, de +10,9 % a +6,0 %;
+  - julio, de −7,8 % a −3,7 %;
+  - septiembre, de +11,7 % a +4,5 %.
+
+  No desaparece: el salto de Nueva EPS es de un día para otro.
+- **Acierto real en «anticipar el día»** (acierta sube/baja; BSS sube):
+
+  | Modelo | Todo 2026 | Abril-junio |
+  |---|---|---|
+  | SARIMAX E1 | **60,5 %; +8,1** (R² del desvío 12,7 %) | 54,2 %; +2,2 |
+  | SARIMAX E3 | 59,5 %; +5,9 | — |
+  | Chronos E1 | 59,3 %; +1,2 | — |
+  | Regresión E1 | 58,1 %; +3,2 | — |
+  | **LightGBM E1** | 61,1 %; +1,1 | **67,2 %; +11,9** |
+  | LightGBM E0 | — | 64,5 %; +11,2 |
+
+- **La cifra honesta que se reporta es ~60 %**, no 65-70 %. LightGBM tiene la señal más clara en los
+  meses estables, pero la pierde por mala calibración en el resto del año. Eso justifica afinarlo y
+  calibrarlo.
+
+---
+
+## 2026-10-02 (tarde) — LazyPredict: barrido de ~40 regresores, pedido por el propietario
+
+**Qué es.** LazyPredict ajusta de una vez los regresores de scikit-learn, más XGBoost y LightGBM, con sus
+parámetros por defecto. Sirve para **explorar qué técnicas merecen afinarse**, no para elegir el modelo
+final: sin afinar, da solo un pronóstico puntual y no tiene origen rodante.
+
+**Diseño, fijado antes de correrlo:**
+- **Partición temporal, nunca aleatoria:** entrena hasta el 2025-12-31 (desde 2020, con la COVID marcada)
+  y prueba en 2026.
+- **El modelo queda congelado el 31-12** y no se reentrena. Eso lo pone en desventaja frente a
+  SARIMAX y los demás, que se reentrenan cada 7 días, y se declara así.
+- **Entradas:**
+  - las de E1: calendario, estación, nivel y memoria, a 1 día;
+  - las de E3: E1 más las 8 externas.
+- **Objetivo:** log del triage.
+- **Métricas:**
+  - las de LazyPredict (R², RMSE);
+  - las del cuaderno 15: MAPE y acierto en si sube o baja frente al control de E0;
+  - todas en 2026 completo **y en abril-junio** (meses sin escalones de Nueva EPS).
+
+Instalados `lazypredict 0.3.0` (sin tocar las demás librerías) y `xgboost 3.2.0`.
+
+**Resultado** (42 modelos por juego de entradas, 263 días de 2026; `salidas/pronostico/lazypredict_e1|e3.csv`):
+
+| | Acierta sube/baja | Acierta abril-junio | MAPE |
+|---|---|---|---|
+| **E1, mejor: GradientBoosting** | **67,3 %** | **60,4 %** | 9,3 % |
+| E1, LightGBM | 66,9 % | 58,2 % | 9,2 % |
+| E1, familia lineal (Ridge, Lasso, ElasticNet…) | 66,2 % | 53,9 % | 8,7 % |
+| E1, RandomForest | 63,8 % | 60,4 % | — |
+| E1, XGBoost (parámetros por defecto, se sobreajusta) | 62,6 % | 50,5 % | 9,8 % |
+| E3 (+8 externas), mejor: ElasticNetCV | 63,0 % | 55,0 % | — |
+| E3, boosting | 57-60 % | — | — |
+| Últimos (GaussianProcess, KernelRidge, KNN, MLP) | ≈ 50 % | — | 15-99 % |
+
+Lo que se lee:
+- **Congelados el 31-12, los mejores empatan con SARIMAX reentrenado** (65,8 %, 52,7 % en abril-junio a 1
+  día, con la misma vara).
+- **En E3 todos empeoran:** el contexto externo vuelve a restar.
+- **Señal que se repite:** en los meses estables, los **ensambles de árboles** (GradientBoosting,
+  LightGBM, RandomForest, HistGradientBoosting) dan **58-60 %**, contra 53-54 % de los lineales y de
+  SARIMAX. Son implementaciones distintas que coinciden, así que es candidata a señal real: interacciones
+  que lo lineal no ve.
+- **Límite:** con 91 días en abril-junio, la incertidumbre del acierto es de ±5 puntos. Es una pista,
+  no una prueba.
+- **Referencia, misma vara a 1 día:** SARIMAX E3, reentrenado, da 60,4 % en abril-junio, contra 52,7 % de
+  SARIMAX E1. También una pista, con la misma reserva.
+
+---
+
+## 2026-10-02 (tarde) — El 65-70 % de acierto es casi todo seguir el nivel de Nueva EPS; en meses estables, nadie le gana al calendario
+
+**SARIMAX E3 (8 externas) terminó:** 65,0 %; BSS +16,3; R² del desvío 25,3 %. Frente a SARIMAX E1 (66,8 %;
++18,8) es **peor**, y la diferencia en la probabilidad es significativa:
+- Brier de «sube», E3 − E1 = +0,0063, Diebold-Mariano con HAC, p = 0,002;
+- en la pérdida de cuantiles, p = 0,19.
+
+**Ninguna familia mejora con contexto externo sobre el total.** Ni con 8 variables ni con 49.
+
+**El hallazgo de método, medido al revisar el acierto por mes** (SARIMAX E1, 2026):
+
+| | ene | feb | mar | abr | may | jun | jul | ago | sep |
+|---|---|---|---|---|---|---|---|---|---|
+| % de días que «suben» | 24 | 40 | **90** | 40 | 59 | 47 | **16** | 37 | **91** |
+| Sesgo del control (real / anunciado − 1) | −6,7 | −3,6 | **+12,6** | −2,0 | +2,3 | −1,4 | **−10,5** | −7,1 | **+12,0** |
+| Acierto de SARIMAX | 67 | 62 | 83 | 57 | 47 | 47 | 79 | 78 | 91 |
+| Acierto de «decir siempre lo más frecuente» | 76 | 60 | 90 | 60 | 59 | 53 | 84 | 63 | 91 |
+
+- **Por qué pasa:** el control de calendario usa el nivel de los últimos 28 días. Cuando Nueva EPS salta
+  (marzo, julio, septiembre), el control queda corrido un 10-13 % durante semanas. Casi todos los días
+  «suben» o «bajan», y cualquier modelo que se adapte más rápido «acierta».
+- **El acierto global de 65-70 % mide sobre todo eso:** seguir el nivel de la red más rápido que el
+  control. No mide anticipar el día.
+- **En los meses estables (abril-junio, 637 predicciones), nadie le gana al calendario:**
+  - SARIMAX E1, 50,2 % de acierto y BSS +0,1;
+  - regresión, 50 %;
+  - Chronos, 52-56 % con BSS negativo;
+  - **solo LightGBM** (E0/E1) da 63-64 % y BSS +7,4 a +7,7, aunque su R² del desvío y su BSS de pico son
+    negativos. Es una señal débil, a confirmar.
+
+**Qué cambia:**
+1. **Hay que separar dos habilidades al reportar.**
+   - **(a) Seguir el nivel:** la red de salud y los escalones. Ahí SARIMAX es claramente mejor que el
+     control.
+   - **(b) Anticipar el día dentro de un nivel estable:** los picos. Ahí hoy nadie lo logra.
+
+   El propietario pidió revisar que el criterio de medición fuera el correcto. Este es el defecto que
+   tenía.
+2. **El control de referencia debe seguir el nivel tan rápido como sea legítimo,** por ejemplo con 7
+   días. Si no, el contexto y los modelos se llevan el crédito de los escalones. Propuesta pendiente de
+   preregistrar.
+3. **Coincide con el cuaderno 14:** a nivel día, ninguna fuente externa anticipa los estados en periodos
+   estables. Coincide también con la literatura: efectos de 2-10 %, dentro de un ruido del 10 %.
+
+---
+
+## 2026-10-02 — Depuración del contexto (E3) y modelo jerárquico (J): reglas, selección y arranque
+
+**Qué se decidió.** Hay dos experimentos más, con la regla escrita en `variables.csv` (filas
+`contexto_depurado` y `jerarquico`) antes de aplicarla:
+- **E3, contexto depurado.**
+  - **Por qué:** en E2, las 49 variables externas sobreajustaban a la regresión (de +14,5 a +6,3).
+  - **Cómo se eligen:** con un LightGBM entrenado **solo hasta el 2025-12-31**. El ranking de ayer
+    venía de un modelo entrenado hasta septiembre de 2026, y elegir con él para evaluar 2026 habría
+    sido una fuga de información.
+  - **Qué sale:** 8 variables.
+
+    | Familia | Variables |
+    |---|---|
+    | Salud | IRA total, consultas por toda causa |
+    | Clima | cambio de la radiación, temperatura de 28 días |
+    | Social | lesiones personales, violencia intrafamiliar |
+    | Red | peso y cambio de Nueva EPS |
+
+  - **Qué queda fuera:** catástrofes (0 % de la ganancia), ENSO (1,4 %) y eventos (0,5 %).
+  - **Coincide con lo explorado antes** (cuadernos 07, 11, 12 y 13), sin haberlo forzado.
+- **J, jerárquico.**
+  - Nueva EPS y el resto se predicen por separado, con las entradas de E1, y se suman los cuantiles.
+  - **Dato que lo motiva**, medido hoy: entre 2025 y 2026 Nueva EPS baja de 115,8 a 72,2 triages al
+    día y **el resto sube de 83,8 a 100,4**. Parte de los pacientes se movió de aseguradora. Un
+    modelo del total solo ve la suma.
+
+**Resultados parciales del 02-10, en 2026 con 257 orígenes** (acierta sube/baja; BSS sube):
+
+| Modelo | E0 | E1 | E3 |
+|---|---|---|---|
+| SARIMAX | 65,7 %; +17,2 | **66,8 %; +18,8** (R² del desvío 27,1 %, cobertura del 80 %: 85,4 %) | corriendo |
+| Chronos-2 + calendario | 62,6 %; +9,6 | 65,6 %; +12,1 | 65,4 %; +13,3 |
+| Regresión | 64,3 %; +9,1 | 65,0 %; +14,5 | 62,5 %; +11,0 |
+
+**Corrección de Claude, el mismo día.** Le había dicho al propietario que las variables externas mejoraban
+a Chronos un 40 % (de +9,6 a +13,3). Con E1 a la vista, **casi todo es por tener más años** (+2,5). Las 8
+externas suman +1,2, que no se distingue del ruido. El patrón vale para todos los modelos medidos hasta
+hoy:
+- **la historia larga (2020-2025) es lo que más mejora;**
+- **el contexto externo aporta poco al total, o estorba si entra completo.**
+
+Falta ver SARIMAX y LightGBM con contexto, y el jerárquico.
+
+**Más resultados del 02-10 (2026, 257 orígenes):**
+- **LightGBM:** E1 67,8 %; +15,9. **E3 (8 externas): 64,9 %; +8,5.** El contexto lo empeora, como a la
+  regresión: sobreajuste.
+- **Jerárquico** (Nueva EPS + resto, entradas de E1):
+
+  | Modelo | Combinación | Acierta | BSS sube | R² desvío | Cobertura 80 % | MAPE | Frente al total |
+  |---|---|---|---|---|---|---|---|
+  | SARIMAX | suma de cuantiles | 67,9 % | +17,1 | 27,3 % | 92,9 % | 8,9 % | 66,8 %; +18,8 |
+  | SARIMAX | cópula | 67,6 % | +18,1 | 27,9 % | 88,8 % | 8,9 % | 66,8 %; +18,8 |
+  | Regresión | cópula | 66,6 % | +14,0 | — | — | — | 65,0 %; +14,5 |
+
+  - La cópula usa ρ = 0,33-0,35, medido en enero de 2026 (fila `jerarquico_correlado`).
+  - **Lectura:** separar las aseguradoras mejora la dirección y el número en menos de 1 punto, y ensancha
+    el rango. **SARIMAX jerárquico y SARIMAX sobre el total quedan empatados**, porque la incertidumbre de
+    un acierto con 257 días es de ±3 puntos.
+  - El valor del jerárquico es **explicativo**: separa cuánto de la predicción es Nueva EPS.
+- **Nueva EPS en 2026 salta a escalones:**
+  - ~55 por día en enero y febrero;
+  - **~92 de marzo a junio**;
+  - ~52 en julio y agosto;
+  - 68 en septiembre.
+
+  SARIMAX los sigue en pocos días, pero no los anticipa. Es la variable institucional que falta
+  (pendiente #11).
+
+- **LightGBM E2 (49 externas): 62,6 %; +6,4**, peor que E3 (+8,5) y que E1 (+15,9). En LightGBM, cuantas más
+  externas, peor.
+- **Decisión: SARIMAX E2 queda fuera de esta ronda.**
+  - **Coste:** su primer reentrenamiento con 61 exógenas tardó 35 min. Con 37 reentrenamientos serían
+    ~21 h.
+  - **Evidencia:** las tres familias que ya probaron las 49 variables (regresión, LightGBM, Prophet)
+    empeoran o no mejoran con ellas.
+  - **Sustituto:** la prueba justa del contexto en SARIMAX es E3.
+  - Se puede correr de noche o en el equipo de casa con `--exp e2 --modelos sarimax` si hace falta.
+
+**Trampa operativa:** con cuatro colas, Chronos (PyTorch) y SARIMAX (álgebra lineal) acaparan los
+núcleos, y LightGBM queda con 0,1-0,2 núcleos. Al primer reentrenamiento le tomó 49 min. Las corridas
+nuevas deben limitar los hilos: `OMP_NUM_THREADS`, `MKL_NUM_THREADS` y `torch.set_num_threads`.
+
+**Estado.** Corren cuatro colas independientes:
+- **E2:** LightGBM y SARIMAX;
+- **E1:** SARIMAX y Chronos;
+- **E3:** regresión, Chronos, LightGBM y SARIMAX;
+- **J:** regresión y SARIMAX, en Nueva EPS y en el resto.
+
+---
+
 ## 2026-10-01 (noche) — Cuaderno 15, predicciones tempranas: resultados preliminares y corte de la sesión
 
 `notebooks/15_predicciones_tempranas.ipynb`, 38 celdas, 0 errores. Se generó con

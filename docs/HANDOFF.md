@@ -27,16 +27,40 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 
 ---
 
-## PAUSADO (2026-10-01, noche): el modelo de predicción, cuaderno 15 «predicciones tempranas»
+## EN CURSO (2026-10-02, tarde): el modelo de predicción, cuaderno 15 «predicciones tempranas»
 
-**Dónde quedó.** El propietario cortó la sesión. Las corridas se detuvieron sin pérdida, porque
-cada modelo escribe su archivo al terminar. El cuaderno
-`notebooks/15_predicciones_tempranas.ipynb` está ejecutado con lo que hay (0 errores) y **es
-preliminar**.
+**Las corridas terminaron (02-10), salvo SARIMAX E2**, que se descartó: ~21 h de cómputo y la evidencia
+de que 49 variables sobreajustan. Resultados en `CONTEXTO.md`, entradas del 02-10.
 
-- Resultados y errores corregidos: `CONTEXTO.md`, entrada del 2026-10-01 (noche).
-- Decisiones del propietario: entradas «Arranca el modelo de predicción» (30-09) y «Contexto
-  completo, todos los años y prueba sobre 2026» (01-10).
+- **Mejor modelo:** SARIMAX sobre el total con triage 2020-2025 + calendario (E1). Acierta sube/baja el
+  66,8 %, BSS +18,8 y cobertura del 80 % de 85 %.
+  - El jerárquico (Nueva EPS + resto) le empata.
+  - **Ningún modelo mejora con contexto externo** sobre el total. SARIMAX E3 es significativamente peor
+    en la probabilidad (p = 0,002).
+- **HALLAZGO QUE CAMBIA LA LECTURA:** el 65-70 % de acierto viene casi todo de **seguir los escalones de
+  Nueva EPS** más rápido que el control, que usa un nivel de 28 días. **En los meses estables
+  (abril-junio), nadie le gana al calendario** (≈50 %), salvo una señal débil de LightGBM (63 %, BSS
+  +7,5).
+- **APROBADO por el propietario (02-10, noche) y en marcha:**
+  1. **Vara justa — HECHA.**
+     - El control rápido (`ControlRapido` en `pronostico.py`) escribe `_umbrales_rapido.parquet`; se lee
+       con `pr.leer(..., vara="rapido")`.
+     - **Cifra honesta de «anticipar el día»: ~60 %** (SARIMAX E1: 60,5 %, BSS +8,1).
+     - **LightGBM E1, en abril-junio: 67 %, BSS +11,9.** Es la mejor señal en los meses estables.
+  2. **Árboles afinados — CORRIENDO.**
+     - `notebooks/arboles.py --exp e1 --familias <xgboost|gbr|lightgbm>`: tres procesos, logs
+       `c14/arb_<familia>.log`.
+     - Afina con 2024, calibra los rangos con 2025 y prueba en 2026. Escribe
+       `salidas/pronostico/e1/<familia>_afinado.parquet`.
+     - **Después:** la mejor familia con `--exp e3`.
+- Además: **LazyPredict**, con 42 regresores (`notebooks/lazypredict_barrido.py`, resultados en
+  `salidas/pronostico/lazypredict_e1|e3.csv`). Los ensambles de árboles quedaron arriba, con 58-60 % en los
+  meses estables.
+- **Falta:**
+  - meter E3, J y el hallazgo en el cuaderno 15: generador `notebooks/construir/15_predicciones_tempranas.py`,
+    que ya trae las secciones de E3 y J; las lecturas en `15_lecturas.json` están viejas;
+  - commit en una rama (`main` tiene sin confirmar `pronostico.py`, `variables.csv`, `CONTEXTO.md` y el
+    generador).
 
 **Qué hay.** El motor es `notebooks/pronostico.py`:
 - experimentos `--exp e0|e1|e2`, año a ciegas `--anio` y orígenes espaciados `--cada N`;
