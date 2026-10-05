@@ -14,6 +14,29 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 (noche) — Cuaderno 21: jerárquico por edad; el contexto actúa hasta 3 veces más fuerte en las partes
+
+**Particiones posibles** (fila `jerarquico_tipo`):
+- por edad (5 bandas), 100 % desde 2020;
+- obstétrico frente al resto (12,5 %), 100 %;
+- los diagnósticos cubren el 41 %: son ingresos, y **no sirven como partición**;
+- **el cruce edad × obstétrico no existe:** haría falta una extracción del propietario.
+
+**Resultados** (2022-03 a 2024-12; 65 pruebas por parte; BH):
+- **Estación:** 0-4 años, 87 puntos de amplitud; 5-14, 64; adultos, 15-20; obstétrico, 7; total, 22.
+- **Efecto máximo que sobrevive:** 7,7 % en 0-4, 6,9 % en 5-14, 4,6 % en 65+, contra **2,1 % en el total**.
+- **Ruido semanal:** 26 % en 0-4 y 23 % en 5-14, contra 6 % en el total.
+- **Pruebas que sobreviven:** 15-44, 12; 45-64, 11; 65+, 7; 0-4 y 5-14, 1 cada una; **sumadas, 32 contra 11 del
+  total.**
+- **Cada parte tiene su contexto:**
+  - **mayores, la lluvia reciente**: +4,6 %, q < 0,001;
+  - **adultos, las rachas secas, la diarrea de la ciudad y El Niño**: 2-3,5 %;
+  - **niños, el clima de la semana y El Niño.**
+
+**Decisión: el cuaderno 22 usa la partición por bandas de edad** (regla preregistrada).
+
+---
+
 ## 2026-10-05 (noche) — Cuaderno 20: regímenes como estados; El Niño es la hipótesis prospectiva
 
 **Qué se hizo** (fila `regimenes`).
