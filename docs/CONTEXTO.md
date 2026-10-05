@@ -14,6 +14,37 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 (noche) — Cuaderno 20: regímenes como estados; El Niño es la hipótesis prospectiva
+
+**Qué se hizo** (fila `regimenes`).
+- Siete estados diarios, conocidos al predecir, en `notebooks/indices.py`:
+  - El Niño y La Niña (ONI de 2 meses antes);
+  - COVID fuerte y parcial;
+  - paro nacional 2021;
+  - sismo fuerte (M ≥ 4,5 a menos de 150 km; catálogo USGS en `calendarios/sismos_usgs.csv`, con
+    `calendarios/fenomenos/sismos_usgs.py`);
+  - desastre activo;
+  - crisis de la red.
+- **Episodios 2012-2024:** El Niño 4, La Niña 5, sismos 40, desastres 9, crisis de la red 4. COVID y paro, 1 cada
+  uno, así que **entran como marcas, no como predictores.**
+
+**Resultados:**
+- **La Niña sube la enfermedad de la ciudad:** violencias +0,35, salud mental +0,31 y varicela +0,38
+  desviaciones típicas, por encima de BH.
+- **Los sismos no mueven ni a la ciudad ni al hospital.** Con 40 episodios es un negativo con muestra.
+- **El Niño → triage +3,6 %** (p < 0,001), **pero es un solo episodio en la ventana del hospital** (2023-24), y
+  coincide con el año récord y con la entrada de SURA.
+  - **Puede explicar la firma del «día soleado» de 2022-2024**, que desapareció en 2025 (cuadernos 12 y 14).
+
+**Decisión: predicción prospectiva escrita hoy**, en la fila `hipotesis_el_nino_2026` de `variables.csv`.
+- **El Niño está en curso y es fuerte** (ONI JAS 2026 = +2,16).
+- **Predicción:** del 2026-10-04 al 2026-12-26, el triage real superará a la mediana de la combinación congelada
+  (que no usa ENSO) en ≥ +2 % de media.
+- **Si no lo hace, se rechaza.**
+- Se evalúa al re-extraer el triage.
+
+---
+
 ## 2026-10-05 (noche) — Cuaderno 19: seis familias de enfermedad; el clima mueve a las transmisibles, el hospital las ve diluidas
 
 **Qué se hizo** (fila `familias_enfermedad`).

@@ -151,3 +151,27 @@ def red_diaria(fin="2026-09-20"):
     for d in resoluciones_nueva_eps(): res[d:d + pd.Timedelta(days=30)] = 1
     V["resolucion_nueva_eps_30d"] = res
     return V.ffill()
+
+
+# ---------------------------------------------------------------- regimenes y fenomenos (cuaderno 20)
+def regimenes_diarios(fin="2026-09-30"):
+    """Estados que duran y se repiten, por dia, todos conocidos al predecir (fila regimenes de variables.csv)."""
+    dias = pd.date_range("2010-01-01", fin); R = pd.DataFrame(index=dias)
+    en = pd.read_csv(RAIZ / "calendarios/enso_oni.csv", parse_dates=["fecha"])
+    oni = en.set_index(en.fecha.dt.to_period("M"))["oni"]
+    R["oni"] = pd.Series(oni.reindex((dias - pd.DateOffset(months=2)).to_period("M")).values, index=dias).ffill()
+    R["el_nino"] = (R.oni >= .5).astype(float); R["la_nina"] = (R.oni <= -.5).astype(float)
+    R["covid_fuerte"] = ((dias >= "2020-03-15") & (dias <= "2020-08-31")).astype(float)
+    R["covid_parcial"] = ((dias >= "2020-09-01") & (dias <= "2022-02-28")).astype(float)
+    R["paro_nacional_2021"] = ((dias >= "2021-04-28") & (dias <= "2021-06-15")).astype(float)
+    s = pd.read_csv(RAIZ / "calendarios/sismos_usgs.csv", parse_dates=["fecha"]); fuertes = s[s.mag >= 4.5].fecha
+    R["sismo_fuerte_7d"] = 0.0
+    for d in fuertes: R.loc[d:d + pd.Timedelta(days=6), "sismo_fuerte_7d"] = 1.0
+    de = pd.read_csv(RAIZ / "calendarios/desastres_manizales_2020_2026.csv"); R["desastre_activo"] = 0.0
+    for _, r in de.dropna(subset=["fecha_inicio"]).iterrows():
+        a = pd.Timestamp(r.fecha_inicio); b = pd.Timestamp(r.fecha_fin) if pd.notna(r.fecha_fin) else a
+        R.loc[a:b, "desastre_activo"] = 1.0
+    red = red_diaria(min(fin, "2026-09-20")).reindex(dias)
+    p10 = red.peso_nueva_eps_28d.loc["2022-01-01":REF_FIN].quantile(.10)
+    R["crisis_red"] = (red.peso_nueva_eps_28d < p10).astype(float).where(red.peso_nueva_eps_28d.notna(), 0.0)
+    return R
