@@ -56,6 +56,8 @@ EXPERIMENTOS = {
                seleccion=["ext_sal_ira_total", "ext_sal_consultas_todas", "ext_cli_radiacion_cambio", "ext_cli_temp_28d",
                           "ext_soc_lesiones_personales", "ext_soc_violencia_intrafamiliar", "ext_red_nueva_peso",
                           "ext_red_nueva_cambio"]),
+    # validacion_2025: la configuracion de e1 evaluada en 2025, para ver si lo de 2026 se repite en otro ano
+    "e1_2025": dict(ini="2020-01-01", contexto=False, origenes=("2024-12-31", "2025-12-30"), carpeta=SALIDA / "e1_2025"),
     # jerarquico (fila jerarquico): Nueva EPS y el resto, cada una con las entradas de e1; el total = suma de cuantiles
     "j_ne": dict(ini="2020-01-01", contexto=False, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "j_ne", serie="nueva_eps"),
     "j_resto": dict(ini="2020-01-01", contexto=False, origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "j_resto", serie="resto"),

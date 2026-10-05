@@ -14,6 +14,76 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 (tarde) — El propietario cuestiona el entrenamiento: variables pocas, demasiado específicas y poco escalables
+
+**Lo que plantea el propietario.** Aunque la combinación predice bien 2026, las variables le parecen pocas,
+demasiado específicas y poco escalables:
+1. **EPS:** se mide solo a Nueva EPS, como si fuera la única. Falta el estado de todas las EPS de Manizales.
+2. **Clima:** quiere el contexto completo. No solo temperatura o si llovió, sino humedad, precipitación,
+   sol, **cuánto tiempo lleva haciendo sol** y las transiciones.
+3. **Salud:** no solo IRA. Al menos las **5 enfermedades más comunes**, cruzadas con tiempo, clima,
+   fiestas, vacaciones y horario escolar, para una predicción escalable.
+4. **Catástrofes y fenómenos:** solo se marcó la COVID. Faltan El Niño y La Niña, terremotos, epidemias y
+   enfermedades de vector.
+5. **«Parece que se le dieron las respuestas de 2026».** El periodo es corto y el entrenamiento demasiado
+   específico.
+
+Pide:
+- un cuaderno nuevo (16) que explique la combinación y por qué es compatible y confiable;
+- que recoja estas preocupaciones para explorar un mejor entrenamiento;
+- revisar a fondo qué se puede sacar del SIVIGILA y de otras fuentes;
+- cómo monitorear las EPS;
+- cuánto se le puede inyectar al modelo antes de sobreajustar;
+- que se le explique el método de rejilla.
+
+**Lo que se midió para responderle:**
+- **Lo que entró al modelo.**
+  - E2 tenía 49 externas: 12 de clima (temperatura media, mínima y máxima, amplitud, humedad, lluvia, radiación, viento), 9 de salud (IRA total, 0-4 y 60+, consultas, 5 eventos), 4 sociales, 2 de red, desastre y ENSO, y 20 de eventos y días especiales.
+  - E3 dejó 8. **Faltan:** duración de rachas secas o soleadas, días desde la última lluvia, transiciones, horas de sol, nubosidad; EDA en 2026; un panel de todas las EPS.
+- **EPS:** `triage_entidad` trae **301 entidades**. **SURA EPS pasó de 8 % del triage (2020) a 36 % (2026)**, mientras Nueva EPS bajó de 61 % a 42 %. Los pacientes se movieron de aseguradora, y el modelo solo veía una. El propietario tiene razón.
+- **Enfermedades de Manizales** (SIVIGILA 2022-2025):
+  - por volumen dominan la IRA (248.277 consultas) y la EDA (82.679 casos);
+  - después vienen agresiones por animales (5.900), violencia de género (5.499), intento de suicidio (2.812), intoxicaciones (2.237), morbilidad materna extrema (1.854), varicela (963) y tuberculosis (881);
+  - el dengue no aplica por la altitud.
+- **Fenómenos en la ventana 2020-2026:** ~4 episodios ENSO (La Niña 2020-21, La Niña 2021-23, El Niño 2023-24, El Niño en curso) y 17 desastres catalogados (9 deslizamientos, 4 sismos). **Con 4 episodios no se puede aprender el efecto de El Niño.** Es un límite de muestra, no de código.
+- **Muestra efectiva:** el residuo diario tiene autocorrelación de 0,35. Los 1.399 días de 2022-2025 equivalen a **~670 días independientes**.
+- **Complementariedad SARIMAX-LightGBM:** sus errores correlacionan 0,85, pero el 21 % de los días se equivocan en sentido opuesto. Además, LightGBM falla más tras el escalón de julio (12-13 % frente a 8-11 %).
+- **La preocupación de las «respuestas de 2026» tiene fundamento, aunque no por fuga de datos.**
+  - El origen rodante garantiza que cada predicción solo usó el pasado.
+  - **Pero 2026 se usó para elegir:** se compararon ~20 diseños (E0-E3, J, cópula, LazyPredict, afinados, combinaciones) y se quedó el mejor. Eso convierte a 2026 en un conjunto de validación, no de prueba.
+  - **Comprobación:** en 2025, con los modelos de E0 (2022-2024), la combinación **no gana**: 57,6 %, BSS −2,8, frente a SARIMAX con 60,1 % y +2,8. Las probabilidades apenas superan la tasa base.
+  - Falta separar si es por los años de entrenamiento o porque 2026 favoreció. Se corre la configuración de E1 sobre 2025 (fila `validacion_2025`, `--exp e1_2025`).
+
+**Resultado de `validacion_2025`** (configuración E1 entrenada desde 2020, evaluada en 2025, 365 orígenes):
+
+| Modelo | Acierta | BSS sube | Cobertura 80 % | MAPE |
+|---|---|---|---|---|
+| Combinación | **59,9 %** | **+5,9** | 78,0 % | 8,6 % |
+| SARIMAX | 58,4 % | +4,0 | 84,1 % | 8,8 % |
+| LightGBM | 59,7 % | −2,4 | 67,7 % | 9,3 % |
+
+- La combinación frente a LightGBM: Brier −20,4, IC [−29,8, −10,5], significativo.
+- La combinación frente a SARIMAX: empate (Brier −4,7, IC [−12,6, +3,3]).
+
+**Lectura:**
+- **El orden se repite en otro año:** la combinación no se eligió por suerte.
+- **La magnitud de 2026 (69,4 %; +21,1) es propia de ese año**, por sus escalones de Nueva EPS. **Expectativa
+  honesta: ~60 % de acierto y una mejora pequeña de la probabilidad (+4 a +6).**
+- **Le da la razón al propietario:** con calendario e historia el modelo sigue lo que ya pasó, pero no
+  entiende el porqué.
+
+**Decisión:** el cuaderno 16 recoge el diagnóstico y la propuesta de entrenamiento holístico:
+- panel externo de todas las EPS;
+- clima con rachas, transiciones y pronóstico;
+- 5-6 familias de enfermedades como índices;
+- regímenes en lugar de fechas;
+- jerárquico por tipo de consulta;
+- protocolo: afinar en 2020-2024, elegir con 2025, probar una vez en 2026, y la prueba prospectiva.
+
+Queda pendiente que el propietario decida por dónde empezar.
+
+---
+
 ## 2026-10-05 — ¿Sesgo hacia SARIMAX? Se prueba con datos, y el líder pasa a ser la combinación SARIMAX + LightGBM
 
 **La pregunta del propietario.** Preguntó si Claude se había «casado» con SARIMAX, porque ve que los otros

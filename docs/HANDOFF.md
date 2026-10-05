@@ -27,32 +27,37 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 
 ---
 
-## EN CURSO (2026-10-05): el modelo de predicción, cuaderno 15 «predicciones tempranas»
+## EN CURSO (2026-10-05, tarde): hacia un entrenamiento holístico, cuaderno 16
 
-**El cuaderno 15 está al día** (`notebooks/15_predicciones_tempranas.ipynb`, 50 celdas, 0 errores).
-- Generador: `notebooks/construir/15_predicciones_tempranas.py`, con las lecturas en `15_lecturas.json`.
-- Trae los experimentos E0-E3 y el jerárquico, la vara justa, las pruebas de significancia, LazyPredict y
-  los árboles afinados.
-- Rama `modelos-afinados`, sin subir a GitHub.
+**El propietario cuestiona el entrenamiento:** variables pocas, demasiado específicas y poco escalables (solo
+Nueva EPS, clima incompleto, solo IRA, sin regímenes) y la sospecha de que «se le dieron las respuestas de
+2026». Pidió un cuaderno nuevo.
 
-**Dónde está todo:**
-- **Modelo líder: combinación SARIMAX + LightGBM (E1)**, con promedio de cuantiles.
-  - 69,4 % de acierto (vara de 28 días) y **64,1 % con la vara rápida**;
-  - BSS sube +21,1; cobertura del 80 % de 80,3 %; MAPE 8,9 %.
-  - Supera a SARIMAX con significancia en los meses estables.
-  - Archivo: `salidas/pronostico/e1/comb_sarimax_lightgbm.parquet`.
-- **Por separado, SARIMAX y LightGBM empatan en dirección.** El propietario preguntó por sesgo hacia
-  SARIMAX, y la corrección está en `CONTEXTO.md`, 05-10.
-- **El contexto externo no mejora el total** en ninguna familia (E2, E3, LazyPredict).
-- Afinar los árboles con 2024 no los mejoró en 2026.
-- SARIMAX E2 quedó descartado por coste (~21 h).
+**HECHO: `notebooks/16_hacia_un_entrenamiento_holistico.ipynb`** (28 celdas, 0 errores; generador y lecturas en
+`notebooks/construir/16_*`). Trae:
+- la combinación y por qué funciona;
+- las preocupaciones medidas;
+- el inventario de fuentes (incluida una revisión web el 05-10, anotada en `calendarios/docs/FUENTES_EXTERNAS.md`);
+- cuánto contexto cabe sin sobreajustar;
+- el método de rejilla explicado;
+- una propuesta de diseño.
 
-**Siguiente, a proponer al propietario:**
-1. **El calendario institucional de Nueva EPS** (pendiente #11). Es lo que más error explica.
-2. **Probar el contexto en la serie respiratoria** del hospital (`perfil_dx_diario`, local), donde el
-   efecto es grande (cuaderno 13).
-3. **Prueba prospectiva:** congelar la combinación y compararla con datos nuevos (re-extraer el triage).
-4. Subir la rama a GitHub e integrarla en `main` cuando el propietario lo pida.
+**Hallazgos clave (en `CONTEXTO.md`, 05-10, tarde):**
+- **Validación 2025** (`--exp e1_2025`):
+  - la combinación vuelve a ser la mejor, pero con 59,9 % y BSS +5,9, frente a 69,4 % y +21,1 en 2026;
+  - **expectativa honesta: ~60 %**. El 69 % era propio de 2026.
+- **SURA EPS pasó de 8 % a 36 % del triage** (2020-2026). El modelo solo veía a Nueva EPS.
+- **~670 días independientes** y **~4 episodios ENSO**: no se aprende un fenómeno con 4 ejemplos.
+  Hay que resumirlo por regímenes y familias.
+
+**Espera al propietario:** por dónde empezar la propuesta del cuaderno 16, sección 7.
+1. **Panel externo de EPS:** afiliación mensual de MinSalud, medidas de la Supersalud, PQRD y giros de ADRES.
+   Hay que empezar a guardar ya la foto mensual de la BDUA, que no tiene histórico.
+2. **Clima completo con rachas, transiciones y pronóstico** (Open-Meteo Previous Runs, que trae horas de sol).
+3. **Familias de enfermedades como índices** y una **tarea semanal que congele el Power BI del INS**.
+4. **Jerárquico por tipo de consulta** (`perfil_dx_diario`, local).
+5. **Pendientes del propietario:** aclarar la discrepancia de Sanitas en FENIX; usuario de SISPRO (RIPS);
+   acceso a la API de Google Trends.
 
 **Qué hay.** El motor es `notebooks/pronostico.py`:
 - experimentos `--exp e0|e1|e2`, año a ciegas `--anio` y orígenes espaciados `--cada N`;

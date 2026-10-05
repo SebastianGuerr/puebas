@@ -456,3 +456,45 @@ sobre el efecto en el triage.
 agregado por estación); `google_mobility_caldas.csv`; `cifras_afiliacion_ago2026.zip`;
 `anex-GEIH-jul2026.xlsx`; `PPED-AreaMun-2018-2042_VP.xlsx`. Ninguno contiene datos personales.
 
+
+---
+
+## Actualización del 2026-10-05: revisión para el cuaderno 16 (entrenamiento holístico)
+
+Verificado en la web el 2026-10-05. Solo lo nuevo o lo que cambió desde el 2026-09-28.
+
+**Clima que se tiene de verdad al pronosticar**
+- **Open-Meteo Previous Runs API** (`previous-runs-api.open-meteo.com/v1/forecast`) da pronósticos de 1 a
+  7 días de antelación (`*_previous_day1..7`) desde el **~2024-01-16** (el 1-feb-2024 ya tiene datos).
+  - **Sí trae `sunshine_duration`** (horas de sol), aunque la documentación no lo lista.
+- La **Historical Forecast API** (pronóstico a menos de un día) tiene datos desde el **2017-01-01**, con
+  ECMWF IFS.
+- **Open-Meteo Air Quality (CAMS global):** PM2.5 y PM10 con pronóstico para Manizales desde **agosto de
+  2022**, en una celda de unos 40 km. Es la única calidad del aire usable en operación.
+- **SISAIRE web** (`sisaire.ideam.gov.co/ideam-sisaire-web/calidad_aire_estaciones.xhtml?tipo=dep&id=17`)
+  tiene datos de 2026: la estación CATÓLICA de Manizales, PM10 hasta el 2026-07-27. datos.gov.co se
+  detiene en diciembre de 2024.
+
+**EPS: todas, no solo Nueva EPS**
+- **PQRD de la Supersalud:** reportes mensuales de quejas por EPS, régimen y motivo, con tasa por cada
+  10.000 afiliados, desde enero de 2017 y unas 5 semanas de rezago. Mide barreras de acceso por EPS.
+  - La URL del reporte interactivo da 404.
+- **ADRES, analítica del giro directo** (`adres.gov.co/analitica`): giros de cada EPS a cada IPS (por
+  NIT), por municipio y mes, desde 2020. **Sin verificar que se pueda descargar.**
+- **FENIX, «Medidas Especiales»** (`fenix.supersalud.gov.co/Consultas`) lista a **Sanitas como
+  «Intervención Forzosa – En Curso»**. El Excel de medidas especiales que usa el repo dice que ya no
+  aparece. **Hay que aclarar esta discrepancia.**
+- **BDUA** (`tq4m-hmg2` y `d7a5-cnra`): foto de octubre de 2026 en Manizales, contributivo.
+  - Sura 136.899, Salud Total 90.614, Sanitas 47.486 y Nueva EPS 45.651 + 4.903.
+  - **No tiene histórico: cada mes sin guardar se pierde.**
+
+**Otras**
+- **NOAA ONI:** salió **JAS 2026 = +2,16**. El Niño es fuerte; el repo tiene hasta JJA, +1,80.
+- **datos.gov.co `4hyg-wa9d`** (SIVIGILA evento × semana × municipio) está congelado desde el
+  2024-10-17, llega hasta 2022 y no trae los colectivos 995 y 998.
+- **Cubos SISPRO/RIPS:** es la única fuente de morbilidad por diagnóstico CIE-10 por municipio. Exige
+  usuario y clave de MinSalud (tel. 3305000, ext. 1079) y tiene reporte mensual de las EPS.
+- **Google Trends API (alpha, 2025):** hay que solicitar acceso. Sin verificar que haya dato de Caldas.
+- **DesInventar:** se descarta, porque llega solo hasta 2018.
+- **El SGC FDSN** sigue dando 404. Para sismos se usa el **USGS**: 27 sismos de M ≥ 3 a menos de 100 km
+  desde 2020.
