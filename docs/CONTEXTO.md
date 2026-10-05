@@ -14,6 +14,44 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 (noche) — Cuaderno 18: el panel de todas las EPS; la caída de Nueva EPS es sobre todo de acceso
+
+**Privacidad, corregido antes de subir.**
+- Los Excel de medidas de la Supersalud traen nombre, documento, correo y teléfono de los interventores.
+- Se guardan en `calendarios/capturas/crudo/` (ignorado). Se versiona solo una tabla limpia: entidad, NIT,
+  ciudad, medida, resolución y fechas.
+- Los commits locales de esta sesión se rehicieron sin esos Excel. No se había subido nada.
+
+**Resultados** (fila `panel_eps`; descriptivo, no elige modelo):
+- **El SES depende de dos aseguradoras**, Nueva EPS y SURA (80-90 % del triage).
+  - SURA pasó de 8,6 triages por día (2020) a 69,6 (2024) y 62,0 (2026).
+  - **El escalón de abril de 2024 fue de SURA** (+40 por día), no de Nueva EPS (−0,2).
+- **Sustitución:** cuando Nueva EPS cae, el resto compensa poco en el SES.
+  - **Noviembre de 2025:** compensa el 16 % de −70 por día; el total cae un 28 %.
+  - **Julio de 2026:** compensa el 11 %; el total cae un 19 %.
+- **Afiliados contra uso** (MinSalud, Manizales, julio de 2025 a agosto de 2026):
+  - **Nueva EPS:** −19,5 % de afiliados (de 112.573 a 90.585), **−60 % de triage** y **−50 % de uso por
+    afiliado**. La caída es sobre todo **barrera de acceso**, no traslado.
+  - **SURA:** +14 % de afiliados, +14 % de triage, uso por afiliado igual.
+- **Supersalud:** 7 EPS de la región bajo medida.
+  - Sobre Nueva EPS hay 7 resoluciones con fecha. **Las del 14 y el 25 de noviembre de 2025 coinciden con el
+    escalón del 15 de noviembre.**
+  - Marzo y julio de 2026 no tienen resolución cerca. Probablemente son decisiones de **contratación** SES-EPS,
+    que no son públicas: es el pendiente #11.
+
+**Decisión: al modelo entran 6 variables de red:**
+- peso de Nueva EPS y de SURA en 28 días;
+- cambio de Nueva EPS y del resto en 28 días;
+- índice de Herfindahl;
+- bandera de resolución de la Supersalud sobre Nueva EPS en los últimos 30 días.
+
+**Lo que queda fuera por ahora:** la afiliación mensual y el uso por afiliado, con solo 14 meses de historia.
+Se acumulan con la captura semanal.
+
+**Límite:** las variables internas describen la red pero no la anticipan.
+
+---
+
 ## 2026-10-05 (noche) — El propietario aprueba las 6 propuestas; captura automática semanal y clima completo (cuaderno 17)
 
 **Decisión del propietario.** Aprueba las seis propuestas del cuaderno 16 y pide desarrollarlas en cuadernos

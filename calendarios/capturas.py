@@ -127,7 +127,7 @@ def extraer_caldas(zip_path):
                 arriba = t.iloc[fila_enc - 1].ffill() if fila_enc > 0 else pd.Series([""] * t.shape[1])
                 cols = [(f"{a} | {b}" if isinstance(a, str) and a.strip() and a != "nan" else str(b)).strip() for a, b in zip(arriba, t.iloc[fila_enc])]
                 d = t.iloc[fila_enc + 1:].copy(); d.columns = cols
-                cdep = next(c for c in cols if c.upper().endswith("DEPARTAMENTO"))
+                cdep = next((c for c in cols if c.upper().split("| ")[-1] == "DEPARTAMENTO"), None) or                        next(c for c in cols if c.upper().endswith("DEPARTAMENTO"))   # 2026 trae IdDepartamento antes
                 d = d[d[cdep].astype(str).str.upper().str.contains("CALDAS", na=False)]
                 if len(d):
                     largo = d.reset_index(drop=True).reset_index().melt(id_vars="index", var_name="columna", value_name="valor").dropna(subset=["valor"])
