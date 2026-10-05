@@ -26,7 +26,27 @@ JUEGOS = {"base": ["base"], "base + clima": ["base", "clima"], "base + salud pú
 # no: juntos cubren el 67 % de los dias de 2020-2026); bolsas: remuestreos de bloques de 28 dias
 TECNICAS = {"original": dict(rel=False), "T0": dict(rel=True), "T1": dict(rel=True, covid=.1),
             "T2": dict(rel=True, vida=1.5), "T3": dict(rel=True, raro=2.), "T4": dict(rel=True, bolsas=10),
-            "T5": dict(rel=True, covid=.1, vida=1.5, raro=2., bolsas=10)}
+            "T5": dict(rel=True, covid=.1, vida=1.5, raro=2., bolsas=10),
+            # entrenamiento curado (fila entrenamiento_curado; marcas en marcas.py): S1 equilibra los tipos de contexto
+            # por peso; S2 escoge las fechas: todas las marcadas, COVID una de cada 3 y estables una de cada 2
+            "S0": dict(rel=True), "S1": dict(rel=True, curado="equilibrado"), "S2": dict(rel=True, curado="seleccion"),
+            # contexto con compuerta (fila contexto_con_compuerta): cada capa solo cuando su gatillo esta activo
+            "G1": dict(rel=True, compuerta=True), "G2": dict(rel=True, curado="equilibrado", compuerta=True)}
+GATILLOS = {"clima": ["transición de clima", "clima extremo"], "salud": ["ola de salud pública"], "red": ["red de salud"],
+            "regímenes": ["El Niño / La Niña fuerte", "sismo"]}
+
+
+def compuerta(X, D):
+    """H en compuerta: cada capa es NaN cuando su gatillo no esta activo. Marcas externas con 1 dia de rezago."""
+    import marcas
+    M = D["marcas"][marcas.TIPOS].astype(float)
+    M = M.shift(1).assign(**{"calendario especial": M["calendario especial"]}).reindex(X.index).fillna(0) > 0
+    X = X.copy()
+    for capa_, tipos in GATILLOS.items():
+        cols = [c for c in X.columns if D["capa"].get(c) == capa_]
+        if cols: X.loc[~M[tipos].any(axis=1), cols] = np.nan
+    for t in marcas.TIPOS: X[f"marca_{t}"] = M[t].astype(float)
+    return X
 
 
 def capa(c):
@@ -46,7 +66,9 @@ def preparar():
     R = ix.regimenes_diarios().reindex(X.index).fillna(0)
     raro = (R.crisis_red + (PAS.ext_h_fam_respiratoria > 1) + (PAS.ext_h_racha_seca > 14)).reindex(X.index) > 0
     covid = (R.covid_fuerte + R.covid_parcial) > 0
-    return dict(X=X, ly=ly, capa=pd.Series({c: capa(c) for c in X.columns}), raro=raro, covid=covid)
+    import marcas
+    return dict(X=X, ly=ly, capa=pd.Series({c: capa(c) for c in X.columns}), raro=raro, covid=covid,
+                marcas=marcas.marcar(X.index))
 
 
 CTRL = lambda X: [c for c in X.columns if c.startswith(("dow_", "es_")) or c == "nivel"]
@@ -63,6 +85,17 @@ def pesos(idx, D, t):
     if t.get("covid") is not None: w[D["covid"].reindex(idx).values] = t["covid"]
     if t.get("vida"): w *= 0.5 ** ((idx.max() - idx).days.values / (365.25 * t["vida"]))
     if t.get("raro"): w[D["raro"].reindex(idx).values] *= t["raro"]
+    if t.get("curado"):
+        import marcas
+        M = D["marcas"].reindex(idx)[marcas.TIPOS + ["estable"]]
+        if t["curado"] == "equilibrado":                  # cada tipo pesa lo mismo: mediana(N_tipo) / N_tipo
+            n = M.sum(); f = (n[n > 0].median() / n.replace(0, np.nan)).fillna(0)
+            v = (M * f).sum(axis=1) / M.sum(axis=1).clip(lower=1)
+            w *= np.minimum(v.values / v.mean(), 3)
+        else:                                             # seleccion sistematica por orden de fecha
+            covid, estable = M["COVID"].values, M["estable"].values
+            w[covid & (np.cumsum(covid) % 3 != 1)] = 0
+            w[estable & ~covid & (np.cumsum(estable & ~covid) % 2 != 1)] = 0
     return w
 
 
@@ -78,7 +111,7 @@ def cuantiles(Xa, ya, Xb, w, t, semilla=0):
                                 .fit(Xa_.iloc[ii], obj[ii], sample_weight=w[ii]).predict(Xb_) for q in pr.QL])
     n = len(Xa_)
     if not t.get("bolsas"):
-        L = una(np.arange(n))
+        L = una(np.flatnonzero(w > 0))                    # peso 0 = fecha no escogida (S2)
     else:
         rng = np.random.default_rng(semilla); ini = np.arange(0, n - 27)
         L = np.mean([una(np.concatenate([np.arange(s, s + 28) for s in rng.choice(ini, n // 28)])) for _ in range(t["bolsas"])], axis=0)
@@ -96,7 +129,10 @@ def correr(D, juegos, tecnicas, anios=(2022, 2023, 2024, 2025, 2026), avisar=pri
             t = TECNICAS[nt]; w = pesos(Xa.index, D, t)
             for j in juegos:
                 cols = [c for c in X.columns if D["capa"][c] in JUEGOS[j]]
-                Q = cuantiles(Xa[cols], ya, Xb[cols], w, t)
+                if t.get("compuerta") and j != "base":
+                    XX = compuerta(X[cols], D); Q = cuantiles(XX.loc[Xa.index], ya, XX.loc[Xb.index], w, t)
+                else:
+                    Q = cuantiles(Xa[cols], ya, Xb[cols], w, t)
                 filas.append(pd.DataFrame({"año": a, "tecnica": nt, "juego": j, "fecha": Xb.index, "real": real, "esp": esp,
                                            "sube": (real > esp).astype(int), "pico": (real > esp * np.exp(sd)).astype(int),
                                            "p": pr.prob_sobre(Q, esp), "p_pico": pr.prob_sobre(Q, esp * np.exp(sd)),
@@ -138,3 +174,26 @@ if __name__ == "__main__":
     tres = ["base", "base + salud pública", "base + todo H"]
     correr(D, tres, list(TECNICAS), avisar=lambda s: print(s, round(time.time() - t0), "s", flush=True)).to_parquet(dir_ / "anual_tecnicas.parquet")
     correr(D, [j for j in JUEGOS if j not in tres], ["original", "T0"], avisar=print).to_parquet(dir_ / "anual_capas.parquet")
+
+
+def evaluar_curado(P, ref=("S0", "base")):
+    """Entrenamiento curado y compuerta (filas entrenamiento_curado y contexto_con_compuerta): BSS de sube en los
+    dias marcados, en los estables y en todos, por ano; el veredicto de la regla y el BSS por tipo de contexto."""
+    import marcas
+    M = marcas.marcar(pd.date_range("2020-01-01", P.fecha.max()))
+    P = P.join(M, on="fecha"); P["marcado"] = ~P.estable & ~P["COVID"]
+    def bss(g):
+        bs = g.sube.mean(); return 100 * (1 - np.mean((g.p - g.sube) ** 2) / (bs * (1 - bs))) if 0 < bs < 1 else np.nan
+    T = P.groupby(["tecnica", "juego", "año"]).apply(lambda g: pd.Series({
+        "BSS marcados": bss(g[g.marcado]), "BSS estables": bss(g[g.estable]), "BSS todos": bss(g),
+        "acierta todos %": 100 * np.mean((g.p > .5) == (g.sube == 1)), "cob80 %": 100 * np.mean((g.real >= g.q10) & (g.real <= g.q90))}))
+    r = T.loc[ref]; filas = []
+    for (t, j), G in T.groupby(level=[0, 1]):
+        if (t, j) == ref: continue
+        G = G.droplevel([0, 1]); dm = G["BSS marcados"] - r["BSS marcados"]; de = G["BSS estables"] - r["BSS estables"]
+        filas.append({"diseño": t, "juego": j, "años que mejora en marcados": int((dm > 0).sum()),
+                      "mejora media en marcados": round(dm.mean(), 1), "cambio medio en estables": round(de.mean(), 1),
+                      "¿sirve?": "SÍ" if (dm > 0).sum() >= 3 and de.mean() >= -2 else "no"})
+    tipos = {tp: {f"{t} · {j}": bss(P[(P.tecnica == t) & (P.juego == j) & P[tp]]) for t, j in T.index.droplevel(2).unique()}
+             for tp in marcas.TIPOS if tp != "COVID"}
+    return T, pd.DataFrame(filas).set_index(["diseño", "juego"]), pd.DataFrame(tipos).T

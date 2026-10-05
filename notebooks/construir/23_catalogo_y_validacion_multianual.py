@@ -28,6 +28,11 @@ Los cuadernos 17 a 21 revisaron, probaron y validaron variables y fuentes nuevas
 7. **Las técnicas de entrenamiento** que propone la literatura, probadas una por una (fila
    `tecnicas_de_entrenamiento`).
 8. **Qué tan seguras son las probabilidades** que emite el modelo, y si se cumplen.
+9. **La corrección del motor** en el reentrenamiento semanal.
+10. **Entrenar con fechas escogidas**, de forma marcada y controlada (pedido del propietario).
+11. **El contexto con compuerta**: cada factor solo cuando su gatillo está activo.
+12. **La confirmación** con el protocolo completo.
+13. **La respuesta semanal**: media, rango y probabilidad por día, guardada para verificarla.
 """)
 code(r"""
 import sys, pathlib, warnings
@@ -293,7 +298,147 @@ lec("probabilidades")
 
 md(r"""
 ---
-# 9. Lo que deja este cuaderno
+# 9. La corrección del motor, en el reentrenamiento semanal
+
+La sección 5 encontró el error con un modelo congelado por año. Aquí se corrige en el motor de verdad
+(`pronostico.py`, modelo `lightgbm_rel`) y se prueba con el protocolo de siempre: reentrenar cada 7 días,
+**decidir con 2025** y mirar 2026 una sola vez (fila `motor_objetivo_relativo`). C0 es la combinación anterior
+(SARIMAX + LightGBM sobre el conteo) y C0r la corregida (SARIMAX + LightGBM sobre el desvío del nivel).
+""")
+code(r"""
+import combinar as cb
+def leer(exp, ms): P_, _ = pr.leer(ms, exp=exp); return P_
+filas = {}
+for etiqueta, exp in [("2025 · decide", "e1_2025"), ("2026 · prueba, una vez", "e1")]:
+    T_ = cb.tabla(pd.concat([cb.promedio([leer(exp, ["sarimax"]), leer(exp, ["lightgbm"])], "C0"),
+                             cb.promedio([leer(exp, ["sarimax"]), leer(exp, ["lightgbm_rel"])], "C0r")]))
+    filas[etiqueta] = T_[["criterio (promedio BSS)", "acierta (28 dias) %", "acierta (rapida) %", "BSS pico (28 dias) %", "cob80 %", "MAPE %"]]
+pd.concat(filas).round(1)
+""")
+lec("motor")
+
+md(r"""
+---
+# 10. Entrenar con fechas escogidas: lo que pidió el propietario
+
+El propietario precisó la idea: **no mezclar al azar, sino escoger de forma marcada y controlada** fechas
+importantes y fechas estables, para que el modelo tenga contexto de todo tipo. Las variables ya están medidas
+(cuadernos 17 a 21); lo que se ajusta es **con qué registros se entrena**.
+
+**Las marcas** (`notebooks/marcas.py`) salen solo del calendario y de las variables externas, nunca del triage:
+marcar los picos del propio triage le enseñaría al modelo a esperar picos.
+
+| Marca | Cuándo |
+|---|---|
+| Calendario especial | festivo, puente, víspera, día después, Semana Santa, fin de año |
+| Transición de clima | paso de seco a lluvioso en los últimos 7 días, o cambio brusco por encima del percentil 95 |
+| Clima extremo | racha seca de más de 14 días, o semana muy lluviosa |
+| Ola de salud pública | respiratoria > 1 desviación; violencias, salud mental, materno-perinatal > 1,5; inmunoprevenibles > 2 |
+| Red de salud | resolución de la Supersalud en los últimos 30 días, o cambio de Nueva EPS por encima del percentil 95 |
+| El Niño / La Niña fuerte | ONI de 1,5 o más (en valor absoluto) |
+| Sismo | M ≥ 4,5 a menos de 150 km en los últimos 7 días |
+| COVID | marzo de 2020 a febrero de 2022 |
+
+**Tres diseños** (fila `entrenamiento_curado`): S0, todos los días con el mismo peso; S1, todos los días pero cada
+tipo de contexto pesa lo mismo; S2, escoger fechas (todas las marcadas, el COVID uno de cada tres días y los
+estables uno de cada dos, en orden de fecha). **Se mide donde importa**: en los días marcados del año de prueba,
+y aparte en los estables.
+""")
+code(r"""
+import marcas
+MK = marcas.marcar(pd.date_range("2020-01-01", "2026-09-20"))
+display(MK.groupby(MK.index.year).sum().T.rename_axis("días por año"))
+PCU = pd.read_parquet(RAIZ / "salidas/pronostico/anual_curado.parquet")
+TC, VC, TIP = anual.evaluar_curado(PCU)
+TC["BSS marcados"].unstack("año").loc[["S0", "S1", "S2"]].round(1)
+""")
+code(r"""
+display(VC.loc[["S0", "S1", "S2"]])
+TC["BSS estables"].unstack("año").loc[["S0", "S1", "S2"]].round(1)
+""")
+lec("curado")
+
+md(r"""
+---
+# 11. Cada factor con su gatillo: el contexto con compuerta
+
+La sección 10 dejó una pista: con las 24 variables, el modelo **empeora en los días estables**, donde el contexto
+no debería hacer nada. Con unos 2.400 días de historia, las usa para «explicar» ruido de días tranquilos.
+
+La respuesta es la que ya estaba escrita como principio del proyecto: **cada factor tiene su gatillo**. Cada capa
+se **enciende solo cuando su gatillo está activo** y en el resto queda apagada (faltante), así no puede ajustar
+ruido (fila `contexto_con_compuerta`):
+
+| Capa | Se enciende con |
+|---|---|
+| Clima | transición de clima o clima extremo |
+| Salud pública | ola de salud pública |
+| Red de salud | movimiento en la red |
+| Regímenes | El Niño o La Niña fuerte, o sismo |
+
+Además entran las 8 marcas como variables. G1 es la compuerta con todos los días; G2, con los pesos de S1.
+""")
+code(r"""
+sel = [("S0", "base"), ("S0", "base + todo H"), ("G1", "base + salud pública"), ("G1", "base + todo H"), ("G2", "base + salud pública"), ("G2", "base + todo H")]
+display(VC.loc[["G1", "G2"]])
+pd.concat({c: TC[c].unstack("año").loc[sel] for c in ["BSS todos", "acierta todos %", "cob80 %"]}, axis=1).round(1)
+""")
+code(r"""
+cols = ["S0 · base", "S0 · base + todo H", "G1 · base + salud pública", "G1 · base + todo H", "G2 · base + todo H"]
+fig, ax = plt.subplots(figsize=(12, 4.2)); T_ = TIP[cols]; x = np.arange(len(T_))
+for k, (c, col) in enumerate(zip(cols, [MUDO, ROJO, VERDE, VIOLETA, AZUL])):
+    ax.bar(x + (k - 2) * .16, T_[c], .16, color=col, label=c)
+ax.axhline(0, color=TINTA2, lw=.8); ax.set_xticks(x); ax.set_xticklabels(T_.index, rotation=15, ha="right"); ax.set_ylabel("BSS de «sube» (%)")
+ax.legend(fontsize=8, ncol=3); ax.set_title("¿En qué tipo de día ayuda el contexto? (2023-2026)"); plt.tight_layout(); plt.show()
+T_.round(1)
+""")
+lec("compuerta")
+
+md(r"""
+---
+# 12. La confirmación con el protocolo completo
+
+Lo que pasa en la rejilla anual se confirma con origen rodante, reentrenando cada 7 días, como opera el modelo
+(fila `contexto_con_compuerta_confirmacion`): Cg = SARIMAX + LightGBM con la salud pública en compuerta.
+Se decide con 2025 contra C0r y se mira 2026 una sola vez.
+""")
+code(r"""
+try:
+    filas = {}
+    for etiqueta, e1, g in [("2025 · decide", "e1_2025", "g_2025"), ("2026 · prueba, una vez", "e1", "g")]:
+        T_ = cb.tabla(pd.concat([cb.promedio([leer(e1, ["sarimax"]), leer(e1, ["lightgbm_rel"])], "C0r"),
+                                 cb.promedio([leer(e1, ["sarimax"]), leer(g, ["lightgbm_rel"])], "Cg")]))
+        filas[etiqueta] = T_[["criterio (promedio BSS)", "acierta (28 dias) %", "acierta (rapida) %", "BSS pico (28 dias) %", "cob80 %", "MAPE %"]]
+    display(pd.concat(filas).round(1))
+except Exception as e:
+    print("Todavía corriendo:", repr(e)[:120])
+""")
+lec("confirmacion")
+
+md(r"""
+---
+# 13. La respuesta semanal
+
+Lo que pidió el propietario: «esta semana los triages tendrán una media de X por día, con probabilidad de que tal y
+tal día suban». `notebooks/semana.py` responde así, **guarda** la predicción antes de conocer lo real y la verifica
+después (fila `pronostico_semanal`). Aquí, qué tan bien acierta esa misma respuesta rehecha en cada domingo de 2025
+y 2026, con la semana siguiente y con la semana que empieza 15 días después (el caso de hoy: datos hasta el 20 de
+septiembre, semana del 5 al 11 de octubre).
+""")
+code(r"""
+f = RAIZ / "salidas/pronostico/semanal/validacion_semanal_resumen.csv"
+if f.exists():
+    display(pd.read_csv(f).set_index(["combo", "adelanto (días)", "año"]).round(1).T)
+else:
+    print("La validación semanal todavía está corriendo.")
+for g in sorted((RAIZ / "salidas/pronostico/semanal").glob("semana_*.md")):
+    print("\n" + "=" * 100 + "\n" + g.read_text(encoding="utf-8"))
+""")
+lec("semanal")
+
+md(r"""
+---
+# 14. Lo que deja este cuaderno
 """)
 lec("resumen")
 

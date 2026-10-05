@@ -60,7 +60,36 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 **Protocolo de los cuadernos 22 en adelante:** afinar con 2020-2024, elegir con 2025, probar una sola vez en
 2026, y la prueba prospectiva.
 
-**Cuaderno 23, HECHO (05-10, tarde): catálogo de variables + validación en 4 años + técnicas de la investigación.**
+**EN CURSO (05-10, tarde-noche): arreglos pedidos por el propietario y la respuesta semanal.**
+El propietario **no puede ni debe actualizar la base**: lo hace su superior al final de la semana. **No correr
+`python -m extraccion`.** Se predice con lo que hay (datos hasta el 2026-09-20) y se guarda la predicción para
+verificarla después.
+
+- **Motor:** `LightGBMRel` (`lightgbm_rel`) en `pronostico.py`, fila `motor_objetivo_relativo`. Corriendo `e1_2025` y
+  `e1` (logs `c14/rel_e1*.log`). Al terminar se aplica la regla: C0r = sarimax + lightgbm_rel reemplaza a C0 si gana
+  en 2025.
+- **`rasgos()`** ahora admite adelantos de más de 7 días (`mem_mismo_dia`); con h ≤ 7 da lo mismo que antes.
+- **Respuesta semanal:** `notebooks/semana.py`, fila `pronostico_semanal`.
+  - `--validar` está corriendo (log `c14/semanal_val.log`, unas 2 h): domingos de 2025 y 2026, adelantos 1 y 15.
+  - Después: `--semana 2026-10-05` **guarda** la predicción del 5 al 11 de octubre en `salidas/pronostico/semanal/`
+    (versionada por excepción en `.gitignore`; no se rehace).
+  - Cuando el superior actualice los datos: `--verificar 2026-10-05`.
+- **Entrenamiento con fechas escogidas (pedido del propietario: no descartar el contexto):**
+  - marcas en `notebooks/marcas.py`; diseños S0-S2 y G1-G2 en `notebooks/anual.py`; resultados en
+    `salidas/pronostico/anual_curado.parquet`;
+  - **pasa la regla G1 + salud pública en compuerta**: la capa se enciende solo con ola.
+  - Confirmación con origen rodante corriendo: `g_2025` y `g` (`lightgbm_rel`; logs `c14/g_g*.log`). Cg = sarimax
+    de e1 + lightgbm_rel de g; regla en la fila `contexto_con_compuerta_confirmacion`.
+  - **Pendiente:** si Cg gana en 2025, `semana.py` necesita un combo con contexto. Guardar dos predicciones de la
+    semana (C0r y Cg).
+- **Cuaderno 22:**
+  - **Error de C2:** las bandas 0-4 y 5-14 tienen días en 0 y log(0) dio infinitos. Se corrige con log(y + 1),
+    opción `desplazar`, fila `reentrenamiento_holistico_enmienda`. Hay que rehacer los 5 `hb*_2025`: se lanzan al
+    terminar `lightgbm_rel`.
+  - **C0 contra C1 en 2025:** C0 4,2 y C1 1,1 en el criterio (promedio del BSS de las dos varas); los dos con
+    cobertura válida.
+
+**Cuaderno 23, HECHO y ampliado (05-10, noche): catálogo, validación en 4 años, técnicas, motor C0r (sec. 9), fechas escogidas (sec. 10), compuerta (sec. 11). Las secciones 12 (confirmación de Cg) y 13 (respuesta semanal) dicen «en curso»: volver a ejecutar el cuaderno cuando terminen las corridas y actualizar sus lecturas.**
 - **Ejecutado, sin errores.** Lecturas en `notebooks/construir/23_lecturas.json`. Resultados en `CONTEXTO.md`, entrada «Cuaderno 23».
 - Resultados:
   - no se mezclan días al azar (se demostró que engaña);

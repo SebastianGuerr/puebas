@@ -69,7 +69,12 @@ for _suf, _ors in [("_2025", ("2024-12-31", "2025-12-30")), ("", ("2025-12-31", 
     EXPERIMENTOS[f"h{_suf}"] = dict(ini="2020-01-01", contexto="holistico", origenes=_ors, carpeta=SALIDA / f"h{_suf}")
     for _k, _b in BANDAS.items():
         EXPERIMENTOS[f"hb{_k}{_suf}"] = dict(ini="2020-01-01", contexto="holistico", origenes=_ors,
-                                             carpeta=SALIDA / f"hb{_k}{_suf}", serie=f"edad:{_b}")
+                                             carpeta=SALIDA / f"hb{_k}{_suf}", serie=f"edad:{_b}",
+                                             desplazar=1)   # log(y + 1): las bandas 0-4 y 5-14 tienen dias en 0
+# contexto con compuerta (fila contexto_con_compuerta): la capa de salud publica de H solo cuando hay ola; 'g_2025'
+# valida y 'g' prueba. Solo para lightgbm_rel: SARIMAX no admite faltantes y entra sin contexto en la combinacion.
+for _suf, _ors in [("_2025", ("2024-12-31", "2025-12-30")), ("", ("2025-12-31", ULTIMO_ORIGEN))]:
+    EXPERIMENTOS[f"g{_suf}"] = dict(ini="2020-01-01", contexto="compuerta", capas=["salud"], origenes=_ors, carpeta=SALIDA / f"g{_suf}")
 EXP = EXPERIMENTOS["e0"]                      # el experimento activo; lo cambia usar()
 ANIO_ORIGEN = "2025-12-31"
 
@@ -99,6 +104,7 @@ def cargar():
         ne = te[es_ne].groupby(pd.to_datetime(te.dia[es_ne]))["n"].sum().reindex(dias).fillna(0)
         y = ne if EXP["serie"] == "nueva_eps" else y - ne
     y["2024-03-19":"2024-03-21"] = np.nan
+    y = y + EXP.get("desplazar", 0)                                  # se resta en rodar(): fila reentrenamiento_holistico_enmienda
     idx = pd.date_range(EXP["ini"], pd.Timestamp(FIN) + pd.Timedelta(days=H))
     cal = (pd.read_csv(RAIZ / "calendarios/calendario_Colombia.csv", parse_dates=["fecha"]).set_index("fecha")
              .reindex(idx)[CAL].apply(pd.to_numeric, errors="coerce").fillna(0))
@@ -256,6 +262,18 @@ def contexto_exp(dias):
         import indices
         PAS = indices.contexto_holistico(dias)
         return PAS, pd.DataFrame(index=PAS.index)
+    if EXP.get("contexto") == "compuerta":                           # columnas ext_g_: pueden ser faltantes (apagadas)
+        import indices, marcas, anual
+        dias = pd.DatetimeIndex(dias)
+        H = indices.contexto_holistico(dias).reindex(dias); M = marcas.marcar(dias)
+        PAS = pd.DataFrame(index=dias)
+        for capa_ in EXP["capas"]:
+            on = M[anual.GATILLOS[capa_]].any(axis=1)
+            for c in [c for c in H if anual.capa(c) == capa_]:
+                PAS["ext_g_" + c[len("ext_h_"):]] = H[c].where(on)
+        for i, t in enumerate(marcas.TIPOS):
+            PAS[f"ext_g_marca_{i}"] = M[t].astype(float)
+        return PAS, pd.DataFrame(index=dias)
     PAS, FUT = contexto(dias)
     sel = EXP.get("seleccion")
     if sel:
@@ -274,7 +292,7 @@ def rasgos(y, cal, h, ctx=None):
     X["nivel"] = nivel.shift(h)
     X["mem_semana"] = (ly.rolling(7, min_periods=5).mean() - nivel).shift(h)   # capa 4: memoria
     X["mem_ultimo"] = (ly - norma_dow).shift(h)                               # desvio del ultimo dia frente a su dia de semana
-    X["mem_mismo_dia"] = ly.shift(7) - nivel.shift(h)                         # t-7 <= o porque h <= 7
+    X["mem_mismo_dia"] = ly.shift(7 * -(-h // 7)) - nivel.shift(h)            # el mismo dia de la ultima semana <= o
     if ctx is not None:
         PAS, FUT = ctx
         X = X.join(PAS.shift(h).reindex(X.index)).join(FUT.reindex(X.index))
@@ -306,7 +324,7 @@ class _Directo(Modelo):
             self.X = {h: X[[c for c in X if any(c.startswith(p) for p in self.columnas)]] for h, X in self.X.items()}
     def datos(self, h, o):
         X = self.X[h].loc[:o]; yy = self.y.loc[:o]
-        ok = X.notna().all(axis=1) & yy.notna()
+        ok = X[[c for c in X if not c.startswith("ext_g_")]].notna().all(axis=1) & yy.notna()   # ext_g_: faltante = apagada
         return X[ok], yy[ok]
     def ajustar(self, o):
         self.cols, self.m = {}, {}
@@ -381,6 +399,20 @@ class LightGBM(_Directo):
         return [lgb.LGBMRegressor(objective="quantile", alpha=q, **self.PARAM).fit(X, np.log(yy)) for q in QL]
     def predecir_h(self, ms, x):
         return np.exp(np.sort([m.predict(x)[0] for m in ms]))
+
+
+class LightGBMRel(LightGBM):
+    """LightGBM sobre el desvio frente al nivel (fila motor_objetivo_relativo). Un arbol no predice valores que no
+    vio: aprendiendo log(y) con el nivel como entrada, se queda en el techo o el piso cuando el nivel sale de lo
+    conocido (cuaderno 23: 2024 con BSS -105 %). Aqui aprende log(y) - nivel y el nivel se suma despues."""
+    nombre = "lightgbm_rel"
+    def ajustar_h(self, X, yy):
+        import lightgbm as lgb
+        Z = X.drop(columns="nivel")
+        return [lgb.LGBMRegressor(objective="quantile", alpha=q, **self.PARAM).fit(Z, np.log(yy) - X.nivel) for q in QL]
+    def predecir_h(self, ms, x):
+        z = x.drop(columns="nivel")
+        return np.exp(np.sort([m.predict(z)[0] for m in ms]) + x.nivel.values[0])
 
 
 class _ConExogenas(Modelo):
@@ -482,7 +514,7 @@ class Chronos2Cal(Chronos2):
     covariables = True
 
 
-MODELOS = {m.nombre: m for m in [Ingenuo, Control, GLMBinNeg, LightGBM, SARIMAX, Prophet, Chronos2, Chronos2Cal]}
+MODELOS = {m.nombre: m for m in [Ingenuo, Control, GLMBinNeg, LightGBM, LightGBMRel, SARIMAX, Prophet, Chronos2, Chronos2Cal]}
 FASE_A = ["ingenuo", "control", "glm_binneg", "lightgbm", "sarimax", "prophet", "chronos2", "chronos2_cal"]
 CON_CONTEXTO = ["glm_binneg", "lightgbm", "sarimax", "prophet", "chronos2_cal"]
 
@@ -511,7 +543,8 @@ def rodar(nombre, y, cal, avisar=print, cada=1):
             Q = preds[o]
         for h in range(1, H + 1):
             t = o + pd.Timedelta(days=h)
-            filas.append({"modelo": nombre, "origen": o, "h": h, "fecha": t, "real": y.get(t, np.nan), **dict(zip(QCOL, Q[h - 1]))})
+            d = EXP.get("desplazar", 0)
+            filas.append({"modelo": nombre, "origen": o, "h": h, "fecha": t, "real": y.get(t, np.nan) - d, **dict(zip(QCOL, Q[h - 1] - d))})
     return pd.DataFrame(filas)
 
 

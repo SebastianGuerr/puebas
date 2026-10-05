@@ -14,6 +14,102 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-05 (noche) — El propietario corrige: no descartar el contexto; entrenar con fechas escogidas. Resultado: la compuerta
+
+**Lo que dijo el propietario.** Las variables externas ya están medidas y validadas en los cuadernos 17 a 21. Lo
+que hay que ajustar es **con qué registros se entrena**: una selección marcada y controlada, no aleatoria, de fechas
+importantes y estables, para que el modelo tenga contexto de todo tipo. Preguntó por qué se estaba descartando
+tan rápido.
+
+**Reconocimiento.** Tenía razón en una parte:
+- su idea de «datos escogidos» se había probado en una sola versión (T3, peso doble a tres tipos de días raros);
+- la predicción semanal se había dejado sin contexto.
+
+Medir «el contexto no mejora el total» con todos los días por igual y en el promedio dice más de la forma de
+entrenar y evaluar que de las variables.
+
+**Decisión 1: fechas marcadas** (`notebooks/marcas.py`). Salen solo del calendario y de las variables externas,
+nunca del triage. Cada tipo marca lo excepcional, entre el 3 y el 15 % de los días. Hallazgo: **casi siempre pasa
+algo**. Fuera del COVID, solo el 30 % de los días es estable (525 de 2.455 en total).
+
+**Decisión 2: selección controlada, preregistrada en `entrenamiento_curado`.** Ningún diseño pasa la regla:
+- S2, escoger fechas y quitar estables y COVID, empeora todo (de −6 a −11 puntos en los días marcados): pierde
+  datos;
+- S1, equilibrar los tipos por peso, queda casi neutro.
+
+La pista decisiva: con las 24 variables H, el modelo **empeora en los días estables** (−6,8 puntos), donde el
+contexto no debería actuar. Con unos 2.400 días, usa las variables para ajustar ruido.
+
+**Decisión 3: contexto con compuerta, preregistrado en `contexto_con_compuerta`.** Cada capa se enciende solo cuando
+su gatillo está activo; en el resto queda como faltante. Es el principio de «cada factor tiene su gatillo».
+
+Resultados con G1 (todos los días con peso 1, más la compuerta):
+
+| | ¿Pasa la regla? | Días marcados | Días estables | BSS de todos los días, 2023-2026 |
+|---|---|---|---|---|
+| base | — | — | — | −9,3 / +4,1 / +2,4 / +11,4 |
+| G1 + salud pública | **sí** (3 de 4 años) | +1,3 de media | −0,8 | −7,7 / +4,1 / +2,7 / +11,4 |
+| G1 + todo H | no | 1 de 4 años | −2,0 | −10,4 / +0,9 / +1,6 / +11,9 |
+| S0 + todo H, sin compuerta (antes) | — | — | — | −14,1 / −1,2 / +1,3 / +8,5 |
+
+G1 con salud pública **iguala o mejora a la base en los 4 años**. La compuerta repara casi todo el daño de las 24
+variables: en 2026 el acierto sube de 61,2 % a 66,5 %. Por tipo de día, el contexto ayuda en olas de salud
+pública (+8,3 contra +5,1) y en clima extremo (con S1: +5,7 contra +1,4).
+
+**Por tipo de día, G1 con salud pública iguala o mejora a la base en los 7 tipos.** BSS de sube, base contra G1:
+
+| Tipo de día | Base | G1 con salud pública |
+|---|---|---|
+| Ola de salud pública | +5,1 | +8,8 |
+| El Niño o La Niña fuerte | +5,3 | +9,1 |
+| Clima extremo | +1,4 | +6,2 |
+| Sismo | +2,4 | +5,2 |
+| Red de salud | +7,2 | +7,7 |
+| Transición de clima | +6,8 | +6,9 |
+| Calendario especial | +14,3 | +14,2 |
+
+Las otras capas (clima, red y regímenes), aun con compuerta, restan en transiciones y en días de calendario. Su
+lugar son las bandas de edad.
+
+**Siguiente:** confirmar con origen rodante (fila `contexto_con_compuerta_confirmacion`, experimentos `g_2025` y
+`g`). Para la semana del 5 al 11 de octubre se guardan dos predicciones, sin contexto y con contexto, y se
+comparan con lo real.
+
+## 2026-10-05 (noche) — El motor se corrige (C0r), C2 tenía un error con los ceros, y nace la respuesta semanal
+
+**Contexto.** El propietario pidió arreglar lo que fallaba y dejar una predicción de la semana del 5 al 11 de
+octubre guardada para verificarla después. **Él no tiene permiso para actualizar la base**: lo hace su superior al
+final de la semana. Desde ahora no se propone correr `extraccion`; se predice con lo que hay (datos hasta el
+2026-09-20) y se verifica cuando lleguen datos nuevos.
+
+**Decisión 1: C0r reemplaza a C0** (fila `motor_objetivo_relativo`, regla del cuaderno 22). `lightgbm_rel` aprende
+log(y) − nivel. Se decidió con 2025:
+
+| | Criterio (promedio del BSS de sube, dos varas) | Acierto 28 días | Cobertura del 80 % | MAPE |
+|---|---|---|---|---|
+| C0 | 4,2 | 59,9 % | 78,0 % | 8,6 % |
+| **C0r** | **5,2** | **61,9 %** | **80,5 %** | **8,5 %** |
+
+Mirado una sola vez en 2026, C0r da 15,9 contra 15,2, acierto 69,6 % contra 69,4 %, y la diferencia es un
+empate en el remuestreo por bloques: acierto +0,2 [−2,1; +3,1]. **Lectura:** con reentrenamiento semanal la
+corrección no sube el acierto, pero quita el riesgo de desplome cuando el nivel sale de lo conocido (cuaderno 23).
+Se adopta por la regla, no por 2026. `lightgbm` sigue en el motor para no romper lo ya registrado.
+
+**Decisión 2: C2 tenía un error y se rehace** (fila `reentrenamiento_holistico_enmienda`). Las bandas 0-4 y 5-14
+tienen 123 y 53 días en cero, y log(0) dio infinitos en 1.422 y 1.512 de 2.555 filas. La corrección es log(y + 1)
+con la opción `desplazar` de `pronostico.py`, aplicada a las cinco bandas. Se rehacen los cinco `hb*_2025`.
+Mientras tanto, C0 contra C1 en 2025 da 4,2 contra 1,1: **el contexto H no mejora el total en 2025**, coherente
+con el cuaderno 23.
+
+**Decisión 3: la respuesta semanal** (`notebooks/semana.py`, fila `pronostico_semanal`). Responde en el formato que
+pidió el propietario:
+- media diaria de la semana con rango del 80 % (cópula entre días);
+- por día: esperado, rango, P(sube) y P(pico) frente a lo normal;
+- reparto de mañana y tarde.
+
+La predicción se guarda **una sola vez** y se versiona: `.gitignore` tiene una excepción para
+`salidas/pronostico/semanal/`. Su valor de prueba depende de haberse escrito antes de conocer lo real.
+
 ## 2026-10-05 (noche) — Cuaderno 23: la mezcla aleatoria no es legítima; la investigación fija las técnicas, y aparece un error de método
 
 **Pedido del propietario.** Un cuaderno «resumen» con todas las variables que quedan y por qué, que el modelo vea

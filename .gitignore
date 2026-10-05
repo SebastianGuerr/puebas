@@ -200,6 +200,13 @@ _[!_]*
 !/salidas/perfil_dx_codigo_mensual.parquet
 !/salidas/perfil_remisiones_motivo.parquet
 !/salidas/perfil_remisiones_servicio.parquet
+# Las predicciones semanales guardadas (notebooks/semana.py), anadidas el 2026-10-05.
+# Son la prueba prospectiva: su valor depende de haberse escrito ANTES de conocer lo
+# real, y el historial de git es la constancia de la fecha. Solo conteos pronosticados.
+!/salidas/pronostico/
+/salidas/pronostico/*
+!/salidas/pronostico/semanal/
+/salidas/pronostico/semanal/*.parquet
 
 # La tabla de notas sin nada que lleve a la persona (NLP/nube/tabla.py; el
 # porque en NLP/docs/TABLA.md): id aleatorio, dia, nivel, banda de edad y la
