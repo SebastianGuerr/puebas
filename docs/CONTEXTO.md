@@ -14,6 +14,29 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-06 — La vara de `CLAUDE.md` pasa a ser la reproducible; M3 va a la semana; el 00 cuenta la predicción
+
+**Decisión 1 (el propietario la delegó al orquestador).** Las cifras «MAPE 10,13 %» y «acierto 77,2 %» de la tabla
+«Lo ya medido» se quedan, pero marcadas como no reproducibles. Al lado va la referencia reproducible: C0r y M3
+en 2025 y 2026, con origen rodante.
+- **Por qué no se borran:** el archivo histórico vale, y el criterio con que se tacharon otras filas fue haberlas
+  anulado por un error. Aquí no hay error demostrado, sino un script perdido.
+- **Por qué cambia la vara:** ninguna mejora se puede medir contra un número que no se puede recalcular (regla 7).
+- **Medias anuales:** 2024 es 226,9 y 2026 es 172,6 con la serie depurada.
+
+**Decisión 2 (el propietario).** La tabla de frases de ejemplo del cuaderno 00 se queda. Al 00 se le añade al final
+la historia de la predicción:
+- la competencia de modelos;
+- LazyPredict y la rejilla;
+- la combinación SARIMAX + LightGBM;
+- C0r;
+- el entrenamiento por mecanismos y sus resultados.
+
+Va en primera persona.
+
+**Decisión 3 (el propietario).** M3 se lleva a la respuesta semanal, «que es lo que más se va a usar». Va con una
+variante preregistrada antes de calcular, porque las variables de clima de M3 exigen adelantos de 7 días o menos.
+
 ## 2026-10-06 — Mecanismos, etapa 2: la regla elige M3; 2026 empata; lo que más ayuda es quitar la COVID fuerte
 
 **Decisión.** Por la regla preregistrada (`mecanismos_regla`), **M3 reemplaza a C0r** como modelo principal

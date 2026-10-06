@@ -80,18 +80,32 @@ Siguen siendo la vara contra la que se mide cualquier mejora:
 
 | Hecho | Valor |
 |---|---|
-| Modelo **solo calendario**, origen rodante, 215 días fuera de muestra | MAPE **10,13 %** |
+| Modelo **solo calendario**, origen rodante, 215 días fuera de muestra | MAPE **10,13 %** — *no reproducible: su script se perdió; el control reconstruido da 11,41 % (cuaderno 05)* |
 | Base «mismo día de la semana pasada» | MAPE 13,82 % |
 | Base media móvil 7 días | MAPE 14,98 % |
 | Varianza de `log(triages)` que explica el calendario | 67,8 % |
 | Autocorrelación del residuo a 1 día | **+0,423** — lo que sobra no es ruido blanco |
 | Desviación típica del residuo diario | **12,6 %** — el ruido contra el que se compite |
-| «¿Mañana > media de los últimos 7 días?», acierto fuera de muestra | 77,2 % (base 50,7 %) |
+| «¿Mañana > media de los últimos 7 días?», acierto fuera de muestra | 77,2 % (base 50,7 %) — *no reproducible; reconstruido: 70,2 % (base 51,2 %)* |
 | «¿Mañana entre el 20 % de días más altos?» | 83,3 % (base 76,3 %) — **los picos son lo difícil** |
 | ~~Rupturas seca→lluviosa dentro de la ventana con triage~~ | ~~8~~ — **anulado, ver abajo** |
 | ~~Las mismas rupturas en todo el clima disponible (2020-2026)~~ | ~~24~~ — **anulado** |
 | ~~Efecto de esas rupturas sobre el residuo~~ | **anulado**: se calculó sobre una variable rota |
 | Efectos de clima sobre urgencias publicados en la literatura | 2 % a 10 % |
+
+**La vara reproducible desde el 2026-10-06** es la de los modelos guardados en `salidas/pronostico/`.
+Todos se miden con origen rodante, reentrenando cada 7 días y prediciendo de 1 a 7 días.
+«Sube» significa «el día queda por encima de lo que anuncia el control de calendario»:
+
+| 2025 (año con el que se elige) | C0r (calendario + memoria) | **M3** (C0r + mecanismos, sin COVID fuerte) |
+|---|---|---|
+| Acierto en sube/baja | 61,9 % | **63,2 %** |
+| Criterio (promedio del BSS de sube, dos varas) | 5,20 | **6,94** |
+| Cobertura del intervalo del 80 % | 80,5 % | 78,0 % |
+| MAPE | 8,48 % | 8,17 % |
+
+En 2026, mirado una sola vez, M3 y C0r empatan: 68,5 % contra 69,7 % de acierto y MAPE de 8,2 % a un día.
+Detalle en `docs/CONTEXTO.md`, entrada «Mecanismos, etapa 2».
 
 
 > **El clima unificado se reescribió el 2026-09-23** porque producía resultados falsos por
@@ -199,6 +213,8 @@ desenlace y condiciona todo lo que se modele encima:
 | 2020 | 2021 | 2022 | 2023 | **2024** | 2025 | 2026 |
 |---|---|---|---|---|---|---|
 | 105,7 | 149,3 | 189,6 | 192,4 | **226,4** | 199,6 | 172,3 |
+
+Con la serie depurada (sin el 21-mar-2024 ni el 21-sep-2026, que están incompletos), 2024 es 226,9 y 2026 es 172,6; la caída sigue siendo del −23,9 %.
 
 Triages/día. Desde el pico de 2024 la caída acumulada es del **23,9 %**.
 
