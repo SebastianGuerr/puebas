@@ -17,6 +17,26 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 - Lo descubierto entró, si entró, en bloque y sobre el total, no por mecanismo.
 - La COVID es el 29-39 % de los días de entrenamiento.
 
+**Estado (06-10, tarde):**
+- **Cuadernos revisados y en git** (commits `e75e485` y `41b461f`): 00-03, 05-11, 13-21 y 23. Qué cambió de
+  conclusión: `CONTEXTO.md`, entrada «Revisión de los 22 cuadernos».
+- **Cuaderno 12:** su agente sigue trabajando.
+- **Pasada de coherencia en curso:** dos agentes (00-11 y 13-23) con la lista `COHERENCIA.md` del scratchpad.
+  - La varicela del paro y la salud mental de los desastres quedan anuladas o como hipótesis.
+  - Las firmas de clima por banda no se confirman en 2025-26.
+  - Otros ocho puntos más.
+- **Reentrenamiento:** etapa 1 aprobada y en git (preregistro en `variables.csv`, `notebooks/mecanismos.py`,
+  m1-m3). **Etapa 2 corriendo:**
+  - 5 corridas de 2025, de 6 a 10 h, con `Start-Process`;
+  - el desglose multianual 2023-2025 (enmienda `mecanismos_desglose_multianual`, que se escribe antes de calcular);
+  - las curvas de aprendizaje.
+  - Los m* se corren **solo** con `python notebooks/mecanismos.py --exp m1_2025 --modelos sarimax_mec
+    lightgbm_rel_mec` (o `--humo`); `pronostico.py` lanza un error a propósito.
+- **Por decidir con el propietario:**
+  - la tabla «Lo ya medido» de `CLAUDE.md` no se reproduce entera (MAPE 11,41 contra 10,13; acierto 70,2 contra
+    77,2) y su script ya no existe;
+  - la tabla de frases de ejemplo del cuaderno 00: son frases cortas sin identidad, pero vienen de notas reales.
+
 **El propietario aprobó las tres cosas.** El trabajo va en paralelo y con orquestador, por dos vías.
 
 **1. Reentrenamiento por mecanismos.** Lo lleva un agente:

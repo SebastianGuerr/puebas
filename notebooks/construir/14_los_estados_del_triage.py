@@ -427,10 +427,10 @@ puede ver de él el conteo diario total.
 
 | Factor | Reloj | Gatillo | Condición y subgrupo | Qué ve el conteo diario total |
 |---|---|---|---|---|
-| Transición de clima | días a 2-4 semanas | cambio de régimen (seco a lluvioso, cambio de la temperatura media) | mayores (lluvia reciente) y niños (clima de la semana) | efectos del 2 % bajo un ruido del 11,1 % |
+| Transición de clima | días a 2-4 semanas | cambio de régimen (seco a lluvioso, cambio de la temperatura media) | mayores (lluvia reciente, solo en 2022-2024; cuaderno 21) y niños (clima de la semana) | efectos del 2 % bajo un ruido del 11,1 % |
 | Ola de salud pública | semanas | índice de la familia por encima de su umbral | respiratoria en niños; digestiva en adultos | efectos del 1 al 3 % |
 | Red de salud | semanas a meses | cambio de Nueva EPS en 28 días, resolución de la Supersalud | todos los grupos; actúa sobre el nivel | el escalón mueve el nivel entero |
-| Fiestas y Feria | el mismo día y 3 días después | evento activo | particulares y SOAT en la Feria; remisiones desde pueblos lejanos | Feria +7,3 % en el total contra +36,9 % en SOAT |
+| Fiestas y Feria | el mismo día y 3 días después | evento activo | particulares y SOAT en la Feria; remisiones desde pueblos lejanos | Feria +7,3 % en el total (depende de 2022, año de la COVID; cuaderno 06) contra +36,9 % en SOAT |
 | Noche festiva | horas | víspera de festivo, velitas, 31 de diciembre | madrugada y particulares | el día completo baja |
 | ENSO | meses | ONI por encima de ±1,5 | hospital completo; un solo episodio en la ventana | no se separa de la fecha |
 

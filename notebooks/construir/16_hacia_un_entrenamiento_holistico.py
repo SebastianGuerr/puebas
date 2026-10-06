@@ -209,7 +209,7 @@ Benjamini-Hochberg con q = 0,10) mostró dónde actúa el clima:
 | Desenlace | Pruebas que sobreviven | Lectura |
 |---|---|---|
 | IRA de Manizales (2012-2024) | **53** (el azar daría unas 13) | un mes lluvioso, nublado, húmedo y con poco sol trae **+6-7 % de IRA a 1-5 semanas**; las horas de sol (−7 %) y el déficit de presión de vapor (−6,7 %) figuran entre las más fuertes |
-| Triage total (2022-2024) | 36, con efectos de 1,5-2,4 % | efecto diluido: pesan la semana muy lluviosa reciente, las rachas secas y el calor del último mes |
+| Triage total (2022-2024) | 36, con efectos de 1,5-2,4 % | efecto propio del total, no la IRA de la ciudad reducida (cuaderno 17): pesan la semana muy lluviosa reciente, las rachas secas y el calor del último mes |
 | Ingresos respiratorios del hospital (2021-2024) | 0 | son ingresos (un tercio de lo que llega, unos 33 por semana) y no triage |
 
 De ahí sale el diseño: la vía del clima hacia el hospital pasa por la IRA de la ciudad, y al modelo conviene
@@ -336,7 +336,7 @@ ayudó con tan pocos ejemplos independientes.
 4. **Agregar las familias de una en una** y conservar solo las que mejoran en un año de validación distinto del
    de prueba.
 5. **Llevar cada contexto a la serie donde actúa.** El clima y la IRA mueven lo **respiratorio** del hospital
-   (+10-14 %, cuaderno 13) y se diluyen en el total. Un modelo jerárquico **por tipo de consulta**
+   (+10-14 %, cuaderno 13) y se achican en el total por su peso. Un modelo jerárquico **por tipo de consulta**
    (respiratorio, infeccioso, trauma, embarazo, otros), cada uno con su contexto, suma al final el total, y es
    la arquitectura que escala.
 """)

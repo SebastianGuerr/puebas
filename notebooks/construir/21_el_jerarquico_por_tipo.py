@@ -13,8 +13,8 @@ md(r"""
 ## Pregunta y motivo
 
 Los cuadernos 17, 19 y 20 muestran lo mismo desde tres ángulos: el clima, las enfermedades de la ciudad y El Niño
-mueven algo medible, pero al triage total llegan diluidos, en el orden del 1 al 3 %, bajo un ruido semanal
-del 6 %. El argumento es de aritmética: si una parte del triage pesa el 10 % y sube un 30 %, el total sube un 3 %.
+mueven algo medible, pero los efectos que se ven en el triage total son pequeños, en el orden del 1 al 3 %, bajo un ruido semanal
+del 6 %, y no son una versión reducida de los de la ciudad (cuaderno 17). El argumento de la partición es de aritmética: si una parte del triage pesa el 10 % y sube un 30 %, el total sube un 3 %.
 Este cuaderno pregunta si, al repartir el triage en sus partes, cada factor externo reaparece con su tamaño
 real en la parte donde actúa, y qué firma deja en cada una: con qué rezago, en qué sentido y con qué estabilidad
 entre 2022-2024 y 2025-2026.
