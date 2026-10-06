@@ -271,7 +271,7 @@ def desglose(P, varas=("calendario", "rapido")):
         filas = {}
         for t in ["todos"] + list(T.columns):
             G = Q if t == "todos" else Q[Q[t]]
-            filas[t] = G.groupby("modelo").apply(bss).to_dict() | {"días": G.fecha.nunique()}
+            filas[t] = {k: bss(G[G.modelo == k]) for k in sorted(Q.modelo.unique())} | {"días": G.fecha.nunique()}
         out[vara] = pd.DataFrame(filas).T
     return out
 
@@ -352,13 +352,152 @@ def fuga_clima(o):
     return int(sum(not np.allclose(F1.loc[t, c].values, F2.loc[t, c].values, equal_nan=True) for c in cols))
 
 
+# ------------------------------------------------------------------ rejilla anual (filas mecanismos_desglose_multianual y
+# curvas_de_aprendizaje): cada ano de prueba con los modelos congelados al 31-dic previo, a 1 dia
+CONFIGS = {"C0r": ("e1", "sarimax", "lightgbm_rel"), "M1": ("m1_2025", "sarimax_mec", "lightgbm_rel_mec"),
+           "M2": ("m2_2025", None, "lightgbm_rel_mec"),            # su SARIMAX es el de M1
+           "M3": ("m3_2025", "sarimax_mec", "lightgbm_rel_mec")}
+REJILLA = pr.SALIDA / "mecanismos" / "rejilla"
+_VARAS = {}
+
+
+def _lote_lgbm(M, desde, o, fechas):
+    X, yy = M.datos(1, o); X, yy = X.loc[desde:], yy.loc[desde:]
+    cols = X.columns[X.std() > 0]; m = M.ajustar_h(X[cols], yy)
+    Xf = M.X[1].reindex(fechas)[cols]
+    ms, off = (m[0], (Xf[m[1]].values @ m[2] if m[1] else 0.0)) if isinstance(M, LightGBMRelMec) else (m, 0.0)
+    Z = Xf.drop(columns="nivel")
+    L = np.sort(np.column_stack([mm.predict(Z) for mm in ms]), axis=1)
+    return np.exp(L + Xf.nivel.values[:, None] + np.reshape(off, (-1, 1)))
+
+
+def _lote_sarimax(M, desde, o, fechas):
+    """Parametros ajustados hasta o; prediccion a un paso en el ano con el filtro (usa el triage hasta t - 1)."""
+    from statsmodels.tsa.statespace.sarimax import SARIMAX as S
+    from scipy.stats import norm
+    fin = fechas.max(); E = M.E.loc[desde:fin]; cols = E.columns[E.loc[:o].std() > 0]
+    ly = np.log(M.y.loc[desde:fin]); kw = dict(order=(1, 0, 1), seasonal_order=(0, 1, 1, 7))
+    par = S(ly.loc[:o], exog=E.loc[:o, cols], **kw).fit(disp=0, maxiter=100).params
+    p = S(ly, exog=E[cols], **kw).filter(par).get_prediction(start=fechas.min(), end=fin)
+    mu, se = p.predicted_mean.reindex(fechas).values, p.se_mean.reindex(fechas).values
+    return np.exp(mu[:, None] + se[:, None] * norm.ppf(pr.QL)[None, :])
+
+
+def _varas(o, fechas):
+    """Lo normal de cada dia con las dos varas (control y control rapido de e0: desde 2022-03-01), congeladas en o."""
+    k = (o, len(fechas))
+    if k not in _VARAS:
+        previo = pr.EXP; pr.usar("e0"); y0, cal0 = pr.cargar(); out = {"real": y0.reindex(fechas).values}
+        for nombre, cls in [("cal", pr.Control), ("rap", pr.ControlRapido)]:
+            C = cls(y0, cal0); X, yy = C.datos(1, o); cols = X.columns[X.std() > 0]
+            b, qr, sd = C.ajustar_h(X[cols], yy); Xf = C.X[1].reindex(fechas)[cols]
+            out[f"esp_{nombre}"] = np.exp(np.c_[np.ones(len(Xf)), Xf.values] @ b + qr[4]); out[f"sd_{nombre}"] = sd
+        pr.EXP = previo; _VARAS[k] = out
+    return _VARAS[k]
+
+
+def rejilla(piezas, avisar=print):
+    """piezas: lista de (config, anio, desde, sin_covid). Cada pieza se guarda en REJILLA y no se rehace."""
+    REJILLA.mkdir(parents=True, exist_ok=True)
+    nombre = lambda c, a, d, sc: REJILLA / f"{c}_{a}_{d}{'_sincovid' if sc else ''}.parquet"
+    pend = [p for p in piezas if not nombre(*p).exists()]
+    for (c, sc) in dict.fromkeys((p[0], p[3]) for p in pend):
+        exp, ns, nl = CONFIGS[c]; t0 = time.time()
+        y, cal = preparar(exp)
+        if sc and not pr.EXP.get("excluir"):
+            y = y.copy(); y.loc[COVID_FUERTE[0]:COVID_FUERTE[1]] = np.nan
+            cal = cal.copy(); cal["es_covid_fuerte"] = 0.0
+        Ml = pr.MODELOS[nl](y, cal); Ms = pr.MODELOS[ns](y, cal) if ns else None
+        tipos = LightGBMRelMec.tipos
+        for (_, a, d, _) in [p for p in pend if (p[0], p[3]) == (c, sc)]:
+            o = pd.Timestamp(f"{a - 1}-12-31")
+            fechas = pd.date_range(f"{a}-01-01", min(pd.Timestamp(f"{a}-12-31"), pd.Timestamp(pr.FIN)))
+            V = _varas(o, fechas); LightGBMRelMec.tipos = tipos
+            Ql = _lote_lgbm(Ml, d, o, fechas)
+            Qs = _lote_sarimax(Ms, d, o, fechas) if Ms is not None else np.full_like(Ql, np.nan)
+            D = pd.DataFrame({"config": c, "anio": a, "desde": d, "sin_covid": sc, "fecha": fechas,
+                              **{k: v if np.ndim(v) else np.full(len(fechas), v) for k, v in V.items()},
+                              **{f"s{q}": Qs[:, j] for j, q in enumerate(pr.QCOL)}, **{f"l{q}": Ql[:, j] for j, q in enumerate(pr.QCOL)}})
+            D.to_parquet(nombre(c, a, d, sc)); avisar(f"rejilla {c} {a} desde {d} sin_covid={sc} lista ({time.time() - t0:.0f} s)")
+
+
+def leer_rejilla():
+    """Une las piezas; la combinacion es el promedio de cuantiles (M2 toma el SARIMAX de M1)."""
+    R = pd.concat([pd.read_parquet(f) for f in sorted(REJILLA.glob("*.parquet"))], ignore_index=True)
+    sc = [f"s{q}" for q in pr.QCOL]
+    m1 = R[R.config == "M1"].set_index(["anio", "desde", "sin_covid", "fecha"])[sc]
+    es2 = R.config == "M2"
+    if es2.any():
+        R.loc[es2, sc] = m1.reindex(pd.MultiIndex.from_frame(R.loc[es2, ["anio", "desde", "sin_covid", "fecha"]])).values
+    S, L = R[sc].values, R[[f"l{q}" for q in pr.QCOL]].values
+    Q = np.sort((S + L) / 2, axis=1)
+    for j, q in enumerate(pr.QCOL): R[q] = Q[:, j]
+    for v in ["cal", "rap"]:
+        R[f"p_{v}"] = pr.prob_sobre(Q, R[f"esp_{v}"].values); R[f"sube_{v}"] = (R.real > R[f"esp_{v}"]).astype(int)
+    R["p_pico"] = pr.prob_sobre(Q, (R.esp_cal * np.exp(R.sd_cal)).values); R["pico"] = (R.real > R.esp_cal * np.exp(R.sd_cal)).astype(int)
+    R["ape"] = (R.q50 - R.real).abs() / R.real; R["cob80"] = R.real.between(R.q10, R.q90).astype(int)
+    return R.dropna(subset=["real", "esp_cal", "esp_rap", "q50"])
+
+
+def _bss(g, v):
+    bs = g[f"sube_{v}"].mean()
+    return 100 * (1 - ((g[f"p_{v}"] - g[f"sube_{v}"]) ** 2).mean() / (bs * (1 - bs))) if 0 < bs < 1 else np.nan
+
+
+def _brier(x):
+    return ((x.p_cal - x.sube_cal) ** 2 + (x.p_rap - x.sube_rap) ** 2) / 2
+
+
+def resumen_tipos(R, T, configs, base="C0r", n=2000, semilla=0):
+    """Por tipo de dia: dias, episodios, BSS de sube (dos varas y promedio), error y cobertura por config, y la
+    diferencia de Brier (promedio de las dos varas) config - base con remuestreo por episodios."""
+    R = R.join(T, on="fecha"); rng = np.random.default_rng(semilla); filas = []
+    for t in ["todos"] + list(T.columns):
+        G = R if t == "todos" else R[R[t]]
+        if G.empty: continue
+        f = {"tipo": t, "días": G.fecha.nunique()}
+        if t != "todos":
+            s = T[t].astype(int); ep = (s.diff().fillna(s.iloc[0]) == 1).cumsum()
+            G = G.assign(ep=ep.reindex(G.fecha).values); f["episodios"] = G.ep.nunique()
+        else:
+            G = G.assign(ep=((G.fecha - G.fecha.min()).dt.days // 28)); f["episodios"] = np.nan
+        for c in configs:
+            g = G[G.config == c]
+            if g.empty: continue
+            b1, b2 = _bss(g, "cal"), _bss(g, "rap")
+            f |= {f"{c} BSS 28d": b1, f"{c} BSS rápida": b2, f"{c} BSS prom": (b1 + b2) / 2,
+                  f"{c} error %": 100 * g.ape.mean(), f"{c} cob80 %": 100 * g.cob80.mean()}
+            if c != base:
+                A = G[G.config == c].set_index(["anio", "fecha"]); B = G[G.config == base].set_index(["anio", "fecha"])
+                d = (_brier(A) - _brier(B)).dropna(); e = B.ep.reindex(d.index)
+                por = d.groupby(e.values).agg(["sum", "count"]); k = len(por)
+                bt = [(lambda x: x["sum"].sum() / x["count"].sum())(por.iloc[rng.integers(0, k, k)]) for _ in range(n)] if k > 1 else [np.nan]
+                f |= {f"{c}-{base} Brier x1000": 1000 * d.mean(), f"{c}-{base} IC95": tuple(np.round(1000 * np.nanquantile(bt, [.025, .975]), 1))}
+        filas.append(f)
+    return pd.DataFrame(filas).set_index("tipo")
+
+
+PIEZAS_DESGLOSE = [(c, a, "2020-01-01", False) for c in ["C0r", "M1", "M2", "M3"] for a in (2023, 2024, 2025)]
+PIEZAS_CURVAS = ([(c, a, d, False) for c in ["C0r", "M1"] for a in (2024, 2025) for d in ("2023-01-01", "2022-03-01", "2021-01-01")]
+                 + [("C0r", a, "2020-01-01", True) for a in (2024, 2025)])   # M1 sin COVID fuerte desde 2020 = M3
+
+
 def main():
     warnings.filterwarnings("ignore")
     ap = argparse.ArgumentParser()
     ap.add_argument("--exp", choices=[e for e in pr.EXPERIMENTOS if e[:2] in ("m1", "m2", "m3")])
     ap.add_argument("--modelos", nargs="*", default=["sarimax_mec", "lightgbm_rel_mec"])
     ap.add_argument("--humo", action="store_true")
+    ap.add_argument("--rejilla", nargs="*", help="desglose, curvas o una config (p. ej. M2) para sus curvas")
     a = ap.parse_args()
+    if a.rejilla is not None:
+        piezas = []
+        for k in a.rejilla or ["desglose", "curvas"]:
+            if k == "desglose": piezas += PIEZAS_DESGLOSE
+            elif k == "curvas": piezas += PIEZAS_CURVAS
+            else: piezas += [(k, an, d, False) for an in (2024, 2025) for d in ("2023-01-01", "2022-03-01", "2021-01-01", "2020-01-01")]
+        rejilla(list(dict.fromkeys(piezas)), avisar=lambda s: print(s, flush=True)); print("FIN_REJILLA", flush=True)
+        return
     if a.humo:
         r = humo(); pd.set_option("display.width", 250); pd.set_option("display.max_columns", 30)
         for k, v in r.items(): print(f"\n== {k}\n{v}")

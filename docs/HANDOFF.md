@@ -10,58 +10,48 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 
 ---
 
-## EN CURSO (2026-10-06): el modelo no recoge lo descubierto, y los cuadernos suenan a chat
+## ESTADO (2026-10-06): reentrenamiento por mecanismos hecho y 22 cuadernos revisados
 
-**HECHO:** la auditoría. Está en `CONTEXTO.md`, entrada «Auditoría: casi nada de lo descubierto entró al modelo».
-- C0r no usa ninguna variable externa.
-- Lo descubierto entró, si entró, en bloque y sobre el total, no por mecanismo.
-- La COVID es el 29-39 % de los días de entrenamiento.
+**Modelo principal: M3** (por la regla preregistrada, para adelantos de 1 a 7 días):
+- C0r más los mecanismos en la forma en que se midieron;
+- sin la fase fuerte de la COVID, del 2020-03-15 al 2020-08-31.
 
-**Estado (06-10, tarde):**
-- **Cuadernos revisados y en git** (commits `e75e485` y `41b461f`): 00-03, 05-11, 13-21 y 23. Qué cambió de
-  conclusión: `CONTEXTO.md`, entrada «Revisión de los 22 cuadernos».
-- **Cuaderno 12:** su agente sigue trabajando.
-- **Pasada de coherencia en curso:** dos agentes (00-11 y 13-23) con la lista `COHERENCIA.md` del scratchpad.
-  - La varicela del paro y la salud mental de los desastres quedan anuladas o como hipótesis.
-  - Las firmas de clima por banda no se confirman en 2025-26.
-  - Otros ocho puntos más.
-- **Reentrenamiento:** etapa 1 aprobada y en git (preregistro en `variables.csv`, `notebooks/mecanismos.py`,
-  m1-m3). **Etapa 2 corriendo:**
-  - 5 corridas de 2025, de 6 a 10 h, con `Start-Process`;
-  - el desglose multianual 2023-2025 (enmienda `mecanismos_desglose_multianual`, que se escribe antes de calcular);
-  - las curvas de aprendizaje.
-  - Los m* se corren **solo** con `python notebooks/mecanismos.py --exp m1_2025 --modelos sarimax_mec
-    lightgbm_rel_mec` (o `--humo`); `pronostico.py` lanza un error a propósito.
-- **Por decidir con el propietario:**
-  - la tabla «Lo ya medido» de `CLAUDE.md` no se reproduce entera (MAPE 11,41 contra 10,13; acierto 70,2 contra
-    77,2) y su script ya no existe;
-  - la tabla de frases de ejemplo del cuaderno 00: son frases cortas sin identidad, pero vienen de notas reales.
+Resultados (detalle en `CONTEXTO.md`, «Mecanismos, etapa 2»):
+- **2025:** criterio 6,94 contra 5,20, acierto 63,2 %.
+- **2026:** empate, 15,07 contra 15,87.
+- **Rejilla 2023-2025:** Brier −4,7 ×1000 [−7,7; −2,0].
 
-**El propietario aprobó las tres cosas.** El trabajo va en paralelo y con orquestador, por dos vías.
+Lo que más ayuda es quitar la COVID fuerte. La noche festiva se aprende; la Feria no.
 
-**1. Reentrenamiento por mecanismos.** Lo lleva un agente:
-- cada hallazgo entra en la forma en que se midió;
-- los registros de entrenamiento se escogen para cubrir los eventos y también los días en calma;
-- un brazo prueba la COVID sin su fase fuerte;
-- se mide si faltan **registros históricos** (no variables) con curvas de aprendizaje.
+- **Cómo se corre:** `python notebooks/mecanismos.py --exp m3_2025 --modelos sarimax_mec lightgbm_rel_mec`
+  (también `--rejilla` y `--humo`). Con `pronostico.py` falla a propósito.
+- **Resultados:** `salidas/pronostico/m*_2025`, `m3/` y `mecanismos/` (rejilla, desglose y curvas). Los análisis de
+  la regla están en el scratchpad de la sesión del 06-10 (`mec/regla.py`, `mec/analisis_rejilla.py`).
+- **La respuesta semanal (`semana.py`) sigue con C0r.** Las variables de clima de M3 exigen h ≤ 7 y la semana usa
+  21. Hace falta una variante preregistrada: rezago ≥ 21 días, o sin esas columnas.
+- **Hipótesis abiertas, cada una con su fila antes de probarse:**
+  - el solapamiento entre la Feria y el día siguiente del 2 al 4 de enero;
+  - la Feria por asegurador en el jerárquico j_ne / j_resto.
+- **Faltan registros solo de tipos raros:** Feria, El Niño fuerte, catástrofes y olas. La base empieza en 2020; esos
+  episodios llegarán con el tiempo, del CRUE o de otros hospitales. Para los días comunes no faltan.
 
-Va en etapa 1: diseño, preregistro en `variables.csv`, `notebooks/mecanismos.py` y prueba de humo. Las corridas
-largas no arrancan sin la revisión del orquestador.
+**Cuadernos:** los 22 (00-03, 05-21 y 23) están revisados, con voz de analista y cifras verificadas, y son
+coherentes entre sí. Commits de `e75e485` a `08f36e9`. Qué cambió de conclusión: `CONTEXTO.md`, «Revisión de los
+22 cuadernos».
+- 00-13 no tienen generador en el repo: se editan en el `.ipynb`.
+- 14-23 se editan en `construir/` y `*_lecturas.json`.
+- La voz que se pide está en la memoria del proyecto (voz de los cuadernos).
 
-**2. Un agente por cuaderno.** Cada uno corrige la voz, integra lo que falta, profundiza la investigación y revisa
-las figuras.
-- Los agentes del 00 al 19 están corriendo.
-- **El 20, el 21 y el 23 esperan cupo**: el límite es de 20 agentes a la vez.
-- No hay cuaderno 22.
-
-**Reglas comunes de los agentes.** Están en el scratchpad de la sesión, en `REGLAS_AGENTES.md` y
-`TAREA_CUADERNO.md`:
-- **privacidad:** solo archivos agregados; nunca `triage.duckdb`, el texto clínico ni `extraccion`;
-- **evidencia:** cada cifra con su celda o su línea de origen;
-- **turnero:** como máximo 2 procesos pesados a la vez;
-- cada agente toca solo sus propios archivos y no hace commits: integra el orquestador.
-
-**Punto de control:** el commit `02f3407`, hecho antes de lanzar el trabajo.
+**Por decidir con el propietario:**
+1. **La tabla «Lo ya medido» de `CLAUDE.md` no se reproduce entera.** Con el control reconstruido, el MAPE da 11,41
+   contra 10,13 y el acierto 70,2 contra 77,2. El script del 17-09 ya no existe. ¿Se sustituye por las cifras de C0r
+   y M3, que sí son reproducibles?
+2. **Las medias anuales de `CLAUDE.md`:** 226,4 y 172,3 contra 226,9 y 172,6 depuradas.
+3. **La tabla de frases de ejemplo del cuaderno 00:** son frases cortas sin identidad, pero vienen de notas reales.
+   ¿Se quedan?
+4. **Defectos de fuente:**
+   - la SE53-2025 del evento 998 sigue en `vigilancia_sivigila.csv.gz` (`indices.py` la anula);
+   - la lluvia NASA de agosto de 2026 parece provisional en `clima_completo`.
 
 ---
 
@@ -76,7 +66,7 @@ las figuras.
 
 **Falta:**
 - que el propietario lo revise, y después **armar con él el monólogo** de la exposición;
-- **corregir los cuadernos 12, 13 y 14**, que él considera mal medidos. Sigue pendiente;
+- ~~corregir los cuadernos 12, 13 y 14~~: hecho el 06-10 (rehechos por mecanismo y con el azar calibrado);
 - el mecanismo Feria → «llegan porque son tantos» **no está probado**: necesita los datos del CRUE
   (pendiente #12 de este archivo).
 

@@ -14,6 +14,63 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-06 — Mecanismos, etapa 2: la regla elige M3; 2026 empata; lo que más ayuda es quitar la COVID fuerte
+
+**Decisión.** Por la regla preregistrada (`mecanismos_regla`), **M3 reemplaza a C0r** como modelo principal
+para adelantos de 1 a 7 días. M3 son los mecanismos más la exclusión de la fase fuerte de la COVID, del
+2020-03-15 al 2020-08-31. Es el mismo criterio con que C0r reemplazó a C0: se elige con 2025, y 2026, que dio
+empate, no revierte.
+
+La respuesta semanal sigue con C0r: las variables de clima de M3 exigen adelantos de 7 días o menos, y la semana
+usa 21. Pasar M3 a la semana requiere una variante preregistrada.
+
+**2025, origen rodante (365 orígenes, h = 1 a 7):**
+
+| Modelo | Criterio | Acierto (28 días) | BSS de pico | Cobertura del 80 % | MAPE | BSS en calma |
+|---|---|---|---|---|---|---|
+| C0r | 5,20 | 61,9 % | 2,9 | 80,5 % | 8,48 % | −5,3 |
+| M1 | 6,88 | 62,4 % | 6,3 | 80,1 % | 8,19 % | −3,5 |
+| M2 | 6,45 | 63,1 % | 5,5 | 80,9 % | 8,24 % | −5,8 |
+| **M3** | **6,94** | **63,2 %** | **7,9** | 78,0 % | **8,17 %** | **−1,3** |
+
+- Brier de M3 menos C0r: −3,39 ×1000 [−10,0; +2,5] con la vara de 28 días y −5,16 [−11,7; +0,5] con la rápida.
+
+**2026, mirado una vez (257 orígenes):**
+- M3 15,07 contra C0r 15,87; acierto 68,5 % contra 69,7 %.
+- Brier: +1,90 [−2,9; +6,7]. **Es un empate.**
+- La corrida de M3 en 2026 se calculó antes de aplicar la regla, para ganar tiempo de cómputo. No se abrió hasta
+  después de elegir.
+
+**Rejilla congelada 2023-2025** (enmienda `mecanismos_desglose_multianual`; 1.088 días, h = 1):
+- M3 frente a C0r: Brier −4,7 ×1000 [−7,7; −2,0], significativo. Mejora en los 3 años: 2023 −2,5 → +0,2,
+  2024 7,1 → 9,2 y 2025 8,5 → 10,0.
+- **La noche festiva se aprende:** el error de la mediana baja de 21,2 % a 6,5 % en 9 noches.
+- **La Feria empeora en M1** (error de 7,6 a 11,6 %). Probablemente se suma con el desplazamiento del día
+  siguiente entre el 2 y el 4 de enero. Queda como hipótesis con su propia fila.
+- La ola de salud y las fiestas lejanas no aportan.
+- M1 y M2 **empeoran la calma** (+3,2 y +5,6 ×1000): las variables meten ruido donde no pasa nada. M3 no la
+  empeora.
+- **Lectura:** la mayor parte de la mejora viene de quitar la COVID fuerte, no de las variables externas. Es lo que
+  el propietario sospechaba de la COVID. Bajarle el peso (T1) no servía; quitar solo la fase fuerte sí sirve.
+
+**Curvas de aprendizaje (`curvas_de_aprendizaje`):**
+- La historia ayuda mucho hasta 2021 y después se aplana. BSS de C0r en 2024 según desde dónde se entrena: desde
+  2023 −9,1; desde 2022-03 −0,5; desde 2021 8,6; desde 2020 7,1.
+- Lectura preregistrada: casi todo sale «indeterminado». La calma de C0r y todos los días de M1 sin la COVID salen
+  «aplanado».
+- **Para los días comunes no faltan registros históricos.**
+- Los tipos raros no tienen muestra, y la base no tiene triage anterior a 2020: Feria 4 en el entrenamiento,
+  El Niño o La Niña fuerte 1, catástrofe 0, olas del régimen actual 1. Llegarán con los años, o de otros
+  hospitales o del CRUE.
+
+**Límites:**
+- La lluvia NASA de agosto de 2026 es provisional en `clima_completo`, aunque en esas semanas las variables de
+  clima casi no se activaron.
+- Las formas de la Feria, de las noches y del corte de 60 km se midieron con datos que incluyen 2025.
+
+**Diagnóstico operativo:** los 2.746 s de m3 eran contención de la máquina, no código: el ajuste con h = 1 tarda
+25 s en m3 y 26 s en m1.
+
 ## 2026-10-06 — Revisión de los 22 cuadernos: lo que cambió de conclusión al recalcular
 
 **Decisión.** Cada cuaderno lo rehízo un agente, con voz de analista y sin tono de chat. Cada cifra tiene que
