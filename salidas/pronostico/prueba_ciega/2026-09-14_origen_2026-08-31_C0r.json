@@ -1,0 +1,16 @@
+{
+ "origen": "2026-08-31",
+ "lunes": "2026-09-14",
+ "adelanto_dias": 14,
+ "combo": "C0r",
+ "rho": 0.48715349528594065,
+ "media_q10": 151.33909197133724,
+ "media_q50": 166.32953523157715,
+ "media_q90": 181.93758000513324,
+ "normal_semana": 166.53351009426365,
+ "p_semana_sobre_normal": 0.49375,
+ "media_4_semanas_previas": 147.60714285714286,
+ "p_semana_sobre_previas": 0.94925,
+ "creado": "2026-10-06T16:43:55",
+ "commit": "bcfb42e"
+}

@@ -207,6 +207,9 @@ _[!_]*
 /salidas/pronostico/*
 !/salidas/pronostico/semanal/
 /salidas/pronostico/semanal/*.parquet
+# Pruebas ciegas (semana.py --origen, anadidas el 2026-10-06): prediccion hecha con datos cortados
+# antes de la semana, guardada antes de compararla con lo real. Misma razon que semanal/.
+!/salidas/pronostico/prueba_ciega/
 
 # La tabla de notas sin nada que lleve a la persona (NLP/nube/tabla.py; el
 # porque en NLP/docs/TABLA.md): id aleatorio, dia, nivel, banda de edad y la

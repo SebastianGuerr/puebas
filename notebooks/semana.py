@@ -165,8 +165,9 @@ def texto(D, W, calib=None):
     return "\n".join(L)
 
 
-def guardar(D, W, txt):
-    CARPETA.mkdir(parents=True, exist_ok=True); base = CARPETA / f"semana_{W['lunes']}_{W['combo']}"
+def guardar(D, W, txt, carpeta=None, nombre=None):
+    carpeta = carpeta or CARPETA                          # otra carpeta y nombre: prueba ciega (--origen)
+    carpeta.mkdir(parents=True, exist_ok=True); base = carpeta / (nombre or f"semana_{W['lunes']}_{W['combo']}")
     if base.with_suffix(".json").exists():
         raise SystemExit(f"Ya existe {base.name}: una prediccion guardada no se rehace (es la prueba prospectiva).")
     commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=pr.RAIZ).stdout.strip()
@@ -285,6 +286,7 @@ if __name__ == "__main__":
     ap.add_argument("--validar", action="store_true")
     ap.add_argument("--combos", nargs="*", help="con --validar: solo estas combinaciones (se suman a lo ya validado)")
     ap.add_argument("--hmax", type=int, default=21, help="adelanto maximo en dias (21 por defecto; fila m3_semanal)")
+    ap.add_argument("--origen", help="prueba ciega: ultimo dia que el modelo puede ver (el triage posterior se borra); se guarda en salidas/pronostico/prueba_ciega/")
     a = ap.parse_args()
     pr.H = a.hmax
     if a.validar:
@@ -296,6 +298,8 @@ if __name__ == "__main__":
     elif a.semana:
         y, cal, F = datos()
         o = y.last_valid_index(); lunes = pd.Timestamp(a.semana)
+        if a.origen:                                                 # prueba ciega: nada posterior al origen
+            o = pd.Timestamp(a.origen); y.loc[o + pd.Timedelta(days=1):] = np.nan; F.loc[o + pd.Timedelta(days=1):] = np.nan
         R = CARPETA / "validacion_semanal_resumen.csv"
         lead = 1 if (lunes - o).days <= 7 else 15
         rho, calib = .5, None
@@ -306,7 +310,9 @@ if __name__ == "__main__":
                                   f"{r['semana en rango 80 %']:.0f} %; acierto por día en sube/baja {r['acierta día sube/baja %']:.0f} %; "
                                   f"cuando dice 55-65 % subió el {r['dice 55-65 %: subió %']:.0f} %, cuando dice 65-75 % el "
                                   f"{r['dice 65-75 %: subió %']:.0f} %, y cuando dice más de 75 % el {r['dice 75-100 %: subió %']:.0f} %")
-                     for an, r in t.iterrows()}
+                     for an, r in t.iterrows() if not a.origen or an < o.year}   # en la prueba ciega, solo anos anteriores
         D, W = responder(y, cal, F, o, lunes, a.combo, rho)
-        txt = texto(D, W, calib); base = guardar(D, W, txt)
+        txt = texto(D, W, calib)
+        base = (guardar(D, W, txt, pr.SALIDA / "prueba_ciega", f"{lunes.date()}_origen_{o.date()}_{a.combo}") if a.origen
+                else guardar(D, W, txt))
         print(txt); print(f"\nGuardado en {base}.json / .csv / .md")

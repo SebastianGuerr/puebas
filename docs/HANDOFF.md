@@ -10,48 +10,77 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 
 ---
 
-## ESTADO (2026-10-06): reentrenamiento por mecanismos hecho y 22 cuadernos revisados
+## ESTADO AL CIERRE (2026-10-06, 17:00) — leer esto primero
 
-**Modelo principal: M3** (por la regla preregistrada, para adelantos de 1 a 7 días):
-- C0r más los mecanismos en la forma en que se midieron;
-- sin la fase fuerte de la COVID, del 2020-03-15 al 2020-08-31.
+**Todo está detenido y guardado.** No hay procesos corriendo ni agentes vivos. Todo está en git, en la rama
+`modelos-afinados`, sin subir. `NLP/modelo.py` tiene un cambio local que no es de esta sesión (apunta a MedGemma):
+no se toca ni se incluye en los commits.
 
-Resultados (detalle en `CONTEXTO.md`, «Mecanismos, etapa 2»):
-- **2025:** criterio 6,94 contra 5,20, acierto 63,2 %.
-- **2026:** empate, 15,07 contra 15,87.
-- **Rejilla 2023-2025:** Brier −4,7 ×1000 [−7,7; −2,0].
+### 1. Modelos vigentes
+| Uso | Modelo | Qué es | Cómo se corre |
+|---|---|---|---|
+| **De 1 a 7 días** | **M3** | C0r + mecanismos medidos (Feria días 0-4, noches festivas, fiestas a ≥ 60 km, terremoto, paro, salud pública y red con compuerta, transiciones de clima, MinDefensa con 42 días de rezago), sin la fase fuerte de la COVID | `python notebooks/mecanismos.py --exp m3_2025 --modelos sarimax_mec lightgbm_rel_mec` (`--rejilla` y `--humo` también) |
+| **Respuesta semanal** | **M3s** | M3 sin las 7 variables de clima, válido con cualquier adelanto | `python notebooks/semana.py --semana <lunes> --combo M3s --hmax 28` |
+| Referencia | C0r | SARIMAX + LightGBM, solo calendario, estación, nivel y memoria | `--combo C0r` |
 
-Lo que más ayuda es quitar la COVID fuerte. La noche festiva se aprende; la Feria no.
+Resultados y porqué: `CONTEXTO.md`, entradas del 2026-10-06 «Mecanismos, etapa 2» y «(cierre) M3s gana…».
+- **M3:** 2025 63,2 % de acierto, contra 61,9 % de C0r. 2026, empate. Rejilla 2023-2025: Brier −4,7 [−7,7; −2,0].
+- **M3s:** 2025 criterio 5,98 contra 4,46.
 
-- **Cómo se corre:** `python notebooks/mecanismos.py --exp m3_2025 --modelos sarimax_mec lightgbm_rel_mec`
-  (también `--rejilla` y `--humo`). Con `pronostico.py` falla a propósito.
-- **Resultados:** `salidas/pronostico/m*_2025`, `m3/` y `mecanismos/` (rejilla, desglose y curvas). Los análisis de
-  la regla están en el scratchpad de la sesión del 06-10 (`mec/regla.py`, `mec/analisis_rejilla.py`).
-- **La respuesta semanal (`semana.py`) sigue con C0r.** Las variables de clima de M3 exigen h ≤ 7 y la semana usa
-  21. Hace falta una variante preregistrada: rezago ≥ 21 días, o sin esas columnas.
+### 2. Lo primero que hay que hacer mañana
+1. **Contarle al propietario el resultado de la prueba ciega**, en el formato que pidió (memoria
+   `formato-verificacion-semanal`). Semana del 14 al 20 de septiembre, predicha con datos hasta el 31 de agosto:
+   - real: media de 182,4/día; la de los 3 meses previos, 165,7;
+   - **M3s, 155: falló.** Subestimó los días laborables un 17-19 %, y solo 3 de 7 días cayeron en el rango;
+   - **C0r, 166: mejor.** Error del 8,9 % y 7 de 7 días en el rango.
+   - Los dos acertaron la forma de la semana y la subida frente a las 4 semanas anteriores.
+   - Hipótesis: el contexto congelado en un origen deprimido por el terremoto y Nueva EPS arrastra el bache.
+   - Mañana y tarde, real: lunes 83/68, martes 58/66, miércoles 79/64, jueves 70/69, viernes 58/55, sábado 48/55,
+     domingo 41/47. El modelo no predice la franja: reparte el día con la proporción de las 8 semanas previas.
+   - Los archivos están en `salidas/pronostico/prueba_ciega/` (M3s y C0r, .md / .csv / .json).
+2. **Rehacer la referencia C0r de la semana del 12 de octubre**, que se cortó al cerrar:
+   `python notebooks/semana.py --semana 2026-10-12 --combo C0r --hmax 28`. Tarda unos 6 minutos.
+3. **Decidir con el propietario** qué se publica cada semana: M3s solo, o M3s con C0r al lado mientras se acumulan
+   semanas verificadas. Proponer, preregistrado, probar el contexto con las anomalías a cero en lugar de congelarlo
+   en el origen.
+4. **Cuando el superior actualice la base:** `python notebooks/semana.py --verificar 2026-10-05` (y 2026-10-12).
+   Reportarlo en el formato del propietario.
+
+### 3. Servidor con Python (en trámite)
+- El equipo del servidor recibió `notebooks/servidor/modelos_pronostico.ipynb`: el código mínimo de SARIMAX
+  (`statsmodels`), LightGBM cuantil (`lightgbm`) y su combinación, sin datos.
+- **Prueba de instalación:** con origen 2026-09-13, el lunes 14 debe dar 220 (186-254). Versiones: Python 3.11.9,
+  statsmodels 0.15.0, lightgbm 4.7.0, numpy 1.26.4, pandas 2.2.3.
+- **La GPU no acelera estos modelos.** Sirven los núcleos de CPU, para paralelizar los reentrenamientos.
+- Tiempos de referencia en este equipo: un ajuste de LightGBM tarda ~59 s y uno de SARIMAX ~138 s. La validación de
+  2025 tarda ~48 y ~38 min.
+- **Antes de enviarle datos reales al servidor, se necesita la autorización institucional.**
+
+### 4. Cuadernos
+Los 22 (00-03, 05-21 y 23) están revisados, son coherentes entre sí y tienen voz de analista. El 00 cuenta además
+la historia de la predicción hasta M3, en primera persona.
+- Del 00 al 13 se editan en el `.ipynb`; del 14 al 23, en `construir/` y `*_lecturas.json`.
+- Qué cambió de conclusión: `CONTEXTO.md`, «Revisión de los 22 cuadernos».
+- Pueden añadirse al 00 los resultados de M3s y de la prueba ciega cuando el propietario decida el punto 2.3.
+
+### 5. Pendientes del propietario o de fuentes
+- **Defectos de fuente:**
+  - la SE53-2025 del evento 998 sigue en `vigilancia_sivigila.csv.gz` (`indices.py` la anula en memoria);
+  - la lluvia NASA de agosto de 2026 en `clima_completo` parece provisional.
+- **Datos que faltan:** CRUE (bloqueado por reCAPTCHA), el calendario de contratación SES-EPS y los partidos del
+  Once Caldas (hay 2; la fuente propuesta es la API de ESPN).
 - **Hipótesis abiertas, cada una con su fila antes de probarse:**
   - el solapamiento entre la Feria y el día siguiente del 2 al 4 de enero;
-  - la Feria por asegurador en el jerárquico j_ne / j_resto.
-- **Faltan registros solo de tipos raros:** Feria, El Niño fuerte, catástrofes y olas. La base empieza en 2020; esos
-  episodios llegarán con el tiempo, del CRUE o de otros hospitales. Para los días comunes no faltan.
+  - la Feria por asegurador en j_ne / j_resto.
 
-**Cuadernos:** los 22 (00-03, 05-21 y 23) están revisados, con voz de analista y cifras verificadas, y son
-coherentes entre sí. Commits de `e75e485` a `08f36e9`. Qué cambió de conclusión: `CONTEXTO.md`, «Revisión de los
-22 cuadernos».
-- 00-13 no tienen generador en el repo: se editan en el `.ipynb`.
-- 14-23 se editan en `construir/` y `*_lecturas.json`.
-- La voz que se pide está en la memoria del proyecto (voz de los cuadernos).
-
-**Por decidir con el propietario:**
-1. **La tabla «Lo ya medido» de `CLAUDE.md` no se reproduce entera.** Con el control reconstruido, el MAPE da 11,41
-   contra 10,13 y el acierto 70,2 contra 77,2. El script del 17-09 ya no existe. ¿Se sustituye por las cifras de C0r
-   y M3, que sí son reproducibles?
-2. **Las medias anuales de `CLAUDE.md`:** 226,4 y 172,3 contra 226,9 y 172,6 depuradas.
-3. **La tabla de frases de ejemplo del cuaderno 00:** son frases cortas sin identidad, pero vienen de notas reales.
-   ¿Se quedan?
-4. **Defectos de fuente:**
-   - la SE53-2025 del evento 998 sigue en `vigilancia_sivigila.csv.gz` (`indices.py` la anula);
-   - la lluvia NASA de agosto de 2026 parece provisional en `clima_completo`.
+### 6. Cómo se trabajó hoy (por si se repite)
+Un orquestador y agentes en paralelo, uno por cuaderno más uno de entrenamiento. Las reglas comunes estaban en el
+scratchpad de la sesión (`REGLAS_AGENTES.md`, `TAREA_CUADERNO.md`, `COHERENCIA.md`), y el turnero (`turno.py`) dejaba
+como máximo 3 procesos pesados a la vez. El scratchpad se pierde con la sesión: lo que importa ya está aquí y en
+`CONTEXTO.md`.
+- El agente de entrenamiento se colgó 3 veces por esperar con comandos largos. Hay que pedir siempre comandos cortos
+  para vigilar.
+- Las corridas largas van con `Start-Process` y log.
 
 ---
 

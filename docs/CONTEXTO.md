@@ -14,6 +14,61 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-06 (cierre) — M3s gana la regla semanal, pero falla la prueba ciega de septiembre a 14-20 días
+
+**Decisión: M3s es el modelo de la respuesta semanal, por la regla `m3_semanal`.** M3s es M3 sin las 7 variables
+de clima, para que sirva con cualquier adelanto.
+- **2025, 52 domingos, adelantos 1 y 15:** criterio M3s 5,98 contra C0r 4,46. Cobertura semanal del 80 %: 80,8 % y
+  82,7 % en los dos.
+  - Brier M3s − C0r: adelanto 1, −3,27 ×1000 [−10,2; +3,7]; adelanto 15, −4,15 [−14,1; +6,5].
+  - Mejora sin significancia.
+- **2026, mirado una vez:** 13,55 contra 12,46. Pero la semana cae dentro del rango del 80 % solo el 60,5 % y el
+  58,3 % de las veces (C0r: 68,4 % y 66,7 %). En 2026 los rangos semanales de los dos son demasiado estrechos.
+- Logs en el scratchpad de la sesión: `mec/regla_m3s_2025.log` y `mec/regla_m3s_2026.log`.
+
+**Predicciones guardadas antes de conocer lo real** (`salidas/pronostico/semanal/`, en git):
+- semana del 2026-10-05: M3s y C0r;
+- semana del 2026-10-12: solo M3s. La de C0r se cortó al cerrar la jornada.
+
+Las dos usan datos hasta el 2026-09-20, así que tienen 15 y 22 días de adelanto.
+
+**Prueba ciega pedida por el propietario** (`semana.py --origen 2026-08-31`, en `salidas/pronostico/prueba_ciega/`).
+La semana del 14 al 20 de septiembre, predicha sin ningún dato de septiembre, con 14 a 20 días de adelanto:
+
+| | Lun | Mar | Mié | Jue | Vie | Sáb | Dom | Media | Error medio | Días en rango |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **Real** | 221 | 199 | 200 | 199 | 171 | 150 | 137 | **182,4** | — | — |
+| M3s | 184 | 166 | 162 | 161 | 155 | 133 | 125 | 155 (142-168) | 14,3 % | 3 de 7 |
+| C0r | 195 | 176 | 173 | 171 | 168 | 137 | 138 | 166 (151-182) | 8,9 % | **7 de 7** |
+
+- La forma de la semana la aciertan los dos: el lunes es el más alto y el domingo el más bajo.
+- Los dos predicen subida frente a las 4 semanas anteriores (148/día). Subió.
+- M3s dio un 13 % de probabilidad de que la semana quedara sobre lo normal (167/día). Quedó en 182: se equivocó.
+  C0r dio 49 %, sin opinión.
+- **M3s subestimó los días laborables entre un 17 y un 19 %.**
+
+**Por qué falló (hipótesis, no probada).** El 31 de agosto el triage venía deprimido: 147,6/día en las 4 semanas
+previas, por el terremoto del 10 de agosto y la caída de Nueva EPS de julio. Del 1 al 13 de septiembre ya había
+rebotado a 176/día. Con 14-20 días de adelanto, el contexto se congela en su valor del origen. Las variables de red
+con compuerta y el nivel reciente arrastran el bache hacia la semana predicha, y M3s, con más variables de ese tipo,
+lo arrastra más que C0r.
+- Con 1 día de adelanto (origen rodante), M3s predijo esa misma semana con errores de −9 % a +6 % y los 7 días en
+  rango.
+- **Es una sola semana: no anula la validación de 52 semanas, pero es una alerta.** El modelo acierta a corto plazo
+  y le cuesta anticipar el rebote después de un choque cuando el adelanto es de 2 a 3 semanas.
+
+**Lo que queda por decidir con el propietario:**
+- si M3s se mantiene en la semana mientras se acumulan semanas verificadas, o si se publica C0r junto a él;
+- probar el congelamiento del contexto: anomalías a cero, como en `anio_a_ciegas`, en lugar de congelar en el
+  origen. Requiere su propia fila preregistrada.
+
+**Otros del día.**
+- `semana.py` tenía un defecto previo: no podía predecir semanas posteriores al último dato. Se arregló, y la
+  validación no cambia.
+- `notebooks/servidor/modelos_pronostico.ipynb`: copia mínima del código de los dos modelos y de su combinación, para
+  el equipo del servidor con Python. Sin datos. Con origen 2026-09-13 da una mediana de 220 para el lunes 14, y el
+  real fue 221.
+
 ## 2026-10-06 — La vara de `CLAUDE.md` pasa a ser la reproducible; M3 va a la semana; el 00 cuenta la predicción
 
 **Decisión 1 (el propietario la delegó al orquestador).** Las cifras «MAPE 10,13 %» y «acierto 77,2 %» de la tabla
