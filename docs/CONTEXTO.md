@@ -14,6 +14,69 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-06 — Auditoría: casi nada de lo descubierto entró al modelo en la forma en que se descubrió
+
+**Qué planteó el propietario.** El modelo vigente no recoge lo encontrado:
+- clima;
+- fiestas, Feria y fútbol;
+- catástrofes distintas de la COVID;
+- epidemias;
+- EPS distintas de Nueva EPS.
+
+Además, la COVID pesa demasiado. Y los cuadernos se leen como un chat con IA, no como texto suyo.
+
+**Qué se midió.**
+- **Modelo vigente:** C0r usa 28 entradas y **ninguna externa**: calendario, día de la semana, Fourier, nivel,
+  memoria y 2 indicadores de COVID. Cg añade 5 familias de salud pública con compuerta y 8 marcas de tipo de día.
+- **Peso de la COVID:** 716 días (170 fuertes y 546 parciales) son el **39,3 %** del entrenamiento en el origen
+  2024-12-31, el **32,7 %** en el 2025-12-31 y el **29,3 %** en el 2026-09-13. Su volumen medio es de 79 y 144
+  triages/día, frente a 198 desde 2022.
+  - Matiz medido: bajarle el peso a 0,1 (T1) empeoró los 4 años, de −2 a −6 puntos.
+  - Empezar en 2022 (e0) también rindió menos que empezar en 2020 (e1).
+  - Sigue sin probarse **quitar solo la fase fuerte** o tratarla como serie aparte.
+- **Lo descubierto entró, si entró, como indicador de volumen total y en bloque** (e2 con 49 variables, C1 con
+  24). Nunca entró por el subgrupo, la hora o el corte con que se midió. Ejemplos:
+  - La **Feria** mueve SOAT +36,9 ± 5,5 % y particulares +61 %, pero el total solo +7,3 ± 8,5 %. Entró como
+    `fut_ev_feria` sobre el total.
+  - Las **fiestas lejanas (≥ 60 km)**, +1,9 % [+0,5; +3,4]: en e2 los cortes eran 0-50, 51-100 y 101+.
+  - La **noche de festivo** (madrugada +31-44 %) no tiene indicador propio en `CAL`.
+  - El **terremoto de 2026** (−21,5 % en 2 semanas) quedó en un indicador genérico.
+  - Las **otras EPS** (Sura, resto, concentración) solo entraron en C1, que perdió.
+  - El **clima por banda de edad** (65+ +4,6 % con lluvia reciente) espera a C2, que no tiene resultado escrito.
+  - El **fútbol** no tiene datos: hay 2 partidos del Once Caldas en `eventos_manizales`, y en septiembre se
+    dejó fuera por alcance.
+
+**Lectura.** Que e2, e3 y C1 perdieran no prueba que esos factores no actúen. Prueba que meterlos todos sobre el
+total, en un solo modelo y con unos 2.400 días, ajusta ruido. Es la misma objeción de «mecanismos antes que
+promedios».
+
+**Decisión sobre los cuadernos.** Se escriben en voz impersonal de tesis:
+- «se descubrió que», «se investigó que», «a partir de la gráfica anterior se puede interpretar que»;
+- sin mencionar al propietario ni a las sesiones;
+- sin secciones de pasos siguientes ni jerga de filas;
+- los límites del análisis van como límites, no como tareas.
+
+Lo operativo vive aquí y en `HANDOFF.md`.
+
+Estado de los cuadernos:
+- Los peores son el 23, el 16, el 03, el 02 y el 08.
+- Del 00 al 13 no tienen generador y se corrigen en el `.ipynb`.
+- Del 14 al 23 se corrigen en `construir/` y `*_lecturas.json`.
+
+## 2026-10-05 (noche) — La compuerta empata con el protocolo completo: se queda C0r y Cg pasa a hipótesis prospectiva
+
+**Decisión.** Por la regla de `contexto_con_compuerta_confirmacion` se queda C0r. Con origen rodante, Cg (SARIMAX
++ LightGBM con salud pública en compuerta) empata en 2025: criterio 5,1 contra 5,2, acierto −0,35 puntos
+[−1,5; +0,7]. En 2026, mirado una sola vez: 15,4 contra 15,9, acierto −1,0 [−2,1; 0,0]. Cg mejora el BSS de pico
+en 2025 (3,8 contra 2,9).
+
+**Por qué no se confirma.** La ola de salud pública marcó 35 días en 2023 y 70 en 2024, pero 7 en 2025 y 0 en
+2026. La compuerta casi no se encendió en los años de confirmación. **No es una refutación**: esos años no traen el
+contexto en que la compuerta actúa.
+
+**Consecuencia.** C0r es el modelo principal de la respuesta semanal. Cg se guarda **en paralelo** como hipótesis
+prospectiva, para compararlo cuando haya olas (la temporada de lluvias de octubre-noviembre es la candidata).
+
 ## 2026-10-05 (noche) — El propietario corrige: no descartar el contexto; entrenar con fechas escogidas. Resultado: la compuerta
 
 **Lo que dijo el propietario.** Las variables externas ya están medidas y validadas en los cuadernos 17 a 21. Lo

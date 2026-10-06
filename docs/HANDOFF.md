@@ -6,7 +6,24 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-10-01.**
+**Última actualización: 2026-10-06.**
+
+---
+
+## EN CURSO (2026-10-06): el modelo no recoge lo descubierto, y los cuadernos suenan a chat
+
+**HECHO:** la auditoría. Está en `CONTEXTO.md`, entrada «Auditoría: casi nada de lo descubierto entró al modelo».
+- C0r no usa ninguna variable externa.
+- Lo descubierto entró, si entró, en bloque y sobre el total, no por mecanismo.
+- La COVID es el 29-39 % de los días de entrenamiento.
+
+**Esperando al propietario:**
+1. ¿Se arma un experimento nuevo que meta cada hallazgo **en la forma en que se midió**? Ejemplos: Feria por
+   asegurador u hora, fiestas ≥ 60 km, noche de festivo, terremoto con decaimiento, panel de EPS, y clima por banda
+   de edad. Se preregistra antes de correr.
+2. Para la COVID, ¿se prueba quitar solo la fase fuerte? Bajarle el peso ya se probó y empeoró los 4 años.
+3. ¿Se reescriben los 22 cuadernos en voz impersonal? Propuesta: empezar por el 23 como muestra. ¿El 00 se queda
+   en primera persona, como se hizo el 01-10?
 
 ---
 
