@@ -17,13 +17,31 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 - Lo descubierto entró, si entró, en bloque y sobre el total, no por mecanismo.
 - La COVID es el 29-39 % de los días de entrenamiento.
 
-**Esperando al propietario:**
-1. ¿Se arma un experimento nuevo que meta cada hallazgo **en la forma en que se midió**? Ejemplos: Feria por
-   asegurador u hora, fiestas ≥ 60 km, noche de festivo, terremoto con decaimiento, panel de EPS, y clima por banda
-   de edad. Se preregistra antes de correr.
-2. Para la COVID, ¿se prueba quitar solo la fase fuerte? Bajarle el peso ya se probó y empeoró los 4 años.
-3. ¿Se reescriben los 22 cuadernos en voz impersonal? Propuesta: empezar por el 23 como muestra. ¿El 00 se queda
-   en primera persona, como se hizo el 01-10?
+**El propietario aprobó las tres cosas.** El trabajo va en paralelo y con orquestador, por dos vías.
+
+**1. Reentrenamiento por mecanismos.** Lo lleva un agente:
+- cada hallazgo entra en la forma en que se midió;
+- los registros de entrenamiento se escogen para cubrir los eventos y también los días en calma;
+- un brazo prueba la COVID sin su fase fuerte;
+- se mide si faltan **registros históricos** (no variables) con curvas de aprendizaje.
+
+Va en etapa 1: diseño, preregistro en `variables.csv`, `notebooks/mecanismos.py` y prueba de humo. Las corridas
+largas no arrancan sin la revisión del orquestador.
+
+**2. Un agente por cuaderno.** Cada uno corrige la voz, integra lo que falta, profundiza la investigación y revisa
+las figuras.
+- Los agentes del 00 al 19 están corriendo.
+- **El 20, el 21 y el 23 esperan cupo**: el límite es de 20 agentes a la vez.
+- No hay cuaderno 22.
+
+**Reglas comunes de los agentes.** Están en el scratchpad de la sesión, en `REGLAS_AGENTES.md` y
+`TAREA_CUADERNO.md`:
+- **privacidad:** solo archivos agregados; nunca `triage.duckdb`, el texto clínico ni `extraccion`;
+- **evidencia:** cada cifra con su celda o su línea de origen;
+- **turnero:** como máximo 2 procesos pesados a la vez;
+- cada agente toca solo sus propios archivos y no hace commits: integra el orquestador.
+
+**Punto de control:** el commit `02f3407`, hecho antes de lanzar el trabajo.
 
 ---
 

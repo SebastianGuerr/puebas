@@ -75,6 +75,15 @@ for _suf, _ors in [("_2025", ("2024-12-31", "2025-12-30")), ("", ("2025-12-31", 
 # valida y 'g' prueba. Solo para lightgbm_rel: SARIMAX no admite faltantes y entra sin contexto en la combinacion.
 for _suf, _ors in [("_2025", ("2024-12-31", "2025-12-30")), ("", ("2025-12-31", ULTIMO_ORIGEN))]:
     EXPERIMENTOS[f"g{_suf}"] = dict(ini="2020-01-01", contexto="compuerta", capas=["salud"], origenes=_ors, carpeta=SALIDA / f"g{_suf}")
+# mecanismos en la forma en que se midieron (filas mecanismos_* de variables.csv; notebooks/mecanismos.py, que es
+# por donde se corren: m2 cambia los pesos y m3 el entrenamiento). m1 = variables de mecanismo; m2 = m1 + repertorio
+# (calma y marcados pesan lo mismo dentro de cada ano); m3 = m1 sin la fase fuerte de la COVID.
+for _suf, _ors in [("_2025", ("2024-12-31", "2025-12-30")), ("", ("2025-12-31", ULTIMO_ORIGEN))]:
+    EXPERIMENTOS[f"m1{_suf}"] = dict(ini="2020-01-01", contexto="mecanismos", origenes=_ors, carpeta=SALIDA / f"m1{_suf}")
+    EXPERIMENTOS[f"m2{_suf}"] = dict(ini="2020-01-01", contexto="mecanismos", pesos="repertorio", origenes=_ors,
+                                     carpeta=SALIDA / f"m2{_suf}")
+    EXPERIMENTOS[f"m3{_suf}"] = dict(ini="2020-01-01", contexto="mecanismos", excluir=[COVID["es_covid_fuerte"]],
+                                     origenes=_ors, carpeta=SALIDA / f"m3{_suf}")
 EXP = EXPERIMENTOS["e0"]                      # el experimento activo; lo cambia usar()
 ANIO_ORIGEN = "2025-12-31"
 
@@ -274,6 +283,9 @@ def contexto_exp(dias):
         for i, t in enumerate(marcas.TIPOS):
             PAS[f"ext_g_marca_{i}"] = M[t].astype(float)
         return PAS, pd.DataFrame(index=dias)
+    if EXP.get("contexto") == "mecanismos":                          # ext_g_m_: faltante = apagada; ver mecanismos.py
+        import mecanismos
+        return mecanismos.contexto(pd.DatetimeIndex(dias), EXP, globals()["H"])   # 'H' es local en la rama de compuerta
     PAS, FUT = contexto(dias)
     sel = EXP.get("seleccion")
     if sel:
@@ -629,7 +641,7 @@ def leer(modelos=None, exp="e0", anio=False, vara="calendario"):
     para que todos los experimentos se midan contra la misma vara."""
     car = EXPERIMENTOS[exp]["carpeta"] / ("anio" if anio else "")
     fs = sorted(car.glob("*.parquet"))
-    fs = [f for f in fs if not f.stem.startswith("_") and (modelos is None or f.stem in modelos)]
+    fs = [f for f in fs if not f.stem.startswith(("_", "anual_", "lazypredict")) and (modelos is None or f.stem in modelos)]
     P = pd.concat([pd.read_parquet(f) for f in fs]).assign(exp=exp)
     return P, pd.read_parquet(SALIDA / ("_umbrales.parquet" if vara == "calendario" else "_umbrales_rapido.parquet"))
 

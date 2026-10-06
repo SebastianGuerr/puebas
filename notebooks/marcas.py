@@ -25,10 +25,14 @@ def marcar(dias):
     H = ix.contexto_holistico(dias).reindex(dias)
     R = ix.regimenes_diarios().reindex(dias).fillna(0)
     cl = ix.clima_diario().reindex(dias)
-    ref = lambda s, desde="2010-01-01": s.loc[desde:"2024-12-31"]
+    # umbrales sobre la referencia FIJA 2020-01-01 a 2024-12-31, sean cuales sean los 'dias' pedidos (2026-10-06: antes
+    # se calculaban sobre las fechas pasadas, y 'red de salud' cambiaba de 36 a 83 dias en 2022-03/2024-12 segun desde
+    # donde se llamara). Llamado desde 2020, da exactamente lo mismo que antes.
+    REF = pd.date_range("2020-01-01", "2024-12-31")
+    Hr = H.reindex(REF) if REF.isin(dias).all() else ix.contexto_holistico(REF).reindex(REF)
     cambio = H[["ext_h_cambio_1", "ext_h_cambio_2", "ext_h_cambio_3"]].abs()
-    u_cambio = ref(cambio, "2020-01-01").quantile(.95)
-    u_red = ref(H.ext_h_cambio_nueva_eps_28d.abs(), "2020-01-01").quantile(.95)
+    u_cambio = Hr[["ext_h_cambio_1", "ext_h_cambio_2", "ext_h_cambio_3"]].abs().quantile(.95)
+    u_red = Hr.ext_h_cambio_nueva_eps_28d.abs().quantile(.95)
     otras = {"ext_h_fam_violencias_y_agresiones": 1.5, "ext_h_fam_salud_mental_e_intoxicaciones": 1.5,
              "ext_h_fam_materno_perinatal": 1.5, "ext_h_fam_inmunoprevenibles": 2.0}
     M = pd.DataFrame(index=dias)

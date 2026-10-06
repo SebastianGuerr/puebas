@@ -14,6 +14,173 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-06 — Revisión de los 22 cuadernos: lo que cambió de conclusión al recalcular
+
+**Decisión.** Cada cuaderno lo rehízo un agente, con voz de analista y sin tono de chat. Cada cifra tiene que
+salir de una celda o de una línea citable, y el orquestador revisó cada informe cifra por cifra. Al recalcular,
+estas conclusiones cambiaron. Valen más que las entradas anteriores que las contradigan:
+
+**Desenlace y control**
+- **Estancia (01, 02):** los regímenes salen distintos según el corte: 9,8 / 55,8 / 9,7 en el 01 y
+  10,7 / 56,0 / 9,6 en el 02. Al cortar en el 20-09-2026, el 02 queda en 9,6.
+- **Medias anuales (01, 05, 06):** 2024 es 226,9 y 2026 es 172,6 con la serie depurada (sin el 21-03-2024 ni el
+  21-09-2026); `CLAUDE.md` da 226,4 y 172,3 con el archivo tal cual. La caída es del −23,9 % en los dos casos.
+- **Amplitud anual (01):** el 19,7 % mezcla tendencia con ciclo. Relativa a la media de cada año, en 2022-2024 es
+  18,6 %, con pico en mayo y valle en diciembre.
+- **La tabla «Lo ya medido» de `CLAUDE.md` no se reproduce entera (05).** Se repitió el control con calendario
+  más un escalón en 2025-11, en los mismos 615 días y con origen rodante:
+  - ruido 12,3 % (12,6 % en la tabla), autocorrelación 0,438 (0,423) y bases simples parecidas;
+  - el MAPE del control da 11,41 % (10,13 %) y el acierto en «sube» 70,2 % (77,2 %).
+  - El script del 2026-09-17 ya no existe. **Esas dos cifras no se pueden reproducir con la especificación
+    reconstruida.**
+
+**Hospital**
+- **El ingreso cae en escalón en mayo de 2024 (10):** del 44,4 % al 29,9 % de los triages.
+  - Nivel IV: de 26,2 % a 0,8 %. Nivel III: de 59,3 % (ago-2024) a 1,0 % (ene-2025).
+  - No es efecto de la mezcla de niveles, y es anterior a la crisis de Nueva EPS.
+  - Obstetricia salta en 2024: no «crece de forma sostenida».
+  - La diarrea de marzo-abril no es un patrón robusto.
+- **Privacidad (10):** ninguna casilla de menos de 20 casos queda visible. Las de 5 a 12 casos del cuaderno
+  anterior pasan a «otros» o a «<20».
+- **Nivel frente a Nueva EPS (02):** r = −0,80 es en 22 meses, de ene-2024 a oct-2025, no solo en 2025.
+
+**Red de aseguradores**
+- **El pico de 2024 es de SURA (00, 01, 18):** pasa de 59,0 a 91,9 triages/día entre mar-2024 y abr-2024.
+- **Nueva EPS frente a Salud Total (18):** la relación con el hospital es por contratación. Nueva EPS genera
+  17,1 triages/mes por cada 1.000 afiliados; Salud Total, 0,7.
+- **Concentración (18):** Nueva EPS + SURA es el 77-86 % del triage, no el 80-90 %.
+- **Compensación de la caída de Nueva EPS:** depende de la ventana. Da 13 % y 22 % (01) o 16 % y 11 % (18).
+- **Escalones y cierres (07):** los escalones son transiciones de semanas, no saltos de un día.
+  - El «+15,5 % tras Avidanti» está dentro de lo habitual de esas fechas (control: +11,1, 0,0, +11,1).
+  - La atribución del pico de 2021 a Medimás no tenía fuente y se retiró.
+
+**Feria**
+- **Firma por asegurador (07):** otras EPS +32,0 ± 6,3 frente a +11,1; SOAT +36,9 ± 5,5; Nueva EPS +14,4; SURA −4,2.
+  - SOAT, otras EPS y particulares son el 9,0 % del triage: por eso el total solo sube +7,3 %.
+  - La madrugada no se separa de otros regresos (+10,2 frente a +8,0).
+- **Feria en el total (06):** el +6,3 % depende de 2022, que cae en la ventana COVID. Sin 2022 queda en +2,1 %, y
+  sin 2020 ni 2022, en −0,3 %.
+
+**Picos**
+- **Diciembre falso (08):** el control A tenía 0 días de 2021 en su ajuste.
+- **Los 30 picos notables (08):** 18 tienen factor identificado, 4 solo coinciden con fiestas lejanas y 8 no
+  tienen explicación con los datos disponibles.
+- **Un pico es de toda la demanda (08, 14):** todas las bandas suben, de +19 % a +27 %.
+- **Dosis de marcas (14):** P(pico) pasa de 11,2 % sin marcas a 19,6 % con 3 o más. Es exploratorio y cambia de
+  forma según el periodo.
+
+**Clima**
+- **El triage total no es la IRA diluida (17):** los efectos del clima sobre la IRA y sobre el total tienen
+  correlación −0,35 entre 266 pares, y solo 6 sobreviven en los dos.
+- **Las firmas de clima por banda no se confirman en 2025-26 (21):** de 32, 8 conservan el signo, 1 se confirma y 4
+  se invierten. El «+4,6 % en 65+ con lluvia» es sobre todo de 2024. El «hasta 3 veces más fuerte por banda» vale
+  solo para el descubrimiento. El 21 tenía 65 pruebas por parte, no 77.
+- **Seco → lluvioso (07, 17):** +13,4 ± 15,0 en 0-4 años. Sin el episodio del 2024-04-03, que coincide con el
+  escalón de SURA, queda en +8,2 ± 13,0. No es significativo, y en el total no se ve.
+- **Frío por temporada (11):** el frío pesa más en temporada de lluvias que fuera de ella: +12,6 % frente a +4,7 %
+  (p = 0,032). Es exploratorio: la partición no estaba fijada antes de mirar.
+- **El método del cuaderno 06 (06):** con efectos inyectados, solo detecta efectos semanales de 5-10 % o más. El
+  «ningún factor afecta» se reemplaza por esa cota.
+
+**Vigilancia y familias**
+- **Vigilancia por edad (13):** la IRA 0-4 sube el triage 0-4 un +9,2 % por desviación típica, y se confirma en
+  2025. Pero el triage también «predice» a la IRA con 2 semanas de adelanto: no hay dirección.
+- **Olas (13):** solo hay 5 olas respiratorias en 2022-2025, y no se separan de la estación.
+- **Varicela y paro de 2021 (19):** se anula. Ventanas al azar dan un efecto igual o mayor el 17,6 % de las veces.
+- **Salud mental y desastres (19):** descansa en un solo episodio, la alerta del volcán de 2023. Queda como
+  hipótesis.
+
+**Regímenes y catástrofes**
+- **Terremoto (20):** día 0 −48,7 %; el peor día de 1.460 fechas al azar fue −37,9 %. Días 1-7, −22,3 %. Los
+  niños de 0-14 siguen un −30 % hasta la tercera semana.
+- **Sismos como clase (20):** 26 en la ventana del hospital, sin efecto.
+- **Paro (20):** no se separa de la COVID.
+
+**Fuentes y método**
+- **Defectos de fuente (03):**
+  - la SE53-2025 del evento 998 sigue en el archivo (`indices.py` ya la anula);
+  - NASA frente al pluviómetro da 0,28 / 0,46 / 0,66, no 0,30 / 0,52 / 0,80;
+  - Power BI se fija por fecha de captura.
+- **Primer entrenamiento (15):**
+  - E2 empeora el Brier frente a E1;
+  - ninguna externa pasa del 1,70 % de la ganancia;
+  - «los 42 regresores empeoran» era falso: empeoran 32 de 42.
+- **Bibliografía (23):** se retiraron Petravić 2025 y las cifras atribuidas a Marcilio 2013, que no se pudieron
+  verificar. Murtas 2022 estaba mal atribuido.
+- **`marcas.py`:** los umbrales dependían del rango de fechas: «red de salud» daba 36 días desde 2020 y 83 desde
+  2022-03. Se fijó la referencia 2020-2024. Llamado desde 2020 da lo mismo que antes, así que nada registrado
+  cambia.
+
+## 2026-10-06 — Mecanismos en la forma en que se midieron: diseño, preregistro y prueba de humo
+
+**Decisión del propietario.**
+- El modelo toma lo descubierto con el subgrupo de días, la ventana, el rezago y el gatillo con que se midió.
+- Los registros de entrenamiento se escogen para cubrir eventos y calma.
+- La COVID se trata de otro modo.
+- Se monitorea si faltan registros históricos, no variables.
+
+**Qué se construyó.** El módulo `notebooks/mecanismos.py` y los experimentos m1, m2 y m3. Se preregistraron en 14
+filas de `variables.csv` (`mecanismos_en_su_forma`, `mec_*`, `entrenamiento_repertorio`, `covid_sin_fase_fuerte`,
+`mecanismos_regla`, `curvas_de_aprendizaje`) antes de calcular ningún resultado.
+
+Variables:
+- Feria, días 0-4;
+- noche festiva (7, 24 y 31-dic) y día siguiente (26-dic, 2-4 ene);
+- fiesta a ≥ 60 km, más 3 días;
+- terremoto: semanas 1 y 2-3, al origen;
+- paro de 2021 como marca;
+- 5 familias de salud y 6 variables de red, con compuerta;
+- transiciones de clima a 7-35 días;
+- MinDefensa con 42 días de rezago de publicación.
+
+Los coeficientes los aprende el modelo: las magnitudes medidas no entran como dato.
+
+Brazos:
+- **M1:** solo los mecanismos.
+- **M2:** M1 más un repertorio en que calma y eventos pesan lo mismo dentro de cada año.
+- **M3:** M1 sin la fase fuerte de la COVID.
+
+Regla:
+- La de siempre, con 2025 en origen rodante.
+- Más la condición de no perder más de 2 puntos de BSS en los días de calma de 2025.
+- Desglose obligatorio por tipo de día.
+- 2026 se mira una sola vez.
+
+**Por qué M3 y no bajar el peso de la COVID.** Bajar el peso ya se probó (T1) y empeoró los 4 años. Quitar solo
+la fase fuerte (170 días, 79 triages/día) no se había probado.
+
+**Hallazgo de método: el árbol del motor no puede ver un episodio raro.** Con `min_child_samples = 30`, ninguna
+hoja aísla un tipo con menos de 30 días, y en el entrenamiento de 2025 LightGBM ve 15 días de Feria y 15 noches
+festivas. Por eso los episodios raros entran además como desplazamiento lineal, estimado solo con el entrenamiento.
+Con datos hasta 2024 salen:
+- Feria +10,4 %;
+- noche festiva −21,5 %;
+- día siguiente +15,3 %.
+
+Los tres tienen el signo de lo medido.
+
+**Otros hallazgos.**
+- e2 y e3 usaban MinDefensa al origen, aunque se publica con 2 a 6 semanas de rezago. Fue una fuga de
+  disponibilidad, menor porque esos diseños perdieron.
+- Con los mecanismos, la calma fuera de la COVID son 272 días (15,6 %), 70 de ellos en 2025.
+- La compuerta de cambio brusco quedaba encendida el 77 % de los días. Antes de calcular nada se pasó al p90 por
+  componente, y quedó en el 29 %.
+- **2025 no puede juzgar los mecanismos raros:** trae 5 días de Feria, 3 noches, 7 días de ola y 0 catástrofes.
+
+**Enmienda del orquestador, antes de calcular** (fila `mecanismos_desglose_multianual`). Además de la regla de
+2025, que decide el reemplazo, se hace un desglose descriptivo por mecanismo con la rejilla anual en 2023, 2024 y
+2025, juntando los episodios: 3 Ferias, 9 noches y las olas de 2023-2024. Responde si el modelo aprende cada
+mecanismo; no decide reemplazos. 2026 queda fuera.
+
+**No se construyó.**
+- Fútbol: solo hay 2 partidos; la fuente propuesta es la API de ESPN.
+- El paro de transportadores de 2024: solo está la fecha de la alerta.
+- Los días antes y después de la Feria: no hay medición.
+- El escalón del ingreso de mayo de 2024: mide el destino del paciente, no el conteo.
+
+**Límites que se declaran.** La forma de la Feria, de las noches y el corte de 60 km se midieron con datos que
+incluyen 2025; la del terremoto, con 2026.
+
 ## 2026-10-06 — Auditoría: casi nada de lo descubierto entró al modelo en la forma en que se descubrió
 
 **Qué planteó el propietario.** El modelo vigente no recoge lo encontrado:
