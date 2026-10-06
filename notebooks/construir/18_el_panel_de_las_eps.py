@@ -10,17 +10,20 @@ lec = lambda k: md(LECT.get(k, f"**Lectura.** *(pendiente: {k})*"))
 md(r"""
 # 18 — El panel de todas las EPS
 
-## Qué pidió el propietario
+Los modelos de los cuadernos anteriores trataban a Nueva EPS como si fuera la única aseguradora del hospital, y
+por esa vía el nivel del volumen de triage quedaba explicado por una sola variable. Este cuaderno pregunta si la
+red de aseguradoras que alimenta al hospital puede describirse como un sistema, con sus pesos, sus
+sustituciones y sus barreras de acceso, y qué parte de los escalones del triage corresponde a cada actor. La
+pregunta importa porque el nivel de la serie lo mueve la red de salud y los picos son otra cosa: sin separar
+ambos, cualquier factor externo hereda el crédito de un cambio de contrato.
 
-«No tenemos una variable que mida el estado de **todas** las EPS; es como si supusiera que la Nueva EPS es la
-única que existe.» Este cuaderno arma ese panel con dos miradas:
+El panel se arma con dos miradas:
 - **desde dentro**, con el triage del propio hospital por asegurador (2020-2026);
 - **desde fuera**, con la afiliación mensual de MinSalud por EPS en Manizales y las medidas de la
-  Supersalud, que desde el 2026-10-05 se capturan solas cada semana (`calendarios/docs/CAPTURAS.md`).
+  Supersalud, que desde el 2026-10-05 se capturan solas cada semana.
 
-Método en la fila `panel_eps` de `variables.csv`, fijado antes de mirar. Este cuaderno es **descriptivo**: mira
-2025-2026 porque ahí ocurren los escalones de la red. **No elige ni prueba ningún modelo**; eso queda para el
-cuaderno 22.
+El análisis es descriptivo. Se concentra en 2025-2026 porque ahí ocurren los escalones recientes de la red, y no
+elige ni prueba ningún modelo.
 """)
 
 code(r"""
@@ -57,7 +60,7 @@ print("Grupos y triages totales 2020-2026:"); D.sum().sort_values(ascending=Fals
 
 md(r"""
 ---
-# 1. Quién llega al hospital, mes a mes
+# 1. El triage por asegurador, mes a mes
 """)
 code(r"""
 M = D.resample("MS").mean()
@@ -77,7 +80,7 @@ lec("quien")
 
 md(r"""
 ---
-# 2. Sustitución: cuando Nueva EPS cae, ¿quién compensa?
+# 2. Sustitución entre aseguradoras en cada escalón
 
 Para cada escalón: el triage diario medio de Nueva EPS y del resto en los 60 días antes y los 60 días después,
 dejando fuera la semana del escalón.
@@ -98,7 +101,7 @@ lec("sustitucion")
 
 md(r"""
 ---
-# 3. Afiliados contra uso: ¿se van los afiliados o no logran entrar?
+# 3. Afiliados contra uso del hospital
 
 Afiliación mensual por EPS en **Manizales** (MinSalud, julio de 2025 a agosto de 2026, capturada el
 2026-10-05) frente al triage del hospital de cada EPS.
@@ -134,7 +137,46 @@ lec("afiliados")
 
 md(r"""
 ---
-# 4. Las medidas de la Supersalud: fechas de cada actuación
+# 3b. Cada EPS frente a su tamaño en Manizales
+
+Si el uso del hospital dependiera solo del número de afiliados, el peso de cada EPS en el triage sería parecido a
+su peso en la afiliación. Se compara el último mes disponible, junto con el régimen de cada EPS.
+""")
+code(r"""
+f = sorted(glob.glob(str(RAIZ / "calendarios/capturas/afiliacion/*agosto2026*_caldas.csv.gz")))[0]
+d = pd.read_csv(f); e = d[d.hoja == "EPSMunicipio"].pivot(index="fila", columns="columna", values="valor")
+mun = next(c for c in e.columns if c.split("| ")[-1].upper() == "MUNICIPIO"); eps = next(c for c in e.columns if c.split("| ")[-1].upper() == "EPS")
+e = e[e[mun].astype(str).str.upper().str.contains("MANIZALES") & e[eps].isin(mapa)].set_index(eps).rename(index=mapa)
+cont = pd.to_numeric(e["CONTRIBUTIVO | Afiliados"], errors="coerce"); subs = pd.to_numeric(e["SUBSIDIADO | TOTAL AFILIADOS"], errors="coerce")
+ult = pd.DataFrame({"afiliados": A.iloc[-1], "% de los 4 en afiliados": 100 * A.iloc[-1] / A.iloc[-1].sum(),
+                    "triage/día": uso.iloc[-1], "% de los 4 en triage": 100 * uso.iloc[-1] / uso.iloc[-1].sum(),
+                    "triages/mes por 1.000 afiliados": por_mil.iloc[-1], "% subsidiado": 100 * subs / (subs + cont)})
+fig, ax = plt.subplots(figsize=(9, 3.8)); x = np.arange(len(ult)); w = .38
+ax.bar(x - w / 2, ult["% de los 4 en afiliados"], w, color=MUDO, label="% de los afiliados"); ax.bar(x + w / 2, ult["% de los 4 en triage"], w, color=AZUL, label="% del triage")
+ax.set_xticks(x); ax.set_xticklabels(ult.index); ax.set_ylabel("% del total de las 4 EPS"); ax.legend(); ax.set_title("Peso en la afiliación frente a peso en el triage, agosto de 2026")
+plt.tight_layout(); plt.show(); ult.round(1)
+""")
+lec("tamano")
+
+md(r"""
+---
+# 3c. Los escalones alrededor de cada fecha, por aseguradora
+""")
+code(r"""
+fig, axes = plt.subplots(1, 3, figsize=(16, 4), sharey=False)
+for ax, f in zip(axes, ["2025-11-15", "2026-03-01", "2026-07-01"]):
+    f = pd.Timestamp(f); w = D.loc[f - pd.Timedelta(days=100):f + pd.Timedelta(days=100)]
+    otros = w.drop(columns=["Nueva EPS", "SURA"]).sum(axis=1)
+    for s_, c, n in [(w["Nueva EPS"], AZUL, "Nueva EPS"), (w["SURA"], ROJO, "SURA"), (otros, MUDO, "resto de aseguradores")]:
+        ax.plot(w.index, s_.rolling(7, center=True, min_periods=4).mean(), color=c, lw=2, label=n)
+    ax.axvline(f, color=TINTA, ls=":", lw=1); ax.set_title(f"Escalón del {f.date()}"); ax.set_ylabel("triages por día (media de 7 días)")
+axes[0].legend(fontsize=8); plt.tight_layout(); plt.show()
+""")
+lec("ventanas")
+
+md(r"""
+---
+# 4. Las medidas de la Supersalud y sus fechas
 
 La tabla limpia de la Supersalud (sin datos de los interventores) trae, para cada EPS intervenida, **todas
 sus resoluciones con fecha**: la toma de posesión, las prórrogas y los cambios de interventor.
@@ -162,7 +204,7 @@ lec("medidas")
 
 md(r"""
 ---
-# 5. Las variables candidatas para el modelo
+# 5. Variables de red candidatas
 """)
 code(r"""
 P28 = D.rolling(28, min_periods=20).sum(); tot28 = P28.sum(axis=1)
@@ -186,7 +228,7 @@ lec("candidatas")
 
 md(r"""
 ---
-# 6. Lo que deja este cuaderno
+# 7. Conclusiones y límites
 """)
 lec("resumen")
 

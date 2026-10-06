@@ -8,51 +8,60 @@ code = lambda s: C.append(nbf.v4.new_code_cell(s.strip()))
 lec = lambda k: md(LECT.get(k, f"**Lectura.** *(pendiente: {k})*"))
 
 md(r"""
-# 15 — Predicciones tempranas: los primeros resultados reales
+# 15 — Primeras predicciones: ocho modelos y tres experimentos
 
-## El objetivo
+## La pregunta y por qué importa
 
-> Predecir **cuántas solicitudes de triage llegarán al SES Hospital Universitario de Caldas**, como
-> una **distribución** (un valor central y un rango). De ahí sale la **probabilidad de que el triage
-> suba** por encima de lo que anuncia su calendario. Cada predicción lleva sus **razones**: qué del
-> contexto interno y externo la mueve.
+El proyecto busca predecir **cuántas solicitudes de triage llegarán al SES Hospital Universitario de
+Caldas** como una **distribución** (un valor central y un rango), y de ahí la **probabilidad de que el
+triage suba** por encima de lo que anuncia el calendario. Cada predicción debe ir acompañada de sus
+**razones**: qué parte del contexto interno y externo la mueve. Una proyección del tipo «los lunes hay más
+gente» no cumple ese propósito, porque no contesta por qué unos lunes suben más que otros.
 
-Es un solo proyecto. Los cuadernos 01-14 sirvieron para saber **con qué entrenar** y **cómo comprobar
-la fiabilidad**. Este cuaderno junta las primeras predicciones reales, buenas o malas, para ver **cómo se
-comporta hoy y qué falta**. No se espera que funcione a la primera. Si lo hiciera, habría que
-sospechar.
+Los cuadernos 01-14 sirvieron para decidir **con qué entrenar** y **cómo comprobar la fiabilidad**. Este
+cuaderno reúne las primeras predicciones reales de ocho modelos, hechas con origen rodante sobre 2026, un
+año que ningún modelo vio al entrenarse. El objetivo es ver cómo se comporta cada uno, qué aportan más años
+de historia y qué aporta el contexto externo. Una confiabilidad de 60-70 % en acertar si el día sube o
+baja es la meta de trabajo; por encima de eso habría que revisar el sobreentrenamiento o una fuga de
+información.
 
-## Lo que se decidió (docs/CONTEXTO.md, 2026-09-30 y 2026-10-01)
+## Diseño
 
 | | Decisión |
 |---|---|
 | **Qué se predice** | El conteo diario de triage a 1-7 días, el año completo y la hora de saturación |
-| **Qué entrega** | Una **distribución** (9 cuantiles). La regresión es complemento, no método principal |
-| **Qué es «subir»** | Pasar lo que anuncia el calendario. **Pico** = pasarlo en más de una desviación (≈ +11 %) |
-| **Con qué se entrena** | **Todos los años con registro (2020-2026)**, con la COVID marcada, y **todo el contexto**: salud, clima, social, red de salud, catástrofes, eventos, ENSO. **Solo lo que se sabe el día de la predicción** |
-| **Contra qué se prueba** | **2026**, con datos que el modelo nunca vio |
-| **Qué modelos** | Todos en competencia: series de tiempo (SARIMAX, Prophet), modelo fundacional de series (Chronos-2), árboles (LightGBM), regresión binomial negativa, bases y MedGemma |
-| **Confiabilidad esperada** | **60-70 %**. Por encima de eso hay que revisar el sobreentrenamiento o una fuga de información |
+| **Qué entrega** | Una **distribución** (9 cuantiles). La regresión es un complemento explicable, no el método principal |
+| **Qué es «subir»** | Superar lo que anuncia el calendario. **Pico** = superarlo en más de una desviación (≈ +11 %) |
+| **Con qué se entrena** | Los años con registro (2020-2026), con la COVID marcada, y el contexto: salud, clima, social, red de salud, catástrofes, eventos y ENSO. **Solo lo que se sabe el día de la predicción** |
+| **Contra qué se prueba** | **2026**, reentrenando cada 7 días con todo lo anterior |
+| **Qué modelos** | Ingenuo, control de calendario, regresión binomial negativa, LightGBM, SARIMAX, Prophet, Chronos-2 (solo y con calendario). MedGemma se evalúa aparte, porque no entrega una distribución |
 
-## Las tres pruebas
+## Tres pruebas
 
 | Prueba | Pregunta | Cómo |
 |---|---|---|
-| **1. Corto plazo** | ¿Qué pasará los próximos 7 días? | Cada día de 2026, el modelo predice los 7 siguientes con lo que sabía hasta ayer |
-| **2. El año a ciegas** | Desde diciembre de 2025: ¿cómo será cada mes de 2026? | Una sola predicción hecha el 31-12-2025 hasta septiembre |
-| **3. La hora** | ¿A qué hora se satura el día predicho? | La predicción del día repartida con el perfil horario |
+| **1. Corto plazo** | ¿Qué pasará en los próximos 7 días? | Cada día de 2026 el modelo predice los 7 siguientes con lo que sabía hasta el día anterior |
+| **2. El año a ciegas** | ¿Cómo será cada mes de 2026? | Una sola predicción hecha el 31-12-2025 y mantenida hasta septiembre |
+| **3. La hora** | ¿A qué hora se satura el día predicho? | La predicción del día, repartida con el perfil horario de 2025 |
 
-## Los tres experimentos, para saber qué aporta cada cosa
+## Tres experimentos
 
 | | Años de entrenamiento | Contexto externo |
 |---|---|---|
-| **E0** | 2022-2024 (fase A) | no |
+| **E0** | 2022-2024 | no |
 | **E1** | 2020-2025, con la COVID marcada | no |
-| **E2** | 2020-2025, con la COVID marcada | **todo** |
+| **E2** | 2020-2025, con la COVID marcada | **49 variables externas, todas presentes cada día** |
 
-E1 contra E0 dice qué aportan **más años**. E2 contra E1 dice qué aporta **el contexto**.
+E1 frente a E0 mide qué aportan **más años**. E2 frente a E1 mide qué aporta **el contexto** cuando entra
+completo y sin filtro. En el análisis aparece también E3, una variante con solo 8 variables externas
+elegidas con datos hasta 2025, que sirve para comprobar si el resultado de E2 se debe a la cantidad de
+variables.
 
-El motor está en `notebooks/pronostico.py` y las corridas largas escriben en `salidas/pronostico/`.
+Los experimentos se leen de las predicciones guardadas en `salidas/pronostico/`; este cuaderno no
+reentrena nada. Un límite del diseño: SARIMAX con contexto completo (E2) no se evaluó en la prueba de
+corto plazo. Por eso la comparación entre E1 y E2 a 1-7 días se apoya en la regresión, los árboles y
+Prophet, y, para Chronos-2, en una versión con un origen cada 7 días. En la prueba del año a ciegas sí
+hay un SARIMAX con contexto.
 """)
 
 code(r"""
@@ -86,10 +95,9 @@ SEM = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
 color = lambda m: COLOR.get(m.split("_cada")[0], COLOR["llm"] if m.startswith("llm") else MUDO)
 
 def leer(exp, desde="2025-12-31", modelos=None):
-    P, U = pr.leer(exp=exp)
+    P, U = pr.leer(modelos or (pr.FASE_A if exp == "e0" else None), exp=exp)
     P = P[(P.origen >= desde) & ~P.modelo.str.startswith("llm") & ~P.modelo.str.contains("_cada")]
-    if not modelos: P = P[~P.modelo.str.startswith("comb_") & ~P.modelo.str.endswith("_afinado")]
-    if modelos: P = P[P.modelo.isin(modelos)]
+    if not modelos: P = P[~P.modelo.str.startswith("comb_") & ~P.modelo.str.endswith("_afinado") & (P.modelo != "lightgbm_rel")]
     return P, U
 
 pr.usar("e2"); y, cal = pr.cargar()
@@ -174,18 +182,26 @@ md(r"""
 
 md(r"""
 ---
-# 4. Cómo se mide, en simple
+# 4. Cómo se mide
 
-| Criterio | Qué pregunta contesta | Cómo se lee |
+Casi todo el error de un modelo de triage es calendario: el control de calendario y nivel ya tiene un MAPE
+de alrededor del 11 %, y el mejor modelo apenas lo baja a 9 %. Un criterio basado en el MAPE premia acertar
+el lunes, que es proyección, y no distingue a un modelo que anticipa de uno que repite el calendario. Por
+eso **el criterio para llamar «mejor» a un modelo** es el acierto en sube/baja frente al calendario, junto
+con la mejora de la probabilidad (BSS) y la cobertura del rango del 80 %. El MAPE y el error de 10 % se
+reportan solo para comunicar.
+
+| Criterio | Qué mide | Cómo se lee |
 |---|---|---|
-| **Acierta si sube o baja** | ¿El día quedó por encima o por debajo de lo que anunciaba el calendario, como dijo el modelo? | 50 % = adivinar. **La meta es 60-70 %** |
-| **Mejora de la probabilidad (BSS)** | ¿Su «60 % de que suba» vale más que decir siempre la tasa normal? | Positivo: sirve. Negativo: peor que no tener modelo |
-| **Desvío anticipado (R²)** | De lo que el calendario no explica, ¿cuánto vio venir? | 0 % = no sabe más que el calendario |
-| **Cobertura del 80 %** | De cada 100 días, ¿cuántos cayeron dentro del rango que prometió con 80 % de seguridad? | **75-85 % = honesto.** Menos es exceso de confianza (sobreajuste) |
-| Días con error ≤ 10 % y MAPE | ¿Qué tan cerca quedó el número? | Para comunicar; casi todo lo explica el calendario |
+| **Acierta si sube o baja** | Si el día quedó por encima o por debajo de lo que anunciaba el calendario, como dijo el modelo | 50 % es adivinar. La meta es 60-70 % |
+| **Mejora de la probabilidad (BSS)** | Si su «60 % de que suba» vale más que decir siempre la tasa normal | Positivo, sirve; negativo, es peor que no tener modelo |
+| **Cobertura del 80 %** | De cada 100 días, cuántos cayeron dentro del rango que el modelo prometió con 80 % | 75-85 % es honesto. Menos indica exceso de confianza, que suele venir de sobreajuste |
+| Desvío anticipado (R²) | De lo que el calendario no explica, cuánto vio venir | 0 % es no saber más que el calendario |
+| Error ≤ 10 % y MAPE | Cercanía del número | Solo para comunicar |
 
-**Deciden la mejora de la probabilidad y la cobertura.** El MAPE solo comunica: un modelo puede
-clavar los lunes y no anticipar nada.
+El «sube» se define contra lo que anuncia el control de calendario de E0, y es la misma vara para todos
+los experimentos. Con esa vara, la tasa de días que suben en 2026 no es 50 %, porque el control sigue el
+nivel de los últimos 28 días y la serie cayó a escalones.
 """)
 
 md(r"""
@@ -193,6 +209,9 @@ md(r"""
 # 5. Prueba 1: corto plazo, cada día de 2026
 
 ## 5.1 Los tres experimentos, modelo por modelo
+
+La tabla ordena los modelos por la mejora de la probabilidad y reúne los criterios que deciden. Una celda
+vacía indica que esa combinación de modelo y experimento no se evaluó.
 """)
 code(r"""
 tablas = []
@@ -202,8 +221,9 @@ for e in ["e0", "e1", "e2", "e3"]:
     tablas.append(T.assign(exp=e).reset_index())
 R = pd.concat(tablas)
 R["modelo_"] = R.modelo.map(NOMBRE)
-tab = R.pivot_table(index="modelo_", columns="exp", values=["acierta sube/baja %", "BSS sube %", "BSS pico %", "cob80 %", "MAPE %"])
-tab = tab.reindex(tab[("BSS sube %", "e2")].fillna(tab[("BSS sube %", "e0")]).sort_values(ascending=False).index)
+ORD = ["acierta sube/baja %", "BSS sube %", "BSS pico %", "cob80 %", "MAPE %"]
+tab = R.pivot_table(index="modelo_", columns="exp", values=ORD)[ORD]
+tab = tab.reindex(tab[("BSS sube %", "e1")].fillna(tab[("BSS sube %", "e0")]).sort_values(ascending=False).index)
 display(tab.round(1))
 
 fig, axes = plt.subplots(1, 3, figsize=(16, 4.2), sharey=True)
@@ -218,17 +238,55 @@ for ax, (c, t) in zip(axes, [("acierta sube/baja %", "Acierta si sube o baja (%)
     ax.axvline(base, color=TINTA, lw=1, ls="--")
 axes[0].set_yticks(range(len(mods)), [NOMBRE[m] for m in mods]); axes[2].axvspan(75, 85, color=AQUA, alpha=.12)
 axes[0].axvspan(60, 70, color=AQUA, alpha=.12)
-axes[2].legend(fontsize=8, loc="lower right"); fig.suptitle("2026, a 1-7 días: qué aportan más años (E1) y el contexto (E2). Línea: el control", fontweight="bold")
-plt.tight_layout(); plt.show()
+h_, l_ = axes[2].get_legend_handles_labels(); fig.legend(h_, l_, fontsize=8, loc="lower center", ncol=4); axes[1].text(.02, .02, "SARIMAX con E2: no se evaluó", transform=axes[1].transAxes, fontsize=8, color=MUDO); fig.suptitle("2026, a 1-7 días: más años (E1) mejoran el acierto; las 49 externas (E2) lo empeoran. Línea: el control", fontweight="bold")
+plt.tight_layout(rect=(0, .07, 1, 1)); plt.show()
 """)
 lec("p1_experimentos")
 
 md(r"""
+## 5.1b La diferencia entre E2 y E1, con su incertidumbre
+
+Para saber si la caída de E2 es algo más que variación del azar, se compara cada modelo consigo mismo en
+los mismos orígenes y se remuestrea por bloques de 7 orígenes (2.000 veces), lo que conserva la dependencia
+entre días cercanos. La tabla da el cambio respecto a E1 y su intervalo del 95 %. Un intervalo que no
+incluye el cero indica un cambio real.
+""")
+code(r"""
+P1e, U1e = leer("e1"); P2e, _ = leer("e2"); P3e, _ = leer("e3")
+FUN = {"acierta (puntos)": lambda d: ((d.p_sobre > .5) == (d.sobre == 1)) * 100,
+       "Brier x1000 (menos es mejor)": lambda d: (d.p_sobre - d.sobre) ** 2 * 1000,
+       "cobertura 80 % (puntos)": lambda d: d.cob80 * 100}
+def pareada(PA, PB, m, f, rng):
+    a, _ = pr.metricas(PA[PA.modelo == m], U1e); b, _ = pr.metricas(PB[PB.modelo == m], U1e)
+    k = ["origen", "h"]; x = a[k].assign(v=f(a).values).merge(b[k].assign(w=f(b).values), on=k)
+    d = (x.w - x.v).groupby(x.origen).mean(); g = np.arange(len(d)) // 7
+    G = [np.where(g == i)[0] for i in np.unique(g)]
+    B = [d.values[np.concatenate([G[j] for j in rng.integers(0, len(G), len(G))])].mean() for _ in range(2000)]
+    lo, hi = np.percentile(B, [2.5, 97.5]); return d.mean(), lo, hi
+rng = np.random.default_rng(0); filas = []
+for nom, PB in [("E2 − E1", P2e), ("E3 − E1", P3e)]:
+    for m in ["lightgbm", "glm_binneg"]:
+        for c, f in FUN.items():
+            dm, lo, hi = pareada(P1e, PB, m, f, rng)
+            filas.append({"comparación": nom, "modelo": NOMBRE[m], "criterio": c, "cambio": round(dm, 1),
+                          "IC 95 %": f"[{lo:.1f}, {hi:.1f}]", "cambio real": "sí" if lo > 0 or hi < 0 else "no se distingue del azar"})
+display(pd.DataFrame(filas))
+
+ext = [c for c in X2.columns if c.startswith(("ext_", "fut_"))]
+ent = X2.loc[:"2025-12-30"].dropna()
+usa = (ent[ext] != 0).mean().groupby(pd.Series(pr.capas(ext))).agg(["size", "median"])
+usa.columns = ["variables", "fracción de días con valor distinto de cero (mediana)"]
+print(f"Días de entrenamiento completos al empezar 2026: {len(ent)}. Entradas externas en E2: {len(ext)}; internas: {X2.shape[1] - len(ext)}.")
+display(usa.round(2))
+""")
+lec("p1_ruido")
+
+md(r"""
 ## 5.2 Chronos-2 con todo el contexto
 
-Con 61 covariables, Chronos-2 en CPU tarda horas por cada origen diario. Se corrió con **un origen
-cada 7 días** (37 orígenes de 2026). La información es la misma; solo hay menos predicciones.
-Para compararlo de forma justa, **todos los modelos se miden en esos mismos 37 orígenes**.
+Con todas las covariables, Chronos-2 en CPU tarda horas por cada origen diario. Se corrió con **un origen
+cada 7 días** (37 orígenes de 2026). La información es la misma; solo hay menos predicciones. Para
+compararlo de forma justa, **todos los modelos se miden en esos mismos 37 orígenes**.
 """)
 code(r"""
 P7, U7 = pr.leer(exp="e2")
@@ -240,7 +298,7 @@ if cada7:
     _, T7 = pr.metricas(pd.concat(partes), U7)
     display(T7[CRIT].sort_values("BSS sube %", ascending=False).round(1))
 else:
-    print("Chronos-2 con contexto todavía no ha terminado.")
+    print("Chronos-2 con contexto no se evaluó con este diseño.")
 """)
 lec("p1_chronos")
 
@@ -248,8 +306,7 @@ md(r"""
 ## 5.3 El jerárquico: Nueva EPS y el resto por separado
 
 Nueva EPS (58 % del triage) salta a escalones que el resto no tiene. Se predice cada parte con el mismo
-modelo y las entradas de E1, y se arma el total de dos formas, preregistradas (filas `jerarquico` y
-`jerarquico_correlado` de `variables.csv`):
+modelo y las entradas de E1, y se arma el total de dos formas, definidas antes de mirar los resultados:
 - **suma de cuantiles:** supone que las dos partes se mueven siempre juntas;
 - **cópula:** usa la correlación real entre las dos, medida en enero de 2026 y congelada.
 """)
@@ -292,7 +349,7 @@ md(r"""
 El control de calendario usa el nivel de los últimos 28 días. Cuando Nueva EPS salta (marzo, julio,
 septiembre), queda corrido un 10-13 % durante semanas, y cualquier modelo que se adapte rápido «acierta».
 Por eso hay una **segunda vara**, el **control rápido**: calendario + nivel de 28 días + desvío de la
-última semana (fila `control_rapido` de `variables.csv`).
+última semana.
 
 **Cómo se lee:**
 - con la vara de 28 días se mide **seguir el nivel de la red**;
@@ -321,7 +378,7 @@ TV = tabla_varas(lista); TV
 lec("p1_vara")
 
 md(r"""
-## 5.5 ¿Hay un ganador de verdad? Pruebas de significancia
+## 5.5 Pruebas de significancia contra SARIMAX
 
 Cada modelo se compara contra SARIMAX día por día. Se remuestrea 2.000 veces por bloques de 7 orígenes
 (conserva la dependencia entre días cercanos) para obtener el intervalo del 95 % de la diferencia. **Si el
@@ -369,12 +426,16 @@ for e in ["e1", "e3"]:
     print(f"LazyPredict, entradas {e} ({'triage + calendario' if e == 'e1' else '+ 8 externas'}): 10 primeros de {len(L)}")
     display(L[["acierta sube/baja %", "acierta abr-jun %", "MAPE %", "R-Squared"]].head(10).round(1))
 cfg = {f: json.loads((pr.SALIDA / "e1" / f"_afinado_{f}_etapas.json").read_text(encoding="utf-8"))["elegida"] for f in ["xgboost", "gbr", "lightgbm"]}
+L1 = pd.read_csv(pr.SALIDA / "lazypredict_e1.csv", index_col=0); L3 = pd.read_csv(pr.SALIDA / "lazypredict_e3.csv", index_col=0)
+c = "acierta sube/baja %"
+print(f"De {len(L1)} regresores, {int((L3[c].reindex(L1.index) < L1[c]).sum())} acertaron menos con las 8 externas (E3) que con E1; "
+      f"el mejor pasó de {L1[c].max():.1f} % a {L3[c].max():.1f} %. Mediana de los 42: {L1[c].median():.1f} %. Un regresor que predice siempre la media (DummyRegressor): {L1.loc['DummyRegressor', c]:.1f} %.")
 pd.Series(cfg, name="configuración elegida con 2024").to_frame()
 """)
 lec("p1_lazy_arboles")
 
 md(r"""
-## 5.7 ¿Se puede creer la probabilidad? Calibración del mejor de cada familia
+## 5.7 Calibración de la probabilidad en los mejores de cada familia
 
 Se agrupan los días por la probabilidad de «sube» que dio el modelo, y se mira cuántas veces subió
 de verdad. Un modelo calibrado cae sobre la diagonal.
@@ -387,14 +448,20 @@ for m in T2.sort_values("BSS sube %", ascending=False).index[:4]:
     d = P2[P2.modelo == m]
     g = d.groupby(pd.cut(d.p_sobre, bins)).agg(p=("p_sobre", "mean"), f=("sobre", "mean"), n=("sobre", "size")).query("n >= 25")
     ax.plot(g.p, g.f, "-o", color=color(m), lw=1.8, ms=5, label=NOMBRE.get(m, m))
+ece = {}
+for m in T2.sort_values("BSS sube %", ascending=False).index[:4]:
+    d = P2[P2.modelo == m]; g = d.groupby(pd.cut(d.p_sobre, bins)).agg(p=("p_sobre", "mean"), f=("sobre", "mean"), n=("sobre", "size")).dropna()
+    ece[NOMBRE.get(m, m)] = 100 * (g.n * (g.p - g.f).abs()).sum() / g.n.sum()
+print("Distancia media a la diagonal (puntos porcentuales, ponderada por días):", {k: round(v, 1) for k, v in ece.items()})
+print("Tasa de días que suben en 2026 (vara de 28 días):", round(100 * P2.drop_duplicates(["fecha", "h"]).sobre.mean(), 1), "%")
 ax.set_xlabel("probabilidad de «sube» que dio el modelo"); ax.set_ylabel("frecuencia con que subió")
-ax.set_title("Calibración en 2026 (E1: 2020-2025)", fontsize=10); ax.legend(fontsize=8); ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+ax.set_title("Calibración en 2026 (E1): cerca de la diagonal es confiable", fontsize=10); ax.legend(fontsize=8); ax.set_xlim(0, 1); ax.set_ylim(0, 1)
 plt.tight_layout(); plt.show()
 """)
 lec("p1_calibracion")
 
 md(r"""
-## 5.8 Los picos de 2026: ¿se vieron venir la víspera?
+## 5.8 Los picos de 2026 y su aviso la víspera
 """)
 code(r"""
 mejor = T2.sort_values("BSS sube %", ascending=False).index[0]
@@ -414,8 +481,8 @@ md(r"""
 ---
 # 6. Prueba 2: el año a ciegas
 
-El 31 de diciembre de 2025 se hace **una sola predicción** para todo 2026, como pediría quien planea el
-año. El modelo no puede saber el clima ni la IRA de julio: en E2, ese contexto va como «año típico»
+El 31 de diciembre de 2025 se hace **una sola predicción** para todo 2026, como la que necesitaría quien
+planea el año. El modelo no puede saber el clima ni la IRA de julio: en E2, ese contexto va como «año típico»
 (anomalía cero), y las variables de nivel (peso de Nueva EPS, ENSO) se congelan en su valor de
 diciembre. Lo programado (calendario, Feria, fiestas) sí entra.
 """)
@@ -486,7 +553,7 @@ lec("p3_hora")
 
 md(r"""
 ---
-# 8. Las razones: qué contexto pesa
+# 8. Las razones: qué capa del contexto pesa
 
 Se ajustan dos modelos en el último origen (2026-09-13) con todo el contexto:
 - **LightGBM** (mediana a 1 día): cuánto de su capacidad de separar días usa cada capa (ganancia);
@@ -511,16 +578,24 @@ pesos = pd.DataFrame({"LightGBM: % de la ganancia": 100 * gan.groupby(capa).sum(
 display(pesos.round(1))
 print("Las 12 variables externas más usadas por LightGBM (% de la ganancia):")
 ext = gan[[c for c in gan.index if c.startswith(("ext_", "fut_"))]]
-print((100 * ext / gan.sum()).sort_values(ascending=False).head(12).round(2).to_string())
+pe = (100 * ext / gan.sum()).sort_values(ascending=False)
+print(pe.head(12).round(2).to_string())
+print(f"\nLas {len(pe)} variables externas suman {pe.sum():.1f} % de la ganancia; la mayor aporta {pe.max():.2f} % y la mediana {pe.median():.2f} %.")
+fig, ax = plt.subplots(figsize=(8, 5.2)); t = pe.head(20)[::-1]
+cap = pr.capas(list(t.index))
+ax.barh(t.index, t.values, color=[{"clima": AQUA, "salud": ROJO, "social": NARANJA, "red": AZUL}.get(cap[n], MUDO) for n in t.index])
+from matplotlib.patches import Patch
+ax.legend(handles=[Patch(color=c_, label=n_) for n_, c_ in [("clima", AQUA), ("salud", ROJO), ("social", NARANJA), ("red de salud", AZUL), ("ENSO y otras", MUDO)]], fontsize=8, loc="lower right")
+ax.set_xlabel("% de la ganancia total de LightGBM"); ax.set_title("Ninguna variable externa pasa del 2 % de la ganancia: el peso está repartido", fontsize=10)
+plt.tight_layout(); plt.show()
 """)
 lec("razones")
 
 md(r"""
 ---
-# 9. MedGemma: ¿puede un modelo de lenguaje médico pronosticar?
+# 9. MedGemma, un modelo de lenguaje médico, como pronosticador
 
-A pedido del propietario: `medgemma:latest` (4,3 B) en el servidor de su superior, con 19 consultas, y
-`medgemma1.5:4b` en local si se corrió. Reciben **la misma información que E2**, en texto: 8 semanas de
+Se probó `medgemma:latest` (4,3 B) en un servidor, con 19 consultas de 7 días cada una. Cada consulta recibe **la misma información que E2**, en texto: 8 semanas de
 triage, el calendario y los eventos que vienen, y el contexto de la ciudad (IRA, clima, Nueva EPS,
 lesiones). Dan un número por día, no una distribución, así que se comparan solo en el error del número
 y en si aciertan la dirección (sube o baja), **en los mismos orígenes** que los demás.
@@ -544,13 +619,13 @@ lec("medgemma")
 
 md(r"""
 ---
-# 10. Depuración: qué se queda y qué sale
+# 10. Qué se conserva y qué se descarta
 """)
 lec("depuracion")
 
 md(r"""
 ---
-# 11. Resumen de lo descubierto
+# 11. Conclusiones y límites
 """)
 lec("resumen")
 

@@ -8,30 +8,29 @@ code = lambda s: C.append(nbf.v4.new_code_cell(s.strip()))
 lec = lambda k: md(LECT.get(k, f"**Lectura.** *(se completa al tener el resultado: {k})*"))
 
 md(r"""
-# 16 — La combinación que funciona y el camino a un entrenamiento holístico
+# 16 — Diagnóstico del primer entrenamiento y diseño de uno holístico
 
-## Por qué existe este cuaderno
+## Pregunta y alcance
 
-El cuaderno 15 encontró la mejor forma de predecir **con lo que había**: la **combinación SARIMAX +
-LightGBM**. El propietario reconoce que predijo bien 2026, un año que no había visto, a corto y mediano
-plazo. Pero señala cinco problemas de fondo en **con qué se entrenó** (docs/CONTEXTO.md, 2026-10-05):
+El cuaderno 15 encontró la mejor forma de predecir **con lo que había**: la combinación SARIMAX + LightGBM,
+que acertó 2026, un año que no había visto, a corto y mediano plazo. Este cuaderno pregunta si el
+**entrenamiento** que produjo ese resultado es lo bastante amplio para responder el porqué de los picos, y no
+solo para seguir el nivel de la demanda. El diagnóstico encontró cinco limitaciones en las variables con que se
+entrenó:
 
-1. **EPS:** solo se mide Nueva EPS, como si fuera la única. Falta el estado de todas las EPS.
-2. **Clima:** falta el contexto completo: humedad, lluvia, sol, cuánto tiempo lleva haciendo sol, los
-   cambios bruscos.
-3. **Salud:** no solo IRA. Al menos las 5 enfermedades más comunes, cruzadas con clima, fiestas,
-   vacaciones y horario escolar.
-4. **Fenómenos:** se marcó la COVID, pero no El Niño y La Niña, terremotos, epidemias.
-5. **«Parece que se le dieron las respuestas de 2026».** El periodo es corto y el entrenamiento, demasiado
-   específico.
+1. **Aseguradoras.** Solo se medía Nueva EPS, como si fuera la única, y no el estado de las demás.
+2. **Clima.** Entraron niveles (temperatura, humedad, lluvia, radiación, viento) y faltaron la duración de las
+   rachas, los cambios bruscos, las horas de sol y la nubosidad.
+3. **Salud.** Entró la IRA y unos pocos eventos de vigilancia, no las enfermedades más frecuentes de la ciudad
+   cruzadas con clima, fiestas, vacaciones y calendario escolar.
+4. **Fenómenos.** Solo se marcó la COVID. El Niño y La Niña, los sismos y las epidemias no estaban como estados.
+5. **Evaluación.** El periodo de prueba es corto, se usó para elegir entre unos 20 diseños y el entrenamiento
+   resultó demasiado específico de ese año.
 
-**El proyecto se fue a lo específico y perdió la vista general.** Este cuaderno:
-- explica **la combinación**, por qué sus dos partes son compatibles y por qué su respuesta es confiable;
-- **mide cada preocupación** con datos, para saber cuánto tiene de razón;
-- reúne **todas las fuentes** que se pueden sumar, incluidos el SIVIGILA y el estado de todas las EPS;
-- responde **cuánto se le puede dar al modelo antes de sobreajustarlo**, y explica el **método de
-  rejilla**;
-- propone **un diseño de entrenamiento holístico**, para decidirlo con el propietario.
+El primer entrenamiento optimizó lo que ya se medía y perdió la vista general. El cuaderno explica la
+combinación y por qué su respuesta es confiable, mide cada limitación con datos, inventaría las fuentes que se
+pueden sumar, estima cuánto contexto soporta el modelo antes de sobreajustarse, describe el método de rejilla
+con que se afinaron los árboles y propone un diseño de entrenamiento holístico y escalable.
 """)
 
 code(r"""
@@ -60,21 +59,21 @@ def tabla(P, vara="calendario"):
 
 md(r"""
 ---
-# 1. La respuesta de hoy: la combinación SARIMAX + LightGBM
+# 1. La combinación SARIMAX + LightGBM
 
-## Qué es cada parte, en simple
+## Qué aporta cada parte
 
 | | **SARIMAX** | **LightGBM** |
 |---|---|---|
 | Familia | Serie de tiempo estadística | Ensamble de árboles de decisión con refuerzo (*gradient boosting*) |
-| Cómo piensa | «Mañana se parecerá a hoy, corregido por el día de la semana, el calendario y la época del año.» Se **actualiza cada día** con lo que acaba de pasar | Hace cientos de preguntas en cadena («¿es lunes?, ¿es después de festivo?, ¿la semana pasada estuvo alta?…»), y cada árbol corrige los errores del anterior |
-| En qué es bueno | **Seguir los cambios de nivel** (los escalones de Nueva EPS) y dar **rangos honestos** | **Combinaciones de factores** que una fórmula lineal no ve, sobre todo en los meses estables |
-| En qué falla | Es lineal: no capta interacciones | Se **confía de más** (rangos estrechos) y se adapta lento a un escalón nuevo |
+| Cómo funciona | Mañana se parece a hoy, corregido por el día de la semana, el calendario y la época del año. Se **actualiza cada día** con lo que acaba de pasar | Hace cientos de preguntas en cadena (¿es lunes?, ¿es después de festivo?, ¿la semana pasada estuvo alta?), y cada árbol corrige los errores del anterior |
+| Fortaleza | **Seguir los cambios de nivel** (los escalones de Nueva EPS) y dar **rangos honestos** | **Combinaciones de factores** que una fórmula lineal no ve, sobre todo en los meses estables |
+| Debilidad | Es lineal: no capta interacciones | Se **confía de más** (rangos estrechos) y se adapta lento a un escalón nuevo |
 
-**La combinación** promedia, cuantil a cuantil, las dos distribuciones: la mediana con la mediana, el 10 %
-con el 10 %… Así se obtiene una sola predicción con su rango.
+La combinación promedia, cuantil a cuantil, las dos distribuciones: la mediana con la mediana, el 10 % con el
+10 %, y así con todos. El resultado es una sola predicción con su rango.
 
-## Por qué son compatibles: se equivocan en momentos distintos
+## Por qué los dos modelos son compatibles: se equivocan en momentos distintos
 """)
 code(r"""
 P, _ = pr.leer(["sarimax", "lightgbm", "comb_sarimax_lightgbm"], exp="e1"); P = P[P.origen >= "2025-12-31"].dropna(subset=["real"])
@@ -96,30 +95,26 @@ lec("comb")
 
 md(r"""
 ---
-# 2. ¿Se le dieron las respuestas de 2026?
+# 2. Selección sobre 2026 y comprobación en 2025
 
-Hay que separar dos cosas que suenan igual y no lo son.
+Dos cosas que suenan parecido deben separarse: la fuga de datos y la selección mirando la prueba.
 
-**(a) Fuga de datos: no hubo.** Cada predicción de 2026 se hizo con el **origen rodante**:
-- el día *o*, el modelo solo conocía el triage y el contexto hasta *o*, y predecía *o+1* a *o+7*;
+**(a) Fuga de datos: no hubo.** Cada predicción de 2026 se hizo con **origen rodante**:
+- en el día *o*, el modelo solo conocía el triage y el contexto hasta *o*, y predecía de *o*+1 a *o*+7;
 - cada 7 días se reentrenaba con todo lo anterior.
 
-El modelo nunca vio el día que predecía. Eso está garantizado por cómo está escrito el código
-(`notebooks/pronostico.py`).
+El modelo nunca vio el día que predecía, y el código lo garantiza por construcción (`notebooks/pronostico.py`).
 
-**(b) Elegir mirando la prueba: sí pasó.** Se probaron unos 20 diseños sobre el mismo 2026:
+**(b) Selección mirando la prueba: sí ocurrió.** Sobre el mismo 2026 se compararon unos 20 diseños:
 - los experimentos E0 a E3;
 - el jerárquico, con suma y con cópula;
 - 42 modelos de LazyPredict;
 - 3 árboles afinados;
 - 2 combinaciones.
 
-Y se quedó el mejor. Cada diseño se preregistró, pero **elegir entre 20 con el mismo año** hace que 2026
-deje de ser una prueba limpia y se vuelva un conjunto de *validación*. El mejor de 20 siempre luce algo
-mejor de lo que es.
-
-**Comprobación:** si la combinación es buena de verdad, también debe funcionar en **2025**, un año con el
-que no se eligió nada.
+Cada diseño estaba preregistrado, pero elegir el mejor entre 20 con el mismo año convierte a 2026 en un
+conjunto de *validación* y no de prueba: el mejor de 20 siempre luce algo mejor de lo que es. La comprobación
+consiste en aplicar la misma combinación a **2025**, un año con el que no se eligió nada.
 """)
 code(r"""
 P0, _ = pr.leer(["sarimax", "lightgbm"], exp="e0"); P0 = P0[P0.origen < "2025-12-31"]
@@ -142,18 +137,18 @@ R.set_index(["año evaluado", "entrenamiento", "modelo"]).round(1)
 lec("respuestas")
 
 md(r"""
-**Una segunda forma de «ver las respuestas»: seguir el nivel.** El cuaderno 15 (sección 5.4) mostró que
-buena parte del 65-70 % de acierto en 2026 venía de **seguir los escalones de Nueva EPS** más rápido que el
-control. Con la vara justa (control rápido), la cifra de «anticipar el día» baja a 60-64 %. El modelo
-reacciona bien a lo que ya está pasando, y eso vale. Pero no es lo mismo que **entender por qué** va a
-pasar, que es lo que pide `CLAUDE.md`.
+**El seguimiento del nivel como segunda fuente de ventaja.** En el cuaderno 15 (sección 5.4) se mostró que buena
+parte del 65-70 % de acierto en 2026 provenía de seguir los escalones de Nueva EPS más rápido que el control.
+Con la vara justa (un control que también reacciona rápido), la cifra de anticipar el día baja a 60-64 %. Reaccionar
+bien a lo que ya está ocurriendo tiene valor, pero no equivale a explicar por qué va a ocurrir, que es el objetivo
+del proyecto.
 """)
 
 md(r"""
 ---
-# 3. Lo que el entrenamiento ve y lo que no
+# 3. Lo que el entrenamiento veía y lo que no
 
-## 3.1 Las EPS: el modelo solo miraba a una
+## 3.1 Aseguradoras: el modelo miraba a una sola
 """)
 code(r"""
 from extraccion.entidades import clasificar
@@ -172,7 +167,7 @@ anual[["nueva_eps", "sura_eps", "otra_eps", "regimen_especial", "soat_asegurador
 lec("eps")
 
 md(r"""
-## 3.2 Las enfermedades de Manizales: hay mucho más que IRA
+## 3.2 Enfermedades de Manizales: hay mucho más que IRA
 """)
 code(r"""
 e = pd.read_csv(RAIZ / "calendarios/vigilancia_sivigila_eventos.csv.gz")
@@ -190,21 +185,35 @@ D
 lec("enfermedades")
 
 md(r"""
-## 3.3 El clima: qué hay y qué falta construir
+## 3.3 Clima: lo que entró y lo que no se había construido
 
 El clima unificado tiene 69 columnas. Al modelo entraron **12 variables de nivel o anomalía**: temperatura
-media, mínima y máxima, amplitud, humedad, lluvia de 7 y 30 días, radiación y su cambio, y viento. **Falta lo
-que el propietario pide y lo que `CLAUDE.md` llama «la transición, no el nivel»:**
+media, mínima y máxima, amplitud, humedad, lluvia de 7 y 30 días, radiación y su cambio, y viento. Todas
+describen el estado del día o de la semana, y ninguna describe la **transición**: la hipótesis del proyecto es
+que importa el cambio de régimen (empezó a llover después de una seca) y no el nivel, y una variable de nivel
+promedia ese cambio y lo borra. El diseño propuesto incorpora las variables siguientes.
 
-| Lo que falta | Cómo se construye | De dónde |
+| Variable ausente | Cómo se construye | Fuente |
 |---|---|---|
-| **Cuántos días lleva sin llover** y la racha seca | días desde el último día con lluvia ≥ 1 mm (solo pluviómetro válido o acumulados) | `clima_unificado` |
-| **Cuántos días lleva haciendo sol** | racha de días con radiación u horas de sol sobre lo normal del mes | `clima_unificado` + Open-Meteo |
+| **Días sin llover** y racha seca | días desde el último día con lluvia ≥ 1 mm (solo pluviómetro válido o acumulados) | `clima_unificado` |
+| **Días de sol continuo** | racha de días con radiación u horas de sol sobre lo normal del mes | `clima_unificado` + Open-Meteo |
 | **Horas de sol y nubosidad** | `sunshine_duration`, `cloud_cover` | Open-Meteo (también en pronóstico desde 2024) |
 | **Punto de rocío y humedad absoluta** | `dew_point_2m` | Open-Meteo, NASA POWER |
-| **Cambio brusco** (seco → lluvioso, cálido → frío) | diferencia entre la última semana y las 3 anteriores, contra lo normal | derivado |
-| **Extremos** | días con lluvia > p90 o temperatura < p10 en la última semana | derivado |
+| **Cambio brusco** (seco a lluvioso, cálido a frío) | diferencia entre la última semana y las 3 anteriores, contra lo normal | derivada |
+| **Extremos** | días con lluvia > p90 o temperatura < p10 en la última semana | derivada |
 | **Lo que se sabrá al predecir** | el **pronóstico** del clima de los próximos días, no el observado | Open-Meteo Previous Runs (desde 2024) |
+
+Un barrido posterior de estas variables (2010-2024, 266 pruebas por desenlace, mes y año fijos, corrección de
+Benjamini-Hochberg con q = 0,10) mostró dónde actúa el clima:
+
+| Desenlace | Pruebas que sobreviven | Lectura |
+|---|---|---|
+| IRA de Manizales (2012-2024) | **53** (el azar daría unas 13) | un mes lluvioso, nublado, húmedo y con poco sol trae **+6-7 % de IRA a 1-5 semanas**; las horas de sol (−7 %) y el déficit de presión de vapor (−6,7 %) figuran entre las más fuertes |
+| Triage total (2022-2024) | 36, con efectos de 1,5-2,4 % | efecto diluido: pesan la semana muy lluviosa reciente, las rachas secas y el calor del último mes |
+| Ingresos respiratorios del hospital (2021-2024) | 0 | son ingresos (un tercio de lo que llega, unos 33 por semana) y no triage |
+
+De ahí sale el diseño: la vía del clima hacia el hospital pasa por la IRA de la ciudad, y al modelo conviene
+darle índices de estado y de cambio, más dos o tres rachas, y no 38 variables sueltas.
 """)
 
 md(r"""
@@ -231,21 +240,22 @@ lec("fenomenos")
 
 md(r"""
 ---
-# 4. Las fuentes que se pueden sumar
+# 4. Fuentes que se pueden sumar
 
-Inventario verificado en la web el 2026-10-05, sumado al del repositorio (`calendarios/docs/FUENTES_EXTERNAS.md`,
-`FUENTES_VIGILANCIA.md`, `INVENTARIO.md`). La columna que más importa es **«¿se tiene al predecir?»**: un dato
-que llega 8 meses tarde sirve para entrenar, no para pronosticar.
+El inventario sale de una revisión de fuentes en la web hecha en octubre de 2026, sumada al inventario del
+repositorio (`calendarios/docs/FUENTES_EXTERNAS.md`, `FUENTES_VIGILANCIA.md`, `INVENTARIO.md`). La columna que
+más pesa es **«¿se tiene al predecir?»**: un dato que llega 8 meses tarde sirve para entrenar, no para
+pronosticar.
 
 ## 4.1 Salud (SIVIGILA y otras)
 
 | Fuente | Qué da | Granularidad | ¿Se tiene al predecir? | Estado |
 |---|---|---|---|---|
 | **Microdatos SIVIGILA** (portalsivigila.ins.gov.co/Microdatos) | todos los eventos, caso a caso; IRA y EDA colectivas | semana × municipio, 2007-2025 | no: ~8 meses de retraso | en el repo (entrenar) |
-| **Power BI del INS** (tableros 006 rutinaria y 995) | evento × semana × municipio; IRA con denominador | semana, Manizales | **sí: ~7 días** | en el repo, una sola foto. **Falta la tarea semanal que la congele** |
+| **Power BI del INS** (tableros 006 rutinaria y 995) | evento × semana × municipio; IRA con denominador | semana, Manizales | **sí: ~7 días** | en el repo, una sola foto: para tener histórico hay que congelarla cada semana |
 | BES del INS | tablero departamental | semana, Caldas | sí: ~6 días | PDF |
 | Boletines DTSC y Secretaría de Salud de Manizales | IRA, EDA y varicela por edad | semana o mes | tarde, en bloque | PDF |
-| **Cubos SISPRO/RIPS** | **consultas, urgencias y hospitalización por diagnóstico CIE-10 y municipio** | mensual | no (meses) | **piden usuario de MinSalud** |
+| **Cubos SISPRO/RIPS** | **consultas, urgencias y hospitalización por diagnóstico CIE-10 y municipio** | mensual | no (meses) | requieren usuario de MinSalud |
 | **Diagnósticos del propio hospital** (cuaderno 10) | respiratorio, infeccioso, trauma, embarazo, urinario… | diario, desde 2020 | **sí** | en el repo, `perfil_dx_diario` (local) |
 
 ## 4.2 Estado de **todas** las EPS
@@ -256,13 +266,13 @@ que llega 8 meses tarde sirve para entrenar, no para pronosticar.
 | **Supersalud, medidas especiales**, resoluciones y FENIX | intervenciones, vigilancia especial, liquidaciones, con fecha | por evento | sí |
 | **Supersalud, PQRD** | quejas por EPS y motivo, tasa por cada 10.000 afiliados (barreras de acceso) | mensual, desde 2017 | sí: ~5 semanas |
 | **ADRES, giro directo** | cuánto paga cada EPS a cada IPS (incluido el SES) | mensual, desde 2020 | por verificar |
-| BDUA en datos.gov.co | foto de afiliados por EPS y municipio | foto mensual, **sin histórico** | sí. **Hay que guardarla cada mes** |
+| BDUA en datos.gov.co | foto de afiliados por EPS y municipio | foto mensual, **sin histórico** | sí, pero solo la foto vigente: el histórico exige guardarla cada mes |
 | **El triage del propio hospital por asegurador** | peso y cambio de cada EPS en la demanda | diario, desde 2020 | **sí** |
 
-**Cómo monitorear las EPS de forma continua:** una tarea mensual que descargue el zip de afiliación de
-MinSalud, la foto de la BDUA, el Excel de medidas y el de PQRD. Más una revisión de resoluciones nuevas de
-la Supersalud y de noticias de la Alcaldía (ya hay una API en el repo). No se encontró RSS ni API de la
-Supersalud.
+**Monitoreo continuo de las EPS.** El diseño consiste en una captura mensual del zip de afiliación de
+MinSalud, la foto de la BDUA, el Excel de medidas y el de PQRD, más una revisión de las resoluciones nuevas de
+la Supersalud y de las noticias de la Alcaldía (el repositorio ya tiene una API para estas últimas). No se
+encontró RSS ni API de la Supersalud.
 
 ## 4.3 Clima, fenómenos y otras señales
 
@@ -279,10 +289,9 @@ Supersalud.
 
 md(r"""
 ---
-# 5. ¿Cuánto se le puede dar al modelo antes de sobreajustarlo?
+# 5. Cuánto contexto soporta el modelo antes de sobreajustarse
 
-**El límite no lo pone la cantidad de variables, sino la cantidad de *ejemplos independientes* de cada
-fenómeno.**
+El límite no lo pone la cantidad de variables sino la cantidad de **ejemplos independientes** de cada fenómeno.
 
 - **Días.** De 2022 a 2025 hay ~1.400 días, pero los días seguidos se parecen (autocorrelación de 0,35).
   Equivalen a unos **670 días independientes**. Una regla prudente es pedir al menos 10-20 ejemplos
@@ -290,8 +299,7 @@ fenómeno.**
   eso da **del orden de 30 a 60 parámetros** como techo.
 - **Fenómenos raros.** Para El Niño, la COVID o un terremoto, el ejemplo no es un día sino **un
   episodio**. Desde 2020 hay unos **4 episodios ENSO**, **1 COVID** y **un puñado de sismos**. Con 4
-  ejemplos no se aprende un efecto: el modelo memoriza qué pasó en esos 4. Eso es exactamente el
-  sobreajuste que preocupa al propietario.
+  ejemplos no se aprende un efecto: el modelo memoriza qué pasó en esos 4. Eso es sobreajuste.
 - **Lo que ya se midió en este proyecto:** al pasar de 28 a 36 entradas (E3) y a 77 (E2), la regresión y
   LightGBM **empeoraron** en 2026.
 """)
@@ -308,42 +316,43 @@ fig, ax = plt.subplots(figsize=(8, 3.8))
 for m, col in [("glm_binneg", AZUL), ("lightgbm", VERDE), ("sarimax", VIOLETA)]:
     g = F[F.modelo == m]; ax.plot(g.entradas, g["BSS sube %"], "-o", color=col, lw=2, label={"glm_binneg": "regresión", "lightgbm": "LightGBM", "sarimax": "SARIMAX"}[m])
 ax.set_ylabel("mejora de la probabilidad (BSS, %)"); ax.set_xlabel("entradas por día"); ax.legend()
-ax.set_title("Más variables no fue mejor: 2026"); plt.tight_layout(); plt.show()
+ax.set_title("Más entradas no mejoraron la probabilidad de subida en 2026"); plt.tight_layout(); plt.show()
 F.pivot_table(index="entradas", columns="modelo", values=["acierta %", "BSS sube %"]).round(1)
 """)
 md(r"""
-**Cómo darle más contexto sin sobreajustar:**
+**Lectura.** Las curvas confirman lo que anticipaba el conteo de ejemplos independientes: al pasar de 28 a 36
+entradas (E3) y a 77 (E2), la regresión y LightGBM empeoraron en 2026, de modo que el contexto sumado en bruto no
+ayudó con tan pocos ejemplos independientes.
 
-1. **Índices por familia en vez de variables sueltas.** Por ejemplo, un «índice de presión respiratoria» que
-   resuma IRA total, IRA 0-4, IRAG y consultas. O un «estado del clima» que resuma temperatura, humedad, sol
-   y lluvia. Al modelo entra una cifra por familia, y el contexto completo sigue representado.
-2. **Regímenes, no episodios.** El Niño, La Niña, «EPS en crisis» o «temporada festiva» entran como **estados**
-   que se repiten, no como fechas únicas. Un estado con muchos días sí se puede aprender.
-3. **Modelos que se frenan solos.** Regularización (Ridge/Lasso), árboles poco profundos, mínimo de ejemplos
+**Cómo dar más contexto sin sobreajustar**
+
+1. **Índices por familia en lugar de variables sueltas.** Un «índice de presión respiratoria» que resuma IRA
+   total, IRA 0-4, IRAG y consultas, o un «estado del clima» que resuma temperatura, humedad, sol y lluvia. Al
+   modelo entra una cifra por familia y el contexto completo sigue representado.
+2. **Regímenes en lugar de episodios.** El Niño, La Niña, «EPS en crisis» o «temporada festiva» entran como
+   **estados** que se repiten, y no como fechas únicas. Un estado con muchos días sí se puede aprender.
+3. **Modelos que se frenan solos.** Regularización (Ridge o Lasso), árboles poco profundos, mínimo de ejemplos
    por hoja. La rejilla de la sección 6 eligió árboles de profundidad 2-3: los datos piden simplicidad.
-4. **Agregar familias de una en una**, y quedarse solo con las que mejoran en un año de validación distinto
-   del de prueba.
-5. **Llevar cada contexto a la serie donde actúa.** El clima y la IRA mueven lo **respiratorio** del
-   hospital (+10-14 %, cuaderno 13) y se diluyen en el total. Un modelo jerárquico **por tipo de
-   consulta** (respiratorio, infeccioso, trauma, embarazo, otros), cada uno con su contexto, suma al final
-   el total. Es la arquitectura escalable que pide el propietario.
+4. **Agregar las familias de una en una** y conservar solo las que mejoran en un año de validación distinto del
+   de prueba.
+5. **Llevar cada contexto a la serie donde actúa.** El clima y la IRA mueven lo **respiratorio** del hospital
+   (+10-14 %, cuaderno 13) y se diluyen en el total. Un modelo jerárquico **por tipo de consulta**
+   (respiratorio, infeccioso, trauma, embarazo, otros), cada uno con su contexto, suma al final el total, y es
+   la arquitectura que escala.
 """)
 
 md(r"""
 ---
-# 6. El método de rejilla, en simple
+# 6. El método de rejilla
 
-**La idea.** Un modelo tiene perillas que hay que fijar antes de entrenarlo: cuántos árboles, qué tan
-profundos, qué tan rápido aprende. Se llaman **hiperparámetros**. El método de rejilla (*grid search*):
-1. arma una **lista de valores** para cada perilla, por ejemplo profundidad 2, 3 o 4, y 200 o 500 árboles;
-2. prueba **todas las combinaciones**: 3 × 2 = 6 modelos;
-3. mide cada uno con datos que no usó para entrenar, y **se queda con el que menos se equivoca**.
+Un modelo tiene perillas que se fijan antes de entrenarlo: cuántos árboles, qué profundidad, qué velocidad de
+aprendizaje. Se llaman **hiperparámetros**. El método de rejilla (*grid search*):
+1. arma una **lista de valores** para cada perilla, por ejemplo profundidad 2, 3 o 4 y 200 o 500 árboles;
+2. prueba **todas las combinaciones** (3 × 2 = 6 modelos);
+3. mide cada uno con datos que no usó para entrenar y conserva el que menos se equivoca.
 
-Es como probar recetas cambiando la temperatura del horno y el tiempo, y quedarse con la que sale mejor.
-
-**¿Se puede usar aquí? Sí, y ya se usó.** En el cuaderno 15 se afinaron XGBoost, GradientBoosting y
-LightGBM con una rejilla sobre 2024. Esta es la rejilla real de XGBoost (error medio del log en 2024; menos es
-mejor):
+En el cuaderno 15 se afinaron XGBoost, GradientBoosting y LightGBM con una rejilla sobre 2024. La tabla es la
+rejilla real de XGBoost (error medio del logaritmo en 2024; menos es mejor).
 """)
 code(r"""
 E = json.loads((pr.SALIDA / "e1" / "_afinado_xgboost_etapas.json").read_text(encoding="utf-8"))
@@ -351,37 +360,39 @@ R = pd.DataFrame(E["rejilla"]).sort_values("mae_log"); R["error medio %"] = (np.
 print("elegida:", E["elegida"]); R.round(4)
 """)
 md(r"""
-**Las tres reglas para que la rejilla no engañe:**
-1. **Se afina en un periodo y se prueba en otro.** Se afinó con 2024, se calibró con 2025 y se probó en
-   2026. Si se afina mirando la prueba, la rejilla «encuentra» la combinación que acierta por suerte.
-2. **Pocas perillas y pocos valores.** Con 12 combinaciones el riesgo es bajo. Con miles, alguna gana por
-   azar. Para rejillas grandes es mejor la **búsqueda aleatoria** o la **bayesiana** (por ejemplo, Optuna).
+**Tres reglas para que la rejilla no engañe**
+1. **Se afina en un periodo y se prueba en otro.** Se afinó con 2024, se calibró con 2025 y se probó en 2026. Si
+   se afina mirando la prueba, la rejilla «encuentra» la combinación que acierta por suerte.
+2. **Pocas perillas y pocos valores.** Con 12 combinaciones el riesgo es bajo; con miles, alguna gana por azar.
+   Para rejillas grandes conviene la búsqueda aleatoria o la bayesiana (por ejemplo, Optuna).
 3. **Validación de origen rodante dentro del periodo de afinado**, nunca un corte al azar.
 
-**Lo que enseñó en este proyecto:** la rejilla eligió árboles **poco profundos** (2-3 niveles). Lo mejor
-de 2024 no fue lo mejor de 2026, porque 2026 fue otro régimen (Nueva EPS). Afinar ayuda, pero no
-reemplaza tener las variables correctas.
+La rejilla eligió árboles **poco profundos** (2-3 niveles). Lo mejor de 2024 no fue lo mejor de 2026, porque 2026
+fue otro régimen (el desplome de Nueva EPS). Afinar ayuda, pero no sustituye tener las variables correctas.
 """)
 
 md(r"""
 ---
-# 7. Propuesta: un entrenamiento holístico y escalable
+# 7. Diseño de un entrenamiento holístico y escalable
 
 | Capa | Qué entra | Cómo, sin sobreajustar |
 |---|---|---|
-| **Red de salud** | **todas** las EPS: afiliados mensuales (MinSalud), medidas e intervenciones (Supersalud), quejas (PQRD), giros (ADRES), peso de cada EPS en el triage | un **índice de estrés de la red** + el estado de las 3-4 EPS grandes (Nueva EPS, SURA, Salud Total, Sanitas) |
-| **Calendario y vida social** | festivos, puentes, quincena, vacaciones y horario escolar, Feria, fiestas, días especiales | como hoy |
-| **Clima completo** | nivel + **rachas** (días sin lluvia, días de sol) + **transiciones** + horas de sol y nubosidad + **pronóstico** | índices de «estado del clima» y de «cambio brusco», con rezagos de 1-3 semanas |
+| **Red de salud** | **todas** las EPS: afiliados mensuales (MinSalud), medidas e intervenciones (Supersalud), quejas (PQRD), giros (ADRES), peso de cada EPS en el triage | un **índice de estrés de la red** más el estado de las 3-4 EPS grandes (Nueva EPS, SURA, Salud Total, Sanitas) |
+| **Calendario y vida social** | festivos, puentes, quincena, vacaciones y horario escolar, Feria, fiestas, días especiales | como en el primer entrenamiento |
+| **Clima completo** | nivel, **rachas** (días sin lluvia, días de sol), **transiciones**, horas de sol y nubosidad, **pronóstico** | índices de «estado del clima» y de «cambio brusco», con rezagos de 1 a 3 semanas |
 | **Salud pública** | las 5-6 familias con volumen en Manizales: **IRA, EDA, violencias y agresiones, salud mental e intoxicaciones, materno-perinatal** | un índice por familia, con rezago de 1 semana (Power BI) |
-| **Regímenes y fenómenos** | El Niño / La Niña, COVID, sismo fuerte, alerta hospitalaria, EPS intervenida | **estados** que se repiten, no fechas sueltas |
+| **Regímenes y fenómenos** | El Niño y La Niña, COVID, sismo fuerte, alerta hospitalaria, EPS intervenida | **estados** que se repiten, no fechas sueltas |
 | **Estructura** | **jerárquico por tipo de consulta**: respiratorio, infeccioso, trauma, embarazo, resto | cada parte con su contexto; el total es la suma |
 
-**Cómo se prueba sin «darle las respuestas»:**
+**Protocolo de evaluación, para no repetir la selección sobre la prueba**
 1. **Afinar** con 2020-2024.
 2. **Elegir** el diseño con 2025, y solo con 2025.
 3. **Probar una sola vez** en 2026, sin cambiar nada después.
-4. **Prueba prospectiva:** congelar el modelo y compararlo con octubre-diciembre de 2026, que hoy nadie
-   conoce. Es la única prueba que no se puede discutir.
+4. **Prueba prospectiva:** congelar el modelo y compararlo con octubre-diciembre de 2026, un periodo que hoy
+   nadie conoce. Es la única prueba que no admite discusión.
+
+Los regímenes y fenómenos se desarrollan en el cuaderno 20, el modelo jerárquico en el 21 y el catálogo de
+variables con su validación en varios años en el 23.
 """)
 lec("resumen")
 
