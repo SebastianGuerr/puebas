@@ -32,15 +32,20 @@ MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "ag
          "noviembre", "diciembre"]
 FRANJAS = {"mañana": (6, 11), "tarde": (12, 17)}
 DESCRIPCION = {"C0r": "SARIMAX + LightGBM, solo calendario, estación, nivel y memoria",
-               "Cg": "SARIMAX + LightGBM con el contexto de salud pública, que se enciende cuando hay ola, y las marcas de contexto"}
+               "Cg": "SARIMAX + LightGBM con el contexto de salud pública, que se enciende cuando hay ola, y las marcas de contexto",
+               "M3s": "SARIMAX + LightGBM con los mecanismos medidos (Feria, noches festivas, fiestas lejanas, catástrofe, salud pública y red con compuerta), sin la fase fuerte de la COVID en el entrenamiento"}
 # 'modelo@exp': el modelo se construye con el contexto de ese experimento (Cg: salud publica en compuerta, fila
 # contexto_con_compuerta_confirmacion); sin '@', con el de e1 (sin contexto)
-COMBOS = {"C0": ["sarimax", "lightgbm"], "C0r": ["sarimax", "lightgbm_rel"], "Cg": ["sarimax", "lightgbm_rel@g"]}
+COMBOS = {"C0": ["sarimax", "lightgbm"], "C0r": ["sarimax", "lightgbm_rel"], "Cg": ["sarimax", "lightgbm_rel@g"],
+          "M3s": ["sarimax_mec@m3s", "lightgbm_rel_mec@m3s"]}          # fila m3_semanal (notebooks/mecanismos.py)
 
 
 def datos():
     pr.usar("e1")
     y, cal = pr.cargar()
+    # dias futuros como faltantes: sin ellos los modelos directos no tienen fila para predecir despues del ultimo dato
+    # (2026-10-06; el entrenamiento y la validacion no cambian: descartan faltantes y solo miran el pasado)
+    y = y.reindex(pd.date_range(y.index[0], pd.Timestamp(pr.FIN) + pd.Timedelta(days=pr.H)))
     h = pd.read_parquet(pr.RAIZ / "salidas/triage_horario.parquet")
     h["dia"] = pd.to_datetime(h.dia)
     F = pd.DataFrame({f: h[h.hora.between(a, b)].groupby("dia").triages.sum() for f, (a, b) in FRANJAS.items()})
@@ -58,6 +63,8 @@ class Ajuste:
     def construir(m, y, cal):
         nombre, _, exp = m.partition("@")
         if not exp: return pr.MODELOS[nombre](y, cal)
+        if pr.EXPERIMENTOS[exp].get("contexto") == "mecanismos":      # M3s: mecanismos.py aplica su entrenamiento
+            import mecanismos; return mecanismos.construir(nombre, exp, y, cal)
         previo = pr.EXP; pr.usar(exp)
         try: return pr.MODELOS[nombre](y, cal)
         finally: pr.EXP = previo
@@ -277,7 +284,9 @@ if __name__ == "__main__":
     ap.add_argument("--verificar", help="lunes de una semana ya guardada")
     ap.add_argument("--validar", action="store_true")
     ap.add_argument("--combos", nargs="*", help="con --validar: solo estas combinaciones (se suman a lo ya validado)")
+    ap.add_argument("--hmax", type=int, default=21, help="adelanto maximo en dias (21 por defecto; fila m3_semanal)")
     a = ap.parse_args()
+    pr.H = a.hmax
     if a.validar:
         P = validar(avisar=lambda s: print(s, flush=True), combos=a.combos)
         T, rhos = resumen_validacion(P, datos()[0])

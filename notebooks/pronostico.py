@@ -84,6 +84,9 @@ for _suf, _ors in [("_2025", ("2024-12-31", "2025-12-30")), ("", ("2025-12-31", 
                                      carpeta=SALIDA / f"m2{_suf}")
     EXPERIMENTOS[f"m3{_suf}"] = dict(ini="2020-01-01", contexto="mecanismos", excluir=[COVID["es_covid_fuerte"]],
                                      origenes=_ors, carpeta=SALIDA / f"m3{_suf}")
+# M3 para la respuesta semanal (fila m3_semanal): sin las columnas de clima de rezago corto; la usa semana.py
+EXPERIMENTOS["m3s"] = dict(ini="2020-01-01", contexto="mecanismos", excluir=[COVID["es_covid_fuerte"]], semanal=True,
+                           origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "m3s")
 EXP = EXPERIMENTOS["e0"]                      # el experimento activo; lo cambia usar()
 ANIO_ORIGEN = "2025-12-31"
 

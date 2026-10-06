@@ -155,9 +155,11 @@ def contexto(dias, exp, H=None):
     """La rama 'mecanismos' de pronostico.contexto_exp: (PAS, FUT) con la compuerta aplicada."""
     if not ACTIVO:
         raise RuntimeError("los experimentos m* se corren con notebooks/mecanismos.py (m2 y m3 cambian el entrenamiento)")
-    if (H or pr.H) > 7:
+    if (H or pr.H) > 7 and not exp.get("semanal"):
         raise RuntimeError("las variables con rezago de 7 dias respecto del dia predicho exigen H <= 7")
     FUT, PAS, G = columnas(dias)
+    if exp.get("semanal"):             # fila m3_semanal: sin el clima de rezago corto, vale para cualquier adelanto
+        FUT = FUT[[c for c in FUT if "_cli_" not in c]]; PAS = PAS[[c for c in PAS if "_cli_" not in c]]
     FUT, PAS = con_compuerta(FUT, G), con_compuerta(PAS, G)
     sin_g = [c for c in FUT if not c.startswith("ext_g_")]
     FUT[sin_g] = FUT[sin_g].fillna(0)
@@ -255,6 +257,24 @@ def preparar(exp):
         if (a, b) == COVID_FUERTE: cal["es_covid_fuerte"] = 0.0
     LightGBMRelMec.tipos = tipos_de_dia(cal.index) if pr.EXP.get("pesos") == "repertorio" else None
     return y, cal
+
+
+def construir(nombre, exp, y, cal):
+    """Para semana.py: el modelo 'nombre' con el contexto y el entrenamiento del experimento 'exp' (la exclusion de la
+    COVID se aplica a una copia: los demas modelos de la combinacion siguen con su serie)."""
+    global ACTIVO
+    ACTIVO = True
+    pr.MODELOS.update(MODELOS)
+    previo = pr.EXP; pr.usar(exp)
+    try:
+        y, cal = y.copy(), cal.copy()
+        for a, b in pr.EXP.get("excluir", []):
+            y.loc[a:b] = np.nan
+            if (a, b) == COVID_FUERTE: cal["es_covid_fuerte"] = 0.0
+        LightGBMRelMec.tipos = None
+        return pr.MODELOS[nombre](y, cal)
+    finally:
+        pr.EXP = previo
 
 
 # ------------------------------------------------------------------ evaluacion por tipo de dia
