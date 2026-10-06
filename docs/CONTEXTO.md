@@ -96,6 +96,22 @@ estas conclusiones cambiaron. Valen más que las entradas anteriores que las con
 - **Sismos como clase (20):** 26 en la ventana del hospital, sin efecto.
 - **Paro (20):** no se separa de la COVID.
 
+**Calibración del azar (12), que corrige a las entradas del 2026-09-30 y a la cifra «36» del cuaderno 17**
+- El barrido se repitió 300 veces con el desenlace desplazado en círculo. El azar real es de 66,7 de 693 pruebas
+  con p < 0,05 (9,6 %, no 5 %) y está sobredispersado: el percentil 95 es 149.
+- **IRA de la ciudad:** la señal es real y fuerte. Sobreviven 47 pruebas frente a 0,75 esperadas por azar, y 7 se
+  confirman en 2025 frente a 0,08. La mueve el estado del último mes (menos sol, más humedad), no la transición
+  semanal.
+- **Triage total:** los «36 supervivientes» del 17 dependen de cómo se asigna el mes a cada semana. Con el mes del
+  primer día salen 36; con el de la mitad, 18, frente a 12,7 del azar (p = 0,24).
+  - **En el total, la señal del clima no se puede separar del azar ni de la fecha.**
+  - «El entorno general no predice el triage total» (2026-09-30) pasa a esta formulación.
+- **Hipótesis de dirección:** CP1 (soleado y seco) anticipa menos triage en 0-14 años. Los 10 coeficientes son
+  negativos en descubrir y 9 de 10 en confirmar.
+- **Lluvia reciente en 65+:** se reproduce en 2022-24 y se invierte en 2025-26 (+4,2 %, p = 0,033).
+- **Defecto de datos:** `clima_completo.csv.gz` diverge del unificado en la lluvia de NASA del 1 al 24 de agosto
+  de 2026 (49,7 frente a 154,3 mm). Parece provisional, y afecta solo a la prueba de 2026.
+
 **Fuentes y método**
 - **Defectos de fuente (03):**
   - la SE53-2025 del evento 998 sigue en el archivo (`indices.py` ya la anula);
