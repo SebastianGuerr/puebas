@@ -282,6 +282,28 @@ def perfil(eng, destino):
     print(f"{int(r.n.sum()):,} remisiones")
 
 
+SQL_CONTEO_HORARIO = """
+    SELECT CAST(t.HCTFECTRI AS DATE) AS dia,
+           DATEPART(HOUR, t.HCTFECTRI) AS hora,
+           COUNT(*) AS triages
+    FROM dbo.DIM_TRIAGE t
+    WHERE t.HCTFECTRI IS NOT NULL
+    GROUP BY CAST(t.HCTFECTRI AS DATE), DATEPART(HOUR, t.HCTFECTRI)"""
+
+
+def conteo_horario(eng):
+    """
+    Triages por dia x hora, leidos al momento y sin escribir nada. Es la forma de
+    salidas/triage_horario.parquet; sumado por dia da triage_diario.parquet.
+
+    Lo usa el cuaderno 24 para mostrar la serie al dia y verificar una semana
+    predicha. Solo sale la fecha, la hora y el conteo: ni OID ni texto.
+    """
+    t = pd.read_sql(SQL_CONTEO_HORARIO, eng)
+    t["dia"] = pd.to_datetime(t["dia"])
+    return t.sort_values(["dia", "hora"]).reset_index(drop=True)
+
+
 def main(argv=None):
     from pathlib import Path
 

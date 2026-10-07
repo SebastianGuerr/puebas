@@ -6,7 +6,7 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-10-06.**
+**Última actualización: 2026-10-07.**
 
 ---
 
@@ -62,6 +62,26 @@ la historia de la predicción hasta M3, en primera persona.
 - Del 00 al 13 se editan en el `.ipynb`; del 14 al 23, en `construir/` y `*_lecturas.json`.
 - Qué cambió de conclusión: `CONTEXTO.md`, «Revisión de los 22 cuadernos».
 - Pueden añadirse al 00 los resultados de M3s y de la prueba ciega cuando el propietario decida el punto 2.3.
+- **24 (2026-10-07): de la base a un mes predicho a ciegas.** Constructor
+  `notebooks/construir/24_de_la_base_al_mes_a_ciegas.py`; kernel `.venv`. Conexión a la base por defecto
+  (`TRIAGE_FUENTE=base`), o el parquet con `TRIAGE_FUENTE=archivo`. **Lo guardado se ejecutó sin conexión.**
+  M3s sin terremoto, entrenado hasta el 31-dic-2025, predice el 1-30 de septiembre de 2026:
+  - 6,0 % de error en los 20 días con dato, frente a 12,5 % del control;
+  - validación en los septiembres de 2023-2025: empata con el control (11,3 % frente a 11,2 %).
+  Lee `salidas/pronostico/mes_a_ciegas/<año>.parquet`, que genera `python notebooks/mes_a_ciegas.py` (unos 15 min los
+  cuatro años). **La semana del 21 al 27 de septiembre ya se verificó**, con un reporte (imagen) del propietario: 4,2 % de error y 7
+  de 7 días en el rango (`CONTEXTO.md`, 07-10 noche). Esos conteos no están en `salidas/`. **Faltan el 28, el 29 y el 30.** Se completa al correr el cuaderno con la base o
+  cuando el superior actualice `salidas/`. Fila `mes_a_ciegas` y `CONTEXTO.md`, 07-10 (tarde).
+- **25 (2026-10-07): revisión de predicciones.** Constructor `notebooks/construir/25_revision_de_predicciones.py`.
+  Marzo, julio y agosto, desde el 31-dic-2025, dan 13,1 %, 11,9 % y 20,0 % de error; septiembre, 5,6 %. Media de
+  12,7 %: el 6 % de septiembre fue suerte de un mes fácil.
+  **Octubre está guardado como prospectivo** en `salidas/pronostico/revision/2026-10_desde_2026-09-20.*`, más una
+  tabla legible `_tabla.csv` con los umbrales «sube si más de» y «baja si menos de». No se rehace nunca: `revisar()`
+  se niega.
+  - **El propietario verifica octubre con una fuente externa.** Cada conteo que pase va a `datos/triage_reportado.csv`
+    (fecha, triages, fuente); después se reconstruye el 25 y se ejecuta. No entra al entrenamiento.
+  - **Pendiente de decisión:** hacer commit de `mes_a_ciegas.py`, los cuadernos 24-25 y las salidas de `revision/`
+    (con `git add -f`, como `semanal/`). Hasta entonces, la predicción de octubre no está versionada.
 
 ### 5. Pendientes del propietario o de fuentes
 - **Defectos de fuente:**

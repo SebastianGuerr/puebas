@@ -14,6 +14,170 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-07 (noche, 2) — Cuaderno 25: revisión de predicciones en marzo, julio, agosto y octubre
+
+**Por qué.** El propietario sospecha que el 6 % de septiembre es una coincidencia, y los datos le dan la razón:
+septiembre fue el mes más tranquilo de 2026, con una variabilidad diaria del 8,2 % y el menor error a ciegas (4,5 %).
+Para elegir los meses difíciles se midió, para cada mes de 2026, el cambio de nivel, la variabilidad diaria frente a
+las 8 semanas previas, los días a más del 15 % y el error del SARIMAX ya guardado en `e1/anio`. Con eso se eligieron:
+- **marzo**, por un salto de +28,7 % con el regreso de Nueva EPS (27 días a más del 15 %);
+- **julio**, por un desplome de −17,2 % con la nueva caída de Nueva EPS;
+- **agosto**, por el terremoto del 10, la mayor variabilidad del año (20,5 %) y el peor error a ciegas (18,5 %).
+
+**Qué se decidió.** Lo eligió el propietario sobre la propuesta; está preregistrado en la fila `revision_de_predicciones`.
+- **Marzo, julio y agosto se predicen desde el 31-dic-2025**, con el mismo modelo de `mes_a_ciegas` y sin
+  reentrenar nada para elegir.
+- **Octubre se predice desde el 2026-09-20** y se guarda como prospectivo, sin rehacerlo nunca. El propietario lo
+  verifica durante el mes con una fuente externa.
+- **Sube, normal o baja:** la vara es la media del mismo día de la semana en las 8 semanas previas al mes, o al
+  2026-09-20 en el caso de octubre. La banda de «normal» es de ±5 %. Se reporta siempre la tasa base.
+
+**Infraestructura.**
+- `mes_a_ciegas.py` pasa a tener `predecir(o, fechas)`, `revisar()`, `vara()` y `reportado()`.
+- Las salidas van a `salidas/pronostico/revision/`: parquet, json con fecha y commit, y la tabla legible de octubre.
+- Nuevo `datos/triage_reportado.csv`: conteos escritos a mano de una fuente externa. Solo sirven para comparar,
+  nunca para entrenar. Empieza con la semana del 21 al 27 de septiembre de la imagen del propietario.
+- Esto cambia la vara de la entrada siguiente: de 8 semanas móviles a 8 semanas anteriores al mes. En el cuaderno
+  25, septiembre se recalcula con la vara nueva.
+
+**Resultados.** Ejecutado el 2026-10-07, sin reentrenar nada para elegir.
+
+| Mes (desde el 31-dic-2025) | M3s | C0r | Calendario | Días en el rango 80 % | Acierto sube/normal/baja | Tasa base |
+|---|---|---|---|---|---|---|
+| Marzo | 13,1 % | 16,0 % | 22,1 % | 61 % | 93,5 % | 96,8 % (sube) |
+| Julio | 11,9 % | 7,8 % | 7,2 % | 94 % | 61,3 % | 93,5 % (baja) |
+| Agosto | 20,0 % | 16,6 % | 12,5 % | 68 % | 48,4 % | 77,4 % (baja) |
+| Septiembre (27 días) | 5,6 % | 5,8 % | 12,1 % | 100 % | 88,9 % | 88,9 % (sube) |
+
+Lectura:
+- **La media de los cuatro meses es 12,7 %**, en línea con la validación de los septiembres de 2023-2025 (11,3 %).
+  **El 5,6 % de septiembre fue un mes fácil, no la regla**: la sospecha del propietario se confirma.
+- El modelo **no anticipa los cambios de nivel de Nueva EPS** desde diciembre:
+  - en marzo se queda corto (de −10 % a −20 % casi todos los días);
+  - en julio y agosto se pasa;
+  - la semana del terremoto (10-16 de agosto) va un +44,6 % arriba.
+- M3s le gana al calendario en marzo y septiembre, pero pierde en julio y agosto.
+- **En ningún mes el acierto sube/normal/baja supera la tasa base.** Dentro de un mes en que todo sube o todo baja, el
+  modelo no distingue día a día. Lo que sí acierta son los festivos: el 23 de marzo y el 7 y el 17 de agosto dicen
+  «baja» y bajan.
+
+**Octubre (prospectivo).** Guardado el 2026-10-07 a las 15:13, con datos hasta el 2026-09-20.
+- Anuncia una semana de 180/día, de 164 a 196, entre el 5 y el 11; 176 y 178 las dos siguientes; 185 la última.
+- El lunes 12 (festivo) da 157, «baja»; casi todos los demás días dan «sube».
+- Ojo: la vara incluye el bache de agosto.
+- El commit anotado (63059ef) es el HEAD, pero el código de `mes_a_ciegas` todavía no está en git. Hasta que se haga
+  commit, la versión exacta no queda fijada.
+- Los días del 1 al 7 de octubre ya habían pasado al guardarla, aunque no estaban en ningún dato del modelo; la
+  prueba prospectiva en sentido estricto empieza el 8.
+
+## 2026-10-07 (noche) — Mes a ciegas: la semana del 21 al 27 de septiembre, verificada con el reporte del propietario
+
+**Dato real.** El propietario compartió un reporte del hospital (imagen: triages por hora × día de la semana). La
+tabla no trae fechas; se asume que es la semana del 21 al 27 de septiembre de 2026, la primera que falta en
+`salidas/`. Totales: lun 218, mar 189, mié 188, jue 152, vie 178, sáb 151, dom 141 (1.217). **No se reentrenó:** se
+comparó con `salidas/pronostico/mes_a_ciegas/2026.parquet` (M3s entrenado hasta el 31-dic-2025).
+
+**Resultado de la semana.**
+- M3s: error del día del 4,2 % y 7 de 7 días dentro del rango del 80 %.
+- La semana: 181,0 por día anunciado (165-197) contra 173,9 real, dentro del rango. En total, 1.248 contra 1.217.
+- El peor día, el jueves 24: se anunciaron 182 y hubo 152.
+
+**Sube, normal o baja (pedido del propietario).** Lo normal de la prueba (la regresión con el nivel de diciembre) no
+sirve, porque sale bajo. Se usó otra vara: **la media del mismo día de la semana en las 8 semanas previas**, con
+datos reales anteriores al día, y **una banda de ±5 %** para «normal». La banda reparte los días en tres grupos de
+tamaño parecido con un ruido diario del 12,6 %. Se eligió después de ver la imagen pero antes de calcular las
+categorías; se reporta la sensibilidad.
+
+**Resultados, del 1 al 27 de septiembre.**
+- M3s acierta 22 de 27; la semana del 21 al 27, 6 de 7. C0r acierta 21 de 27.
+- Con banda de ±3 %, M3s acierta 24 de 27; con ±8 %, 20 de 27.
+
+**La salvedad que manda.** De los 27 días, 22 subieron, 4 quedaron normales y 1 bajó: septiembre fue un mes de
+recuperación frente a un agosto hundido (terremoto y Nueva EPS). Decir «sube» todos los días también da 22 de 27,
+así que **el 81 % de M3s no supera esa tasa base**.
+- Lo que el modelo sí mostró: desde diciembre anunció que septiembre quedaría por encima del nivel de las semanas
+  previas, y la semana bien.
+- Lo que no mostró: separar día a día lo normal de lo alto. Dijo «normal» 4 veces y acertó 2; nunca dijo «baja»,
+  y el único día que bajó (jue 24) lo falló.
+
+## 2026-10-07 (tarde) — El cuaderno 24 cambia a la prueba del mes a ciegas; revierte su prueba de una semana
+
+**Decisión del propietario.** La predicción de una semana con datos de la víspera «no le gusta»: con un día de
+adelanto el modelo se apoya en la memoria reciente y acierta cualquier semana tranquila (el calendario solo hizo
+3,9 % en la del 14 al 20 de septiembre). Se pide, y se fija antes de calcular (fila `mes_a_ciegas` de
+`patrones/datos/variables.csv`):
+- **entrenar solo con el triage hasta el 31-dic-2025** y predecir de una vez **cada día de septiembre de 2026, del 1
+  al 30** (244-273 días de adelanto), aunque del 21 al 30 no haya dato todavía;
+- **las mismas variables de M3s, sin el terremoto.** El propietario siente que el terremoto no afectó; el cuaderno 20
+  midió −48,7 % el día 0, pero **en este diseño no puede influir**: es del 10-ago-2026 (fuera de todo
+  entrenamiento) y su ventana de 0 a 21 días termina el 31 de agosto. Quitarlo solo lo deja explícito;
+- tabla de los registros de entrenamiento y tabla final día a día y por semana, predicción frente a realidad.
+
+**Añadido sin pedirlo, y por qué.** El mismo diseño en septiembre de 2023, 2024 y 2025 (cada uno entrenado hasta el
+31-dic anterior) como **validación**: es de donde salen porcentajes de confianza con 90 días y 15 semanas, en lugar
+de 20 días de 2026. Lo que no se sabe el 31 de diciembre (salud, social, paro) va como año típico; la red se congela
+en el origen; el clima de rezago corto sigue fuera, como en M3s. Código: `notebooks/mes_a_ciegas.py`, experimento
+`m3s_ciego` (opción nueva `sin` en `mecanismos.contexto`); salidas en `salidas/pronostico/mes_a_ciegas/`. El LightGBM
+es directo, con un modelo por adelanto (244-273). Unos 3-4 minutos por año.
+
+**Evidencia.**
+
+| Septiembre | M3s | C0r | Lo normal | Días de M3s en el rango del 80 % |
+|---|---|---|---|---|
+| 2023 (validación) | 9,6 % | 10,1 % | 9,0 % | 90 % |
+| 2024 (validación) | 18,1 % | 17,8 % | 17,6 % | 43 % |
+| 2025 (validación) | 6,1 % | 6,2 % | 7,0 % | 93 % |
+| **2026 (prueba, 20 días)** | **6,0 %** | 6,2 % | 12,5 % | 100 % (20 de 20) |
+
+Error medio del día. En 2026 M3s anunció 176,3 de media para los 20 días con dato y hubo 178,4. Por semanas:
+169,2 real frente a 174,7 en la del 1 al 6 de septiembre, y 182,4 frente a 179,6 y 179,3 en las dos siguientes,
+todas dentro de su rango.
+
+**Lectura honesta.**
+- **Con ocho meses de adelanto el modelo empata con el control de calendario** en la validación (11,3 % frente a
+  11,2 %). Lo que aporta es el rango: el 76 % de los días cae dentro, frente al 62 % de lo normal.
+- 2026 salió mejor que esa expectativa; con un mes no se separa el acierto de la suerte.
+- 2024 es el año imposible: subió a su máximo histórico durante el año.
+- **El sube/baja no informa en esta prueba.** Lo normal (regresión anual con el nivel de diciembre) queda un ~10 %
+  por debajo de septiembre: el 86 % de los días de validación «suben», y decir siempre que sube acierta más que M3s
+  (60 %). Se declara en el cuaderno y no se usa como medida.
+- **El rango semanal es demasiado estrecho a este adelanto**: cubre el 56 % de las semanas, no el 80 %. El error es
+  de nivel y se repite toda la semana; la rho de días consecutivos (0,14) no lo recoge. No se corrigió para no
+  ajustar después de mirar. Arreglarlo exige una fila nueva.
+
+**Revierte** la prueba de una semana de la entrada siguiente: se retiran sus secciones del cuaderno 24 (semana a
+1-7 días y predicciones guardadas). El cuaderno pasa a llamarse `24_de_la_base_al_mes_a_ciegas`. La conexión, el
+conteo y el calendario de calor se quedan igual.
+
+## 2026-10-07 — Cuaderno 24: de la base a la semana predicha y verificada
+
+**Decisión.** Se crea el cuaderno 24 (`notebooks/construir/24_de_la_base_a_la_semana_predicha.py`), pedido por el
+propietario: conexión con la base y conteo de `DIM_TRIAGE`, el mismo calendario de calor (`calplot`) de
+`exploracion.ipynb`, la predicción de una semana con M3s (y C0r de referencia) sin filtración, y la comparación con
+lo ocurrido en el formato de `formato-verificacion-semanal`. Una sección final compara las predicciones guardadas
+(`semanal/` y `prueba_ciega/`) con la fuente.
+
+**Cómo se elige la semana, y por qué.** La primera semana completa posterior a `pr.FIN` (el último día con que se
+entrenó el modelo), con origen en `pr.FIN`: es la única semana que ni los datos ni la elección de modelos han visto.
+Si la fuente no tiene semana nueva, se toma la última semana completa y el origen pasa al domingo anterior; el
+triage posterior al origen se borra igual, pero esa semana sí estuvo en el periodo de 2026 con que se compararon M3
+y C0r. El último día de la extracción se descarta siempre: es el día en curso o el corte de la carga, y suele estar
+a medias (el 21-sep-2026 tenía 94).
+
+**Conexión.** El cuaderno no escribe SQL propio: llama a `extraccion.motor()` y a la nueva
+`extraccion.__main__.conteo_horario()` (día × hora × `COUNT(*)`, sin escribir nada). Si la conexión falla, lo dice y
+lee `salidas/triage_horario.parquet`. Compara además la base con `triage_diario.parquet` en los días comunes, para
+detectar días corregidos después de la extracción.
+
+**Evidencia (ejecutado sin conexión, fuente archivo).** Semana del 14 al 20 de septiembre con origen el 13 (1-7
+días de adelanto): M3s anunció 183/día (171-195), real 182,4; error del día 4,6 %, 7 de 7 días en el rango, 6 de 7 en
+sube/baja. C0r 4,5 %; el control de calendario solo, 3,9 %. Con 1 día de adelanto el lunes 14 da 221, la misma cifra
+de la prueba de instalación del servidor (220). Contrasta con la prueba ciega a 14-20 días (M3s 155, falló): en esa
+semana el adelanto pesó más que el modelo. Es una sola semana: no basta para concluirlo en general.
+
+**Dependencia.** `calplot` 0.1.7.5 no estaba instalado en ningún entorno; se instaló en `.venv` con `--no-deps` y se
+añadió a `requirements.txt`.
+
 ## 2026-10-06 (cierre) — M3s gana la regla semanal, pero falla la prueba ciega de septiembre a 14-20 días
 
 **Decisión: M3s es el modelo de la respuesta semanal, por la regla `m3_semanal`.** M3s es M3 sin las 7 variables

@@ -88,6 +88,9 @@ torch==2.6.0
 
 # --- Figuras y cuadernos ---------------------------------------------------------
 matplotlib==3.9.2
+# calendario de calor por dia (exploracion.ipynb y cuaderno 24). Instalado el
+# 2026-10-07 con --no-deps: sus dependencias ya estan arriba
+calplot==0.1.7.5
 # para abrir y ejecutar notebooks/ en VS Code o Jupyter
 ipykernel==7.3.0
 nbformat==5.11.1

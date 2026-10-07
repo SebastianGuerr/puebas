@@ -87,6 +87,8 @@ for _suf, _ors in [("_2025", ("2024-12-31", "2025-12-30")), ("", ("2025-12-31", 
 # M3 para la respuesta semanal (fila m3_semanal): sin las columnas de clima de rezago corto; la usa semana.py
 EXPERIMENTOS["m3s"] = dict(ini="2020-01-01", contexto="mecanismos", excluir=[COVID["es_covid_fuerte"]], semanal=True,
                            origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "m3s")
+# M3s en la prueba del mes a ciegas (fila mes_a_ciegas): sin el terremoto; la corre notebooks/mes_a_ciegas.py
+EXPERIMENTOS["m3s_ciego"] = dict(EXPERIMENTOS["m3s"], sin=["ext_m_catastrofe_"], carpeta=SALIDA / "mes_a_ciegas")
 EXP = EXPERIMENTOS["e0"]                      # el experimento activo; lo cambia usar()
 ANIO_ORIGEN = "2025-12-31"
 

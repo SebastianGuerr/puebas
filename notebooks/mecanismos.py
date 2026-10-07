@@ -160,6 +160,9 @@ def contexto(dias, exp, H=None):
     FUT, PAS, G = columnas(dias)
     if exp.get("semanal"):             # fila m3_semanal: sin el clima de rezago corto, vale para cualquier adelanto
         FUT = FUT[[c for c in FUT if "_cli_" not in c]]; PAS = PAS[[c for c in PAS if "_cli_" not in c]]
+    sin = tuple(exp.get("sin", ()))    # fila mes_a_ciegas: columnas que el experimento deja fuera (el terremoto)
+    if sin:
+        FUT = FUT[[c for c in FUT if not c.startswith(sin)]]; PAS = PAS[[c for c in PAS if not c.startswith(sin)]]
     FUT, PAS = con_compuerta(FUT, G), con_compuerta(PAS, G)
     sin_g = [c for c in FUT if not c.startswith("ext_g_")]
     FUT[sin_g] = FUT[sin_g].fillna(0)
