@@ -80,8 +80,8 @@ la historia de la predicción hasta M3, en primera persona.
   se niega.
   - **El propietario verifica octubre con una fuente externa.** Cada conteo que pase va a `datos/triage_reportado.csv`
     (fecha, triages, fuente); después se reconstruye el 25 y se ejecuta. No entra al entrenamiento.
-  - **Pendiente de decisión:** hacer commit de `mes_a_ciegas.py`, los cuadernos 24-25 y las salidas de `revision/`
-    (con `git add -f`, como `semanal/`). Hasta entonces, la predicción de octubre no está versionada.
+  - **Versionado el 2026-10-07** (commit 1e85341, integrado en `main` y subido a GitHub), con las salidas de `revision/`
+    forzadas con `git add -f`.
 
 ### 5. Pendientes del propietario o de fuentes
 - **Defectos de fuente:**
