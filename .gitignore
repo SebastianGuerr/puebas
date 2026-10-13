@@ -210,6 +210,17 @@ _[!_]*
 # Pruebas ciegas (semana.py --origen, anadidas el 2026-10-06): prediccion hecha con datos cortados
 # antes de la semana, guardada antes de compararla con lo real. Misma razon que semanal/.
 !/salidas/pronostico/prueba_ciega/
+# Corridas de la operacion semanal (python -m operacion, anadidas el 2026-10-13). Misma razon que semanal/:
+# cada corrida es una prediccion guardada antes de conocer lo real. verificacion.parquet se regenera y no se versiona.
+!/salidas/operacion/
+/salidas/operacion/*
+!/salidas/operacion/corridas/
+# El historial y el semaforo se regeneran (python -m operacion --estado), pero se versionan para que el tablero
+# abra completo en un clon nuevo: el historial reconstruido necesita salidas/pronostico/, que no se versiona.
+!/salidas/operacion/historial.parquet
+!/salidas/operacion/estado.json
+# La regla general '*.parquet' de arriba los volveria a ignorar: las predicciones de cada corrida si se versionan.
+!/salidas/operacion/corridas/*/*.parquet
 
 # La tabla de notas sin nada que lleve a la persona (NLP/nube/tabla.py; el
 # porque en NLP/docs/TABLA.md): id aleatorio, dia, nivel, banda de edad y la

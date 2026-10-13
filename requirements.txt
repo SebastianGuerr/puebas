@@ -46,6 +46,19 @@ chronos-forecasting==2.3.2
 #                versiones viejas de sus dependencias, que ya estan arriba
 xgboost==3.2.0
 # pip install --no-deps lazypredict==0.3.0
+# Instalado el 2026-10-08 (notebooks/madurez.py, cuaderno 26).
+#   arch  prueba SPA de Hansen y Model Confidence Set, con bootstrap por bloques:
+#         corrigen por haber elegido el mejor entre muchos disenos
+arch==8.0.0
+
+# --- Operacion y tablero (operacion/, 2026-10-13) ------------------------------
+#   streamlit  el tablero para urgencias (trae altair, con el que se dibujan los graficos)
+#   holidays   festivos de Colombia para regenerar calendarios/calendario_Colombia.csv (llega a 2030)
+#   vl-convert solo para exportar los graficos del tablero a imagen al revisarlos; opcional
+streamlit==1.65.0
+altair==6.3.0
+holidays==0.105
+vl-convert-python==1.9.0.post1
 
 # --- Base clinica (SOLO en el equipo del hospital) ---------------------------
 # extraccion/, NLP/procesar.py y NLP/nube/ hablan con SQL Server (DWSES) por
@@ -100,10 +113,7 @@ nbconvert==7.17.1
 pytest==9.1.1
 
 # --- Opcional ------------------------------------------------------------------------
-# Solo para REGENERAR calendarios/calendario_Colombia.csv con
-# calendarios/calendario_colombia.py. El CSV ya esta versionado, y el paquete
-# no esta en el .venv del hospital, asi que no hay version medida que fijar.
-#   pip install holidays
+# (holidays ya no es opcional: subio a la seccion de operacion el 2026-10-13)
 
 # --- Fuera de pip ------------------------------------------------------------------
 # Ollama (https://ollama.com) con qwen3:8b: el modelo local de NLP/. En

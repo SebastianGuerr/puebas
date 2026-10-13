@@ -4,7 +4,7 @@ Calendario natural de Colombia.
 Genera una dimensión de fechas (una fila por día) con festivos oficiales,
 festividades culturales y estructura laboral.
 
-    python calendario_colombia.py --inicio 2020-01-01 --fin 2026-12-31
+    python calendario_colombia.py --inicio 2020-01-01 --fin 2030-12-31
 
 Dependencias:
     pip install pandas holidays pyarrow
@@ -264,7 +264,7 @@ def resumen(cal: pd.DataFrame) -> None:
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Calendario natural de Colombia')
     ap.add_argument('--inicio', default='2020-01-01')
-    ap.add_argument('--fin', default='2026-12-31')
+    ap.add_argument('--fin', default='2030-12-31')   # 2026-10-13: hasta 2030 para que la operacion no se rompa en enero
     ap.add_argument('--salida', default='calendario_Colombia.csv')
     args = ap.parse_args()
 

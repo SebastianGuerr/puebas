@@ -6,11 +6,110 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-10-07.**
+**Última actualización: 2026-10-13.**
 
 ---
 
-## ESTADO AL CIERRE (2026-10-06, 17:00) — leer esto primero
+## HECHO (2026-10-13): lo que pidió urgencias — operación autónoma, aseguradoras y tablero
+
+**El producto** (reunión del propietario con urgencias):
+- la herramienta **informa** y **urgencias decide** el personal;
+- muestra el total del día, el reparto en madrugada, mañana, tarde y noche, las horas de más demanda y **de qué
+  aseguradora llegan**;
+- debe seguir funcionando cuando el propietario (practicante) se vaya;
+- **la fase siguiente** es cuántos pasan a consulta, de esos cuántos a hospitalización y en qué especialidad
+  (por ejemplo, obstetricia).
+
+**Hecho, medido y escrito** (`CONTEXTO.md`, entradas (1) a (5) del 13-10). Todo **SIN COMMIT**.
+1. **Reparto del día** (`notebooks/reparto.py`). Gana P52; el reparto queda en el piso de ruido; el rango de las
+   franjas pasa al 71-83 %. Ya está en `semana.py`.
+2. **Recalibrar el rango con los errores recientes no sirve.** Queda sin cambio.
+3. **`DIM_TRIAGE.ASEGURADORA`** (añadida por el superior el 08-10) es una copia de `DIM_ENTIDAD.ENTNOMBRE`: no aporta.
+   La base llega al 13-10. La semana prospectiva del 5 al 11 de octubre acertó: 178 anunciados contra 177,4 reales,
+   con 7 de 7 días dentro del rango.
+4. **Reparto por aseguradora** (`notebooks/aseguradoras.py`, fila `reparto_por_aseguradora`). Gana T4 (las últimas 4
+   semanas).
+   - Sura se informa bien: rango del 79-80 %.
+   - **Nueva EPS falla en sus cambios de convenio:** rango del 54 % en 2026 y del 5 % en los meses de cambio.
+5. **Calendario de festivos hasta 2030.** El festivo de Chiquinquirá de 2027 está por confirmar.
+6. **Operación** (`operacion/`, guía en `operacion/docs/OPERACION.md`):
+   - `python -m operacion [--extraer] [--estado] [--modelo M3s]`: C0r con receta fija, 28 días, corrida guardada y
+     versionada, verificación y semáforo;
+   - tablero: `streamlit run operacion/tablero.py` (o `operacion	ablero.cmd`);
+   - primera corrida guardada: `salidas/operacion/corridas/2026-09-20_C0r/`; semáforo rojo porque los datos tienen 23
+     días.
+7. En `.venv` se instalaron streamlit 1.65.0, altair 6.3.0 y vl-convert 1.9.0. Están en `requirements.txt`, con
+   holidays 0.105.
+
+**Pendiente:**
+- **Cuaderno 27 hecho** (`notebooks/27_el_dia_por_jornada_y_aseguradora.ipynb`, 0 errores, 6 figuras; constructor en `construir/`).
+- Fila 27 de `notebooks/README.md` añadida.
+
+**Actualizado el 13-10 por la tarde** (`CONTEXTO.md`, entrada (6)):
+- `salidas/` llega al **12-10** (se reextrajo; `--series` ahora escribe también el diario y el horario);
+- corrida `2026-10-12_C0r`, que predice hasta el 31-dic;
+- historial de 638 días;
+- tablero con tres pestañas: próximos días, cómo ha predicho y confiabilidad.
+
+Precisión: 10-11 % de error a 15-21 días en 2025-2026. En el 21-sep a 12-oct, 5,9 % con el 95 % de los días dentro
+del rango.
+
+**Cómo verlo:** `operacion	ablero.cmd` (o `.venv\Scripts\python.exe -m streamlit run operacion	ablero.py`).
+
+**Decidido por el propietario:**
+- **no** programar la ejecución automática todavía;
+- el estado del convenio hospital-EPS queda **fuera del alcance**;
+- el festivo de Chiquinquirá se mantiene (Ley 2578 de 2026).
+
+**Siguiente:**
+- mostrar el calendario a urgencias y recoger qué tan cerca lo ven de la realidad;
+- cada semana: `python -m operacion --extraer` a mano (unos 5 minutos) para seguir midiendo;
+- la fase de consulta, hospitalización y especialidad, cuando el propietario la abra.
+
+---
+
+## HECHO (2026-10-08): cuaderno 26, ¿está madura la predicción? — leer esto primero
+
+**Todo está terminado, sin procesos corriendo y SIN COMMIT** (rama `modelos-afinados`). `NLP/modelo.py` sigue con su
+cambio local ajeno (MedGemma): no se toca ni se incluye.
+
+**Qué hay.** `notebooks/26_madurez_de_la_prediccion.ipynb`, ejecutado con 0 errores (37 celdas, 5 figuras).
+- Constructor: `notebooks/construir/26_madurez_de_la_prediccion.py`.
+- Cálculo: `notebooks/madurez.py`. El cuaderno solo lee `salidas/pronostico/madurez/`.
+- Preregistro: filas `madurez_de_la_prediccion` y `_enmienda`.
+- Resultado y porqué: `CONTEXTO.md`, entradas del 08-10.
+
+**Veredicto (criterio preregistrado): ningún uso está maduro.**
+- **A (1-7 días):** casi madura; falla en el rango de la media semanal de 2026 (61 %) y en 1 alarma aislada.
+- **B (15-21 días, el adelanto real):** el número sirve (10-11 % de error, por delante del control); el rango no
+  (2026: 71 % de días dentro, fallos en racha).
+- **C (el día alto en un nivel estable):** no le gana al calendario.
+- **D (un mes desde diciembre):** empata con el calendario.
+- **SPA:** en 2025 la ventaja sobre el control no se separa de la selección (p = 0,124); en 2026, sí (p = 0,027).
+  M3 no se separa de C0r.
+
+**Cómo se rehace:**
+- `python notebooks/madurez.py --curva`: ~1 h con el equipo libre; esta vez tardó 3 h con dos pausas del equipo;
+- `python notebooks/madurez.py`: segundos; no repite SPA;
+- `--spa`: rehace SPA y MCS en ~1 min;
+- después, el constructor y `nbconvert --execute`.
+
+**Pendiente del propietario:**
+1. Decir qué quiere hacer después, para leer el veredicto contra eso. La conclusión del cuaderno distingue base
+   operativa (sí) de instrumento de picos (no).
+2. Autorizar el commit.
+
+Cambios de código fuera del cuaderno:
+- `semana.validar` acepta `adelantos` y `archivo`; por defecto hace lo mismo;
+- `arch` 8.0.0 en `.venv` y en `requirements.txt`;
+- fila 26 en `notebooks/README.md`.
+
+**Cuando el superior actualice la base:** `python notebooks/madurez.py` recalcula la tabla de prospectivas. Las de
+octubre son la única prueba que nadie ha mirado.
+
+---
+
+## ESTADO AL CIERRE (2026-10-06, 17:00)
 
 **Todo está detenido y guardado.** No hay procesos corriendo ni agentes vivos. Todo está en git, en la rama
 `modelos-afinados`, sin subir. `NLP/modelo.py` tiene un cambio local que no es de esta sesión (apunta a MedGemma):

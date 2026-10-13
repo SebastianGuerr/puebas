@@ -1,0 +1,21 @@
+{
+ "general": "verde",
+ "señales": [
+  {
+   "que": "Datos",
+   "nivel": "verde",
+   "detalle": "último día completo: 2026-10-12 (hace 1 días)"
+  },
+  {
+   "que": "Acierto reciente",
+   "nivel": "gris",
+   "detalle": "solo 0 días verificados"
+  },
+  {
+   "que": "Nueva EPS",
+   "nivel": "verde",
+   "detalle": "68 por día en las 2 últimas semanas frente a 60 en las 8 anteriores (+13 %)"
+  }
+ ],
+ "calculado": "2026-10-13T16:28:53"
+}

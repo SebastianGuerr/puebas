@@ -107,6 +107,16 @@ Todos se miden con origen rodante, reentrenando cada 7 días y prediciendo de 1 
 En 2026, mirado una sola vez, M3 y C0r empatan: 68,5 % contra 69,7 % de acierto y MAPE de 8,2 % a un día.
 Detalle en `docs/CONTEXTO.md`, entrada «Mecanismos, etapa 2».
 
+**Desde el 2026-10-08 «sube» tiene una sola vara:** por encima de la media del mismo día de la semana en las 8
+semanas que terminan en el origen. El control de calendario pasa a ser competidor, no vara. **El adelanto de uso real
+es de 15 a 21 días**, no de 1, porque la base se actualiza una vez por semana. Con esa vara (cuaderno 26):
+- M3s tiene un error del día del 10,1 % (2025) y del 11,4 % (2026) a 15-21 días;
+- la ventaja sobre el control **no se separa de la selección en 2025** (SPA p = 0,124) y sí en 2026 (p = 0,027);
+- M3 no se separa de C0r;
+- el rango a más de una semana falla en racha.
+
+Ningún uso cumple las cuatro condiciones de madurez.
+
 
 > **El clima unificado se reescribió el 2026-09-23** porque producía resultados falsos por
 > seis motivos, el peor de los cuales fabricaba tormentas: dentro del mismo mes, los días sin
@@ -200,7 +210,7 @@ Ninguno se arregla con más modelo ni con más limpieza de texto. Los dos son co
 
 | | Estado |
 |---|---|
-| **Día** | **2.454 días, 2020-01-01 a 2026-09-21** (`salidas/triage_diario.parquet`). **Caída de registro, no ausencia de pacientes:** el **19 y 20-mar-2024 sin filas** y el **21-mar-2024 con 40** (17 % de lo esperado). En el total esos días van como **nulo**, nunca como cero (corregido el 2026-09-29). El 21-sep-2026 está incompleto: cortar en el 20. Media 176,6 triages/día. El patrón semanal medido: lunes 208,8 → domingo 132,7. |
+| **Día** | **2.454 días, 2020-01-01 a 2026-09-21** (`salidas/triage_diario.parquet`). **Caída de registro, no ausencia de pacientes:** el **19 y 20-mar-2024 sin filas** y el **21-mar-2024 con 40** (17 % de lo esperado). En el total esos días van como **nulo**, nunca como cero (corregido el 2026-09-29). **Desde la extracción del 2026-10-13 llega al 12-oct-2026 completo** (el último día de cada extracción queda a medias: la operación lo descarta sola). Los módulos de análisis siguen cortados en el 20-sep a propósito, para no mover experimentos publicados. Media 176,6 triages/día. El patrón semanal medido: lunes 208,8 → domingo 132,7. |
 | **Hora** | **Extraída** (`salidas/triage_horario.parquet`, 55.844 filas día×hora). El patrón intradiario es **mucho** más fuerte que el semanal. Medido sobre la casilla conjunta el 2026-09-22: pico **lunes 10 h con 17,6 triages/hora**, valle **jueves 3 h con 1,3** — **13,9× de oscilación**, contra 1,57× del día de la semana. El día tiene **dos jorobas**: pico a las 10 h, valle a las 12-13 h y **segundo pico a las 14-15 h** (2022-2026: 15,8 / 10,9 / 13,0 triages por hora); a las 18-19 h ya va en descenso (8,6). *Corregido el 2026-09-29: antes decía «valle 13-14 h, segundo pico 18-19 h», que no es lo que dan los datos.* Un solo armónico de 24 h no lo describe. |
 | **Asegurador** | **Extraído el 2026-09-28** (`salidas/triage_entidad.parquet`, día × hora × entidad; `python -m extraccion --entidad`). **Nueva EPS es el 58 % del triage** y explica la caída del volumen de 2025-2026 (116 → 72 por día). Ver `docs/CONTEXTO.md`, «Dos capas». |
 | **Mes** | Ya alcanza para el conteo total: 6,7 ciclos anuales. Para la serie por motivo no, que sigue empezando en 2025. Excluyendo 2020, la amplitud anual es **19,7 %** (feb 169 → jun 202 triages/día). |

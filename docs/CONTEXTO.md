@@ -14,6 +14,398 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-13 (6) — Datos al 12 de octubre: la precisión medida, el pronóstico hasta diciembre y el alcance de la entrega
+
+**Extracción** (autorizada por el propietario). Se corrió `python -m extraccion --series`.
+- `--series` **no refrescaba `triage_diario` ni `triage_horario`**: se escribían aparte. Se añadieron a `series()`
+  desde `conteo_horario`.
+- Los 2.453 días anteriores coinciden exactamente con los nuevos. Los datos llegan al 2026-10-12 completo (el 13,
+  a medias).
+- El 21-sep deja de estar incompleto, y se quitó de `reparto.MALOS`.
+- Las fechas fijas de los módulos de análisis (`pronostico.FIN`, `madurez.ULTIMO`, `mes_a_ciegas.ULTIMO_DATO`) no se
+  tocan: fijan experimentos ya publicados. La operación fija la suya en cada corrida.
+
+**Precisión con los datos nuevos** (C0r; «reconstruido» = predicho 15-21 días antes en la validación semanal).
+
+| | 2025, reconstruido | 2026, reconstruido | 21-sep a 12-oct, corrida del 20-sep |
+|---|---|---|---|
+| Días | 353 | 263 | 22 |
+| Error del día | 10,3 % | 11,5 % | **5,9 %** |
+| Días dentro del rango del 80 % | 84 % | 72 % | **95 %** |
+| Error de mañana / tarde / noche | 16 / 14 / 16 % | 17 / 15 / 18 % | 9 / 11 / 14 % |
+| Error de Nueva EPS / Sura | 18 / 15 % | 25 / 14 % | 8 / 12 % |
+| Aseguradoras pequeñas | 2,1 pacientes, 82 % dentro | 2,4, 81 % | 2,7, 78 % |
+
+Predicciones prospectivas verificadas (guardadas antes de que ocurriera el día):
+- semana del 5 al 11 de octubre: M3s con 6,8 % de error y C0r con 7,3 %, los dos con 7 de 7 días dentro del rango;
+  mañana y tarde con error del 13-14 %;
+- octubre predicho el 07-10 desde el 20-sep, del 1 al 12 de octubre: M3s con 5,9 % y C0r con 6,4 %, los dos con
+  12 de 12 días dentro;
+- el lunes 12 de octubre, festivo: 155 anunciados y 158 reales.
+
+**Pronóstico hasta diciembre.** El horizonte de la operación pasa de 28 días fijos a «hasta el 31 de diciembre», con un
+mínimo de 28 y un máximo de 120 días.
+- Los días a más de 28 días se marcan como largo plazo (`largo_plazo`) y el tablero los presenta como tendencia
+  («≈»): la validación llega hasta 28.
+- La corrida del 2026-10-12 predice 80 días y tarda unos 4 minutos.
+
+**Historial.** `operacion.historial()` reúne para cada día lo que se habría dicho 15-21 días antes y lo real, con
+jornadas y aseguradoras:
+- de la validación reconstruida (C0r, adelanto 15) hasta el 20-sep;
+- de las corridas guardadas desde entonces.
+
+Se versiona junto con `estado.json` para que el tablero abra completo en un clon nuevo. El tablero tiene tres
+pestañas: «Próximos días» (calendario por mes hasta diciembre), «Cómo ha predicho» (calendario por mes de 2025-2026,
+lo real frente a lo predicho, con jornadas y aseguradoras) y «Qué tan confiable es».
+
+**Festivo de la Virgen de Chiquinquirá: confirmado.** Es la Ley 2578 de 2026, sancionada en junio de 2026: fiesta
+nacional el 9 de julio, trasladable al lunes. El calendario ya lo tenía desde el 13-jul-2026, con holidays 0.105.
+
+**Alcance de la entrega inicial, fijado por el propietario:**
+1. **No se programa la ejecución automática todavía.** Queda desarrollada hasta donde está (`operacion/semanal.cmd`,
+   `OPERACION.md`). Antes de terminar la práctica se preguntará a urgencias si quieren el producto y quién se encarga.
+2. **El estado del convenio queda fuera del alcance.** Aclaración: lo que se propuso era el convenio entre el
+   **hospital** y la EPS (si el hospital atiende o no a sus afiliados en una fecha), no la afiliación del paciente. El
+   propietario no lo considera necesario para esta entrega, y no se persigue.
+   - El hallazgo medido sigue en pie: los meses de cambio de Nueva EPS son la causa principal de los días fuera del
+     rango.
+   - Se informa en el tablero como advertencia, no como dato que falte.
+
+---
+
+## 2026-10-13 (5) — La operación semanal y el tablero: reentrenar con receta fija, C0r en producción, semáforo
+
+**Pedido del propietario.** Que la predicción siga funcionando cuando él se vaya (es practicante), reentrenando cada
+cierto tiempo. Y un tablero en Streamlit, tipo calendario, para mostrarle a urgencias:
+- las probabilidades;
+- cómo va a estar de lleno cada jornada;
+- la hora de más saturación;
+- de qué aseguradora llegan.
+
+Los cuadernos siguen siendo el lugar del análisis.
+
+**Qué se decidió, y por qué.**
+1. **Reentrenar cada semana con receta fija, no congelar.** La serie cambia de nivel, y un modelo congelado se desvía:
+   el entrenado en 2022-2024 sobrepredice 2026. «Receta fija» quiere decir que lo único que cambia son los datos; las
+   variables y los hiperparámetros no se vuelven a elegir. Es lo mismo que se validó: la validación semanal
+   reajustaba cada 4 domingos. Reentrenar a 28 días tarda 86 s.
+2. **C0r en producción; M3s como opción** (`--modelo M3s`).
+   - M3s depende de `eventos_manizales_2020_2026.csv`, `fiestas_caldas_2020_2026.csv`,
+     `desastres_manizales_2020_2026.csv` y `seguridad_mindefensa.csv.gz`. Se mantienen a mano y terminan en 2026: sin
+     mantenimiento se degrada sin avisar.
+   - En el SPA, M3 no se separa de C0r (cuaderno 26).
+   - En la semana prospectiva del 5 al 11 de octubre: C0r, 7,3 %; M3s, 6,8 %.
+   - Para un sistema que debe sobrevivir sin quien lo construyó, pesa más no tener piezas frágiles que 0,5 puntos.
+3. **Horizonte de 28 días.** El adelanto operativo es de 15 a 21 días, y 28 cubre el mes siguiente. La curva del
+   cuaderno 26 llega hasta ahí.
+4. **«Lo habitual» = la vara única del 08-10.** Es la media del mismo día de la semana en las 8 semanas que terminan en
+   el último dato. P(más que lo habitual) es el P(sube) validado en el cuaderno 26.
+5. **Semáforo**, con umbrales fijados con la validación de 2025-2026, antes de tener días operativos verificados:
+   - datos: verde hasta 8 días de antigüedad, rojo con más de 21;
+   - error del día en los últimos 28 días verificados: verde ≤ 12 %, rojo > 18 %;
+   - días dentro del rango del 80 %: verde ≥ 65 %, rojo < 50 %;
+   - Nueva EPS: amarillo si sus 2 últimas semanas cambian un 20 % o más frente a las 8 anteriores;
+   - solo cuentan los días predichos antes de empezar (`prospectiva`), y con menos de 14 queda en gris.
+6. **Cada corrida se guarda una vez y se versiona** (`salidas/operacion/corridas/`, excepción en `.gitignore`). Es la
+   misma razón que la de las predicciones semanales.
+7. **El último día de datos siempre se descarta**, porque la extracción corre de día. Es conservador: cuesta un día.
+
+**Lo construido.**
+- `operacion/`: el ciclo (`python -m operacion [--extraer] [--estado] [--modelo]`), el tablero
+  (`operacion/tablero.py`), los lanzadores `semanal.cmd` y `tablero.cmd`, y la guía de entrega
+  `operacion/docs/OPERACION.md`.
+- El tablero solo lee `salidas/operacion/`; no reentrena ni toca la base.
+- Se probó con `AppTest` de Streamlit: 0 excepciones; el calendario, el detalle del día y el cambio de día funcionan.
+- Los gráficos se revisaron renderizados. Se corrigió que las celdas de tono medio no mostraban el texto y que la
+  escala divergente pasaba por un verde.
+
+**Primera corrida** (2026-09-20, C0r): semáforo **rojo**, correctamente.
+- Los datos tienen 23 días.
+- Nueva EPS subió un 31 % en las 2 últimas semanas conocidas.
+
+**Lo que queda abierto.**
+- La extracción automática requiere una cuenta con lectura en `DWSES`. Es una decisión institucional.
+- El estado de los convenios de Nueva EPS sigue sin fuente.
+
+---
+
+## 2026-10-13 (4) — De qué aseguradora llegan: Sura se predice bien, Nueva EPS no, y el calendario se extiende a 2030
+
+**Pedido de urgencias** (vía el propietario). Además de cuántos llegan y a qué hora, urgencias quiere saber **de qué
+aseguradora llegan y en qué jornada**. La institución necesita saber quién paga, y es la base de la fase siguiente:
+cuántos pasan a consulta, cuántos de esos a hospitalización y en qué especialidad (por ejemplo, obstetricia).
+
+**Qué se hizo.** Preregistro en la fila `reparto_por_aseguradora`; código en `notebooks/aseguradoras.py`; salidas en
+`salidas/pronostico/aseguradoras/`. Hay ocho grupos fijos: Nueva EPS, Sura, otras EPS, régimen especial, SOAT, ARL,
+prepagada y otros. La simulación encadena el total del día, las jornadas (P52) y los grupos dentro de cada jornada.
+
+**Elección (2025, a 15 días, M3s; puntos del día mal repartidos entre aseguradoras).**
+
+| T4 | T8 | T13 | T26 | D8 | D26 |
+|---|---|---|---|---|---|
+| **7,83** | 8,39 | 8,73 | 8,94 | 8,51 | 8,94 |
+
+Gana **T4**: todos los días de las últimas 4 semanas. Lo contrario que en el reparto por hora: la forma del día es
+estable, y conviene mucha historia; la mezcla de aseguradoras cambia rápido, y conviene la más reciente.
+
+**Resultado (M3s, a 15 días: 2025 / 2026).**
+
+| Grupo | Por día | Error | Piso de ruido | Rango 80 % | Rango en meses de cambio de Nueva EPS |
+|---|---|---|---|---|---|
+| Nueva EPS | 114 / 73 | 18 / 25 % | 8 / 10 % | 75 / **54 %** | 37 / **5 %** |
+| Sura | 54 / 62 | 15 / 15 % | 11 / 10 % | 80 / 79 % | 87 / 82 % |
+| Otras EPS, régimen especial, SOAT y otros | 6-10 | 2-3 pacientes | 28-37 % | 74-86 % | — |
+| ARL y prepagada | 2-4 | 1-2 pacientes | 41-55 % | 87-92 % | — |
+
+Por jornada, Sura queda dentro del rango entre el 77 y el 87 %. Nueva EPS, en 2026, entre el 64 y el 84 %.
+
+**Lectura.**
+1. **Sura se puede informar ya**, por día y por jornada, con un rango honesto.
+2. **Nueva EPS es el fallo del total, aislado.** Por día tuvo 128 en octubre de 2025, 58 en diciembre, 89 en marzo,
+   95 en junio, 52 en julio y 66 en septiembre de 2026. Ninguna ventana de datos pasados anticipa esos saltos, y en
+   los meses de cambio el rango acierta el 5 %. **El dato que falta es el estado del convenio de Nueva EPS con fecha,
+   conocido antes.** No es otra columna de nombre de aseguradora.
+3. Los grupos pequeños se informan en rango, porque su error es de 1 a 3 pacientes al día. La pista de que «otros»
+   absorbe a Nueva EPS en los meses de cambio no se sostiene: sus componentes casi no se mueven.
+
+**Calendario hasta 2030.** `calendarios/calendario_Colombia.csv` terminaba el 2026-12-31, y la operación se habría
+roto en enero sin aviso. Se regeneró con `calendario_colombia.py` (holidays 0.105) hasta el 2030-12-31.
+- Para 2020-2026 reproduce el archivo anterior fila a fila, salvo el 2026-12-31, que pasa a víspera de festivo.
+- En 2027 aparece el festivo de la Virgen de Chiquinquirá el 12 de julio. **Hay que confirmarlo.**
+
+Se instaló Streamlit 1.65.0 (con altair 6.3.0) en `.venv`.
+
+---
+
+## 2026-10-13 (3) — La columna ASEGURADORA no trae nada nuevo; la base llega a hoy y la primera semana prospectiva acierta
+
+**Qué pasó.** El superior del propietario añadió un dato de aseguradora a `DIM_TRIAGE`. A pedido del propietario se
+revisó con el protocolo de `extraccion/__init__.py`: primero el esquema y después solo agregados. No se bajó ni se
+imprimió ningún valor de la columna, ni ninguna fila.
+
+**Lo que es la columna.**
+- Se llama `ASEGURADORA`, es `nvarchar(100)` y ocupa la posición 16. La tabla se modificó el 2026-10-08 a las 11:34.
+- Usa otra intercalación (`SQL_Latin1_General_CP1_CI_AS`; el resto de la base usa `Modern_Spanish_CI_AS`): se
+  cargó desde otra fuente. Para compararla hace falta `COLLATE DATABASE_DEFAULT`.
+- Está vacía en 2020-2021, llena al 100 % en 2022-2024 y al 99 % en 2025-2026.
+- **En el 100 % de las filas con entidad es exactamente `DIM_ENTIDAD.ENTNOMBRE`** del `GEENENTADM` de la fila. Es
+  nula exactamente cuando no hay entidad (718 filas en 2025 y 600 en 2026). Cada OID tiene un solo nombre; 52 nombres
+  se reparten entre varios OID, como Nueva EPS con 238 y 100, ya agrupados en `entidades_clasificadas.csv`.
+
+**Decisión.** No se usa. Repite lo que `triage_entidad.parquet` ya trae por el cruce, y con menos historia. Es el
+nombre de una organización, no un dato personal. Si el superior quería añadir algo distinto (el estado del convenio,
+el régimen, una agrupación propia), **no es esto**, y hay que preguntárselo.
+
+**Lo que sí es nuevo: la base llega al 2026-10-13** (437.341 triages; hoy, incompleto). Lo local llega al 20-sep. Los
+conteos por día del 21 al 27 de septiembre en la base (233, 206, 194, 161, 188, 156 y 147) coinciden con
+`triage_entidad.parquet`. **El reporte del hospital de `datos/triage_reportado.csv` da entre un 3 % y un 8 % menos**
+(218, 189…): ese reporte cuenta otra cosa o filtra algo. La verificación del 07-10 se hizo contra esos números más
+bajos.
+
+**Primera prueba prospectiva verificada: la semana del 5 al 11 de octubre.** La predicción se guardó el 06-10 con
+datos hasta el 20-sep, de 15 a 21 días de adelanto. Los conteos son agregados por día y hora, sacados al scratchpad
+de la sesión; no se reescribió `salidas/`.
+- Real: media de 177,4 por día. La de los 3 meses previos es 164,8 y la de las 4 semanas previas, 181,8.
+- **M3s: 178 (164-194); los 7 días dentro del rango; error del día del 6,8 %; sube o baja 6 de 7.** C0r: 180,
+  7 de 7 y 7,3 %.
+- El fallo es el **domingo 11**: 134 anunciados y 157 reales. Es el domingo de un puente (el lunes 12 es festivo), y
+  sube sobre todo la mañana (51 contra 39).
+- El lunes 12, festivo, de la semana guardada siguiente: 155 (136-181) anunciados y 158 reales.
+- **Reparto P52** (calculado después con el origen del 20-sep; el método se fijó antes):
+  - 26 de 28 franjas dentro del rango;
+  - la mañana dentro 6 de 7 veces y la tarde 7 de 7; con el reparto viejo de 8 semanas, 4 de 7 y 6 de 7.
+- La hora pico de la mañana cayó en el bloque anunciado los 7 días. La de la tarde, 4 de 7: el viernes fue a las 13,
+  el sábado a las 17 y el domingo a las 20.
+
+---
+
+## 2026-10-13 (2) — Recalibrar el rango con los errores recientes no sirve: los cambios de nivel necesitan una señal externa
+
+**Por qué.** La entrada anterior deja el error de las franjas en el total del día, cuyo rango cubre el 71 % en 2026 a
+15 días. Se probó el arreglo más barato y más fácil de sostener sin nadie: un posproceso que ensancha el rango (R1) o
+además lo desplaza (R2) según los errores ya conocidos en el origen, en las últimas 8 semanas. Preregistro en la fila
+`rango_recalibrado`; código en `reparto.py --rango`; salida en `salidas/pronostico/reparto/rango_recalibrado.csv`.
+
+**Resultado (M3s, a 15 días).**
+
+| | Puntaje 2025 (elige) | Cobertura 2025 | Cobertura 2026 | Error del día 2026 |
+|---|---|---|---|---|
+| R0, sin cambio | **2,58** | 80 % | 71 % | 11,4 % |
+| R1, escala | 2,63 | 73 % | 68 % | 11,4 % |
+| R2, escala y desplazamiento | 2,70 | 71 % | 62 % | 12,7 % |
+
+**Queda R0.** Las dos correcciones empeoran en todos los combos y adelantos. Hay dos motivos:
+- **Los fallos llegan en racha y sin aviso.** Después de un día fuera del rango, el siguiente queda fuera el 44 % de
+  las veces, cuando lo esperado es el 20 % (Christoffersen, p < 0,01). Las 8 semanas previas suelen estar tranquilas
+  justo antes del salto. R1 ve poca dispersión y estrecha el rango.
+- **Corregir el nivel con 15 días de retraso persigue el pasado.** R2 llega tarde al cambio y empeora el error.
+
+**Conclusión.** El rango del total no se arregla mirando los propios errores. Los saltos de nivel (Nueva EPS en
+noviembre de 2025, marzo y julio de 2026, y el terremoto) solo se anticipan con **una señal externa conocida antes**:
+el estado de los convenios y de la atención de cada aseguradora, y datos más al día. Esto coincide con lo que pidió
+urgencias sobre aseguradoras. Se descarta seguir puliendo el rango por la vía estadística.
+
+---
+
+## 2026-10-13 — El reparto del día ya está en su límite; lo que falla es el total del día en 2026
+
+**Por qué.** Hubo una reunión del propietario con el personal de urgencias. El producto queda definido así: **la
+herramienta informa y urgencias decide el personal.** No asigna turnos ni traduce a enfermeras por paciente. La
+respuesta tipo es «de los 175 del día, X % en la mañana, Y % en la tarde y Z % en la noche y la madrugada; entre las
+10 y las 12, posible saturación; de 23 a 5 h, tranquilo con N pacientes». El propietario pide **precisión** en eso, y
+que siga funcionando cuando él se vaya del hospital.
+
+Hasta hoy, `semana.py` cubría solo 12 de las 24 horas (mañana 6-11 y tarde 12-17), con el perfil de 8 semanas. El
+rango de cada franja era el del día multiplicado por la proporción, como si el reparto fuera seguro.
+
+**Qué se hizo.** La prueba se preregistró en las filas `reparto_del_dia` y `_enmienda`. La enmienda se escribió antes
+de calcular: la fórmula de dispersión contaba dos veces el ruido de conteo. El módulo es `notebooks/reparto.py` y las
+salidas están en `salidas/pronostico/reparto/`. No reentrena el total: usa las predicciones diarias de la validación
+semanal (C0r y M3s, a 1-7 y a 15-21 días, 2025 y 2026). Hay cuatro franjas fijas: madrugada 0-5, mañana 6-11, tarde
+12-17 y noche 18-23. El rango sale de una Dirichlet-multinomial sobre el total predicho.
+
+**Elección (2025, a 15 días, M3s; puntos del día mal repartidos).**
+
+| P8 (lo actual) | P26 | P52 | S26 | P52F (festivos aparte) |
+|---|---|---|---|---|
+| 13,58 | 13,04 | **12,93** | 13,04 | 12,85 |
+
+Gana **P52**: el mismo día de la semana durante las últimas 52 semanas. P52F queda a menos de 0,1 puntos, y la regla
+elige el más simple. Más historia reparte mejor que 8 semanas, porque la forma del día es estable y 8 días son pocos
+para estimarla.
+
+**Resultado (M3s; a 15 días: 2025 / 2026).**
+
+| Franja | Media real | Error | Error con el total real | Piso de ruido | Rango 80 % (antes) |
+|---|---|---|---|---|---|
+| Madrugada | 13 / 12 | 32 / 27 % | 30 / 26 % | 24 / 24 % | 76 / 83 % |
+| Mañana | 72 / 60 | 16 / 17 % | 9,6 / 10,9 % | 9,8 / 10,7 % | 75 / 78 % (62 / 59 %) |
+| Tarde | 70 / 60 | 14 / 15 % | 8,8 / 8,6 % | 9,8 / 10,5 % | 81 / **73 %** (66 / 59 %) |
+| Noche | 43 / 41 | 16 / 17 % | 12,2 / 13,4 % | 12,4 / 12,6 % | 80 / **71 %** |
+| Hora | — | 2,2 / 2,1 pacientes | 2,1 / 2,0 | 2,1 / 2,0 | 87 / 87 % |
+
+La tabla dice tres cosas:
+1. **El reparto ya está en el límite.** Con el total del día real, el error de la mañana, la tarde, la noche y la hora
+   es igual al piso de ruido: el que tendría quien conociera la tasa exacta, por puro azar de llegadas. Ningún modelo
+   reparte mejor. Solo la madrugada queda unos 6 puntos por encima, con 12-13 pacientes.
+2. **El rango de las franjas pasa de 59-68 % a 71-83 %**, frente al 80 % que promete. El de `semana.py` era demasiado
+   estrecho.
+3. **Lo que queda de error viene del total del día.** En 2026, a 15 días, la tarde y la noche se salen del rango
+   (Kupiec p < 0,05) por lo mismo que se sale el día (71 %, cuaderno 26): los cambios de nivel de Nueva EPS.
+
+**Ventanas de demanda.** El perfil anuncia **9-12 h** en la mañana y **14-17 h** en la tarde en todos los orígenes.
+- Aciertos de la mañana: 86 % en 2025 y 86 % en 2026.
+- Aciertos de la tarde: 79 % en 2025 y 72 % en 2026.
+- Acierta lo mismo que el bloque fijo de 2024. Es un rasgo estructural del hospital, no algo que el modelo anticipe;
+  se informa como tal.
+
+**Criterio preregistrado.** Madrugada y mañana cumplen. Tarde y noche no cumplen en 2026 por la cobertura. El error
+cumple en las cuatro, porque no supera el piso más el error del día más 3 puntos.
+
+**Qué se decide.**
+- El reparto de la respuesta semanal pasa a ser P52, con cuatro franjas, rango propio y ventanas de demanda.
+- **Lo siguiente que hay que arreglar es el rango del total del día cuando cambia el nivel**, no el reparto.
+
+---
+
+## 2026-10-08 (tarde) — Resultado del cuaderno 26: ningún uso está maduro; el número sirve a 1-3 semanas, el rango no
+
+**Qué se hizo.** Las cinco pruebas de la entrada siguiente, en `notebooks/26_madurez_de_la_prediccion.ipynb`
+(constructor `construir/26_madurez_de_la_prediccion.py`, módulo `madurez.py`, salidas en
+`salidas/pronostico/madurez/`). La curva de 8-14 y 22-28 días tardó 3 h 4 min, con dos pausas largas del equipo.
+Corrección a la entrada siguiente: en 2026 son **32** diseños, no 33.
+
+**Resultados.**
+- **Vara única:** V y el control de 28 días clasifican distinto el 17,6 % (2025) y el 18,8 % (2026) de los días. Las
+  cifras de acierto anteriores no eran comparables entre sí.
+- **Curva** (M3s, error del día 2025 / 2026):
+  - 1-7 días: 8,1 / 9,1 %; 8-14: 9,3 / 10,4 %; 15-21: 10,1 / 11,4 %; 22-28: 10,8 / 12,2 %;
+  - el control va de 0,7 a 2,5 puntos por encima en todos los bloques;
+  - útil por la regla en 24 de 28 adelantos (C0r, 21);
+  - la cobertura del 80 % se mantiene en 2025 (78,6-81,0 %) y en 2026 cae de 78 % a 68 %.
+- **SPA / MCS** (puntaje de cuantiles, 1-7 días):
+  - 2025: el mejor diseño mejora al control un 13,3 %, pero SPA p = 0,124; el MCS retiene 15 de 26 **con el control
+    dentro**;
+  - 2026: un 18,0 %, SPA p = 0,027; M3 solo, p < 0,001; el control queda fuera del MCS;
+  - **frente a C0r nada se separa con la selección corregida** (p de 0,60 a 0,99).
+- **Cobertura:**
+  - honesta en el rodante a 1 día (M3: p condicional 0,574 y 0,972);
+  - desde los 8 días la independencia falla en todos los bloques: P(fuera | ayer fuera) del 33-51 % frente al 14-23 %;
+  - a 15-21 días en 2026 queda fuera el 28,6 % de los días y el 42 % de las semanas;
+  - la cola de abajo pesa más de lo anunciado (12-15 % de los días bajo el cuantil 10).
+- **CUSUM:** 71 alarmas, 64 con choque conocido. Hay 4 en enero-octubre de 2025 sin choque, lo que da una falsa
+  alarma por adelanto cada ~10 meses. Hay 3 entre el 30 de enero y el 1 de febrero de 2026, en tres adelantos a la
+  vez: una semana baja sin explicación con los datos actuales.
+- **Nivel estable** (11 meses): M3s no le gana al control en 2025 (65,7 % frente a 67,4 %). En 2026 lo supera por 1-2
+  puntos, dentro del ruido. Su BSS sí es mejor (15,9 frente a 8,9).
+
+**Veredicto, con el criterio preregistrado:**
+- A, la semana siguiente con datos al día: falla en el rango semanal de 2026 y en 1 alarma aislada;
+- B, la semana con el retraso real: falla en el rango (racha) y en 1 alarma;
+- C, el día alto en un nivel estable: falla en la utilidad;
+- D, un mes desde diciembre: falla en la utilidad y en el rango.
+
+**Ninguno está maduro.**
+
+**Lectura.** El número esperado a 1-3 semanas es confiable y escala: el error es estable entre años y la vigilancia
+vuelve a su nivel tras cada choque. Lo que no está maduro es el rango a más de una semana, que falla en racha por el
+error de nivel de la red de salud, y la anticipación del día en periodos estables. La ventaja demostrable sobre el
+calendario es seguir el nivel; la de los mecanismos externos sobre C0r no se separa con la selección corregida.
+Es un matiz medido, no una refutación del contexto: su efecto en el total diario es menor que lo que estas pruebas
+alcanzan a separar.
+
+**Reglas fijadas después del preregistro, pero antes de ver la curva de 8 y 22 días y el veredicto:**
+- un bloque de 7 adelantos es útil si lo es la mayoría;
+- para el uso D, los meses de 2026 se juntan.
+
+Están declaradas en los límites del cuaderno.
+
+**Dos defectos encontrados y corregidos en la sesión:**
+- `semana.py` fija `pr.H = 21` al importarse, y la primera corrida de la curva lo pisaba;
+- la columna «falla en» del veredicto no reconocía los booleanos de numpy.
+
+## 2026-10-08 — ¿Está madura la predicción? Cinco pruebas preregistradas (cuaderno 26)
+
+**Qué planteó el propietario.** Las predicciones «se ven bien», pero no sabe si lo están de verdad ni si van a
+seguir así con el tiempo. Preguntó si existe algo como LazyPredict para escoger la técnica de validación.
+
+**Respuesta de método.** La técnica de validación no se escoge por puntaje: si se elige el esquema que da mejores
+números, deja de validar. Se fija por el uso: el adelanto real, la frecuencia con que llegan los datos y lo que se
+sabe en el origen. Lo que sí existe son pruebas para la duda de fondo, y se aplican las cinco propuestas (fila
+`madurez_de_la_prediccion`, escrita antes de calcular):
+1. **Una sola vara de «sube»:** la media del mismo día de la semana en las 8 semanas que terminan en el origen.
+   - **Por qué:** hasta hoy hubo tres varas (el control de 28 días, el control rápido y 8 semanas con banda de ±5 %),
+     y los resultados no se podían comparar entre pruebas. Esta se conoce en el origen sin modelo y vale igual para
+     todo adelanto.
+   - **Revierte en parte** el sentido de «sube» de `CLAUDE.md` (sobre el control): el control de calendario pasa a
+     ser competidor, no vara. Sigue siendo la referencia contra la que se mide todo.
+   - La banda del ±5 % se quita porque se eligió después de ver la imagen del 07-10.
+2. **El adelanto operativo es de 15 a 21 días, no de 1.** La base la actualiza un tercero una vez por semana: hoy,
+   8 de octubre, los datos llegan al 20 de septiembre. La validación a 1-7 días es el caso de datos al día, no el
+   de operación.
+3. **SPA de Hansen y Model Confidence Set** (`arch` 8.0.0, instalado hoy; no movió numpy ni pandas). Se comparan
+   todos los diseños guardados: 26 en 2025 y 33 en 2026, contando las combinaciones. La pregunta es si el elegido
+   le gana al control después de corregir por haberlo escogido entre muchos.
+4. **Kupiec y Christoffersen** para el rango del 80 %. Christoffersen detecta fallos agrupados, que es lo que pasa
+   cuando el error es de nivel y se repite toda la semana.
+5. **Vigilancia** con CUSUM sobre el PIT y la tabla de predicciones prospectivas con su estado.
+
+**Cálculo nuevo.** Hoy la curva por adelanto tiene 1-7 y 15-21 días. Faltan 8-14 y 22-28: `python
+notebooks/madurez.py --curva` (C0r y M3s, mismo diseño de `m3_semanal`). `semana.validar` acepta ahora
+`adelantos` y `archivo`; con los valores por defecto no cambia nada.
+
+**Criterio de madurez, fijado antes:** por uso.
+- **A:** el nivel de la semana siguiente con datos al día.
+- **B:** la semana con el adelanto operativo.
+- **C:** anticipar el día alto dentro de un nivel estable.
+- **D:** meses a ciegas.
+
+Un uso es maduro si cumple las cuatro condiciones:
+- el adelanto es útil;
+- el elegido supera al control en el SPA, o al menos no sale del MCS;
+- el rango es honesto;
+- la vigilancia no da alarmas sin explicación.
+
 ## 2026-10-07 (noche, 2) — Cuaderno 25: revisión de predicciones en marzo, julio, agosto y octubre
 
 **Por qué.** El propietario sospecha que el 6 % de septiembre es una coincidencia, y los datos le dan la razón:

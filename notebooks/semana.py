@@ -24,13 +24,15 @@ import pandas as pd
 from scipy.stats import norm
 
 import pronostico as pr
+import reparto as rp
 
 pr.H = 21                                      # hasta 3 semanas de adelanto: hoy los datos van 15 dias por detras
 CARPETA = pr.SALIDA / "semanal"
 DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 MESES = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
          "noviembre", "diciembre"]
-FRANJAS = {"mañana": (6, 11), "tarde": (12, 17)}
+FRANJAS = rp.FRANJAS                           # madrugada 0-5, mañana 6-11, tarde 12-17, noche 18-23 (fila reparto_del_dia)
+PERFIL = "P52"                                 # elegido en reparto_del_dia: mismo día de la semana, 52 semanas
 DESCRIPCION = {"C0r": "SARIMAX + LightGBM, solo calendario, estación, nivel y memoria",
                "Cg": "SARIMAX + LightGBM con el contexto de salud pública, que se enciende cuando hay ola, y las marcas de contexto",
                "M3s": "SARIMAX + LightGBM con los mecanismos medidos (Feria, noches festivas, fiestas lejanas, catástrofe, salud pública y red con compuerta), sin la fase fuerte de la COVID en el entrenamiento"}
@@ -106,10 +108,27 @@ def semana_agregada(Q, rho, n=4000, semilla=0):
     return sims.mean(axis=1)
 
 
-def reparto(F, o, fecha):
-    """Proporcion de cada franja en el mismo dia de la semana, en las 8 semanas anteriores al origen."""
-    d = F.loc[:o]; d = d[d.index.dayofweek == fecha.dayofweek].tail(8)
-    return {f: float((d[f] / d.dia_total).mean()) for f in FRANJAS}
+_PERFILES = {}
+
+
+def reparto(o, fechas, Q, semilla=0):
+    """Franjas con su rango y horas de más demanda (fila reparto_del_dia): perfil P52 con solo días <= o, total del
+    día de sus cuantiles, proporciones Dirichlet y conteo multinomial. Antes (hasta el 2026-10-13): la proporción
+    media de 8 semanas, en 2 franjas y con el rango del día."""
+    if "pf" not in _PERFILES: _PERFILES["pf"] = rp.Perfiles(rp.horas(), rp.festivos())
+    pf, rng, filas = _PERFILES["pf"], np.random.default_rng(semilla), []
+    for t, q in zip(fechas, Q):
+        p, a = pf.perfil(PERFIL, o, t)
+        X = rp.simular(q, p, a, rng); fila = {}
+        for f, (lo, hi) in FRANJAS.items():
+            x = X[:, lo:hi + 1].sum(1)
+            fila |= {f"{f}_q10": np.quantile(x, .1), f"{f}_q50": np.quantile(x, .5), f"{f}_q90": np.quantile(x, .9)}
+        esp = p * q[4]
+        for f, inicios in rp.BLOQUES.items():
+            b = max(inicios, key=lambda s: esp[s:s + 3].sum())
+            fila |= {f"bloque_{f}": b, f"bloque_{f}_por_hora": esp[b:b + 3].mean()}
+        filas.append(fila)
+    return pd.DataFrame(filas)
 
 
 def responder(y, cal, F, o, lunes, combo, rho, aj=None):
@@ -123,9 +142,7 @@ def responder(y, cal, F, o, lunes, combo, rho, aj=None):
     D = pd.DataFrame({"fecha": fechas, "h": hs, **{c: Q[:, j] for j, c in enumerate(pr.QCOL)},
                       "normal": esp, "umbral_pico": esp * np.exp(sd),
                       "p_sube": pr.prob_sobre(Q, esp), "p_pico": pr.prob_sobre(Q, esp * np.exp(sd))})
-    for f in FRANJAS:
-        r = np.array([reparto(F, o, t)[f] for t in fechas])
-        for c in ("q10", "q50", "q90"): D[f"{f}_{c}"] = D[c] * r
+    D = pd.concat([D, reparto(o, fechas, Q)], axis=1)
     m = semana_agregada(Q, rho)
     previo = float(y.loc[o - pd.Timedelta(days=27):o].mean())
     W = {"origen": str(o.date()), "lunes": str(lunes.date()), "adelanto_dias": h0, "combo": combo, "rho": rho,
@@ -150,15 +167,24 @@ def texto(D, W, calib=None):
     top = D.sort_values("p_sube", ascending=False).head(2)
     L += [f"Los días con más probabilidad de subir por encima de lo normal: " +
           " y ".join(f"**{f(t)} ({100 * p:.0f} %)**" for t, p in zip(top.fecha, top.p_sube)) + ".", "",
-          "| Día | Esperado | Rango 80 % | Lo normal | P(sube) | P(pico) | Mañana 6-12 h | Tarde 12-18 h |",
-          "|---|---|---|---|---|---|---|---|"]
+          "| Día | Esperado | Rango 80 % | Lo normal | P(sube) | P(pico) |", "|---|---|---|---|---|---|"]
     for _, r in D.iterrows():
         L.append(f"| {f(r.fecha)} | {r.q50:.0f} | {r.q10:.0f}-{r.q90:.0f} | {r.normal:.0f} | {100 * r.p_sube:.0f} % | "
-                 f"{100 * r.p_pico:.0f} % | {r['mañana_q50']:.0f} ({r['mañana_q10']:.0f}-{r['mañana_q90']:.0f}) | "
-                 f"{r['tarde_q50']:.0f} ({r['tarde_q10']:.0f}-{r['tarde_q90']:.0f}) |")
+                 f"{100 * r.p_pico:.0f} % |")
+    L += ["", "**Cómo se reparte cada día** (pacientes esperados y rango del 80 %):", "",
+          "| Día | Madrugada 0-6 h | Mañana 6-12 h | Tarde 12-18 h | Noche 18-24 h | Más demanda en la mañana | Más demanda en la tarde |",
+          "|---|---|---|---|---|---|---|"]
+    for _, r in D.iterrows():
+        fr = " | ".join(f"{r[f'{k}_q50']:.0f} ({r[f'{k}_q10']:.0f}-{r[f'{k}_q90']:.0f})" for k in FRANJAS)
+        bl = " | ".join(f"{int(r[f'bloque_{k}'])}-{int(r[f'bloque_{k}']) + 3} h, ~{r[f'bloque_{k}_por_hora']:.0f}/hora"
+                        for k in rp.BLOQUES)
+        L.append(f"| {f(r.fecha)} | {fr} | {bl} |")
     L += ["", "**Cómo leerlo.** «Sube» es quedar por encima de lo normal para ese día de la semana con el volumen "
-          "reciente; «pico» es quedar más de una desviación por encima. La mañana y la tarde son el reparto habitual del "
-          "día (el de las 8 semanas anteriores), no una predicción propia de cada franja."]
+          "reciente; «pico» es quedar más de una desviación por encima. El reparto es la forma del mismo día de la semana "
+          "en el último año aplicada al total esperado; su rango suma la duda del total y la del reparto. La forma del día "
+          "es muy estable: el error que queda en cada franja es casi todo el del total del día y el azar de las llegadas. "
+          "Las horas de más demanda son un rasgo fijo del servicio (9-12 h y 14-17 h casi siempre), no un aviso de "
+          "saturación de ese día en particular."]
     if calib:
         L += ["", "**Qué tan confiable es** (la misma respuesta, rehecha en las semanas pasadas con el mismo adelanto):"]
         L += [f"- {k}: {v}" for k, v in calib.items()]
@@ -184,19 +210,20 @@ def verificar(lunes, combo):
     D = pd.read_csv(base.with_suffix(".csv"), parse_dates=["fecha"])
     y, _, F = datos()
     D["real"] = y.reindex(D.fecha).values
-    for f in FRANJAS: D[f"{f}_real"] = F[f].reindex(D.fecha).values
+    franjas = [f for f in FRANJAS if f"{f}_q50" in D]        # las guardadas antes del 13-10 solo traen mañana y tarde
+    for f in franjas: D[f"{f}_real"] = F[f].reindex(D.fecha).values
     hay = D.real.notna()
     if not hay.any():
         return f"Todavía no hay datos reales de la semana del {W['lunes']} (los datos llegan hasta {y.last_valid_index().date()})."
     D = D[hay]; sube = D.real > D.normal
     L = [f"# Verificación de la semana del {W['lunes']} (pronóstico del {W['creado']}, datos hasta {W['origen']})", "",
-         "| Día | Esperado | Rango 80 % | Real | ¿En el rango? | P(sube) | ¿Subió? | ¿Acertó? | Mañana pred./real | Tarde pred./real |",
-         "|---|---|---|---|---|---|---|---|---|---|"]
+         "| Día | Esperado | Rango 80 % | Real | ¿En el rango? | P(sube) | ¿Subió? | ¿Acertó? | "
+         + " | ".join(f"{f.capitalize()} pred./real" for f in franjas) + " |", "|" + "---|" * (8 + len(franjas))]
     for (_, r), s in zip(D.iterrows(), sube):
         ok = (r.p_sube > .5) == s
         L.append(f"| {DIAS[r.fecha.dayofweek]} {r.fecha.day} | {r.q50:.0f} | {r.q10:.0f}-{r.q90:.0f} | {r.real:.0f} | "
                  f"{'sí' if r.q10 <= r.real <= r.q90 else 'no'} | {100 * r.p_sube:.0f} % | {'sí' if s else 'no'} | "
-                 f"{'✔' if ok else '✘'} | {r['mañana_q50']:.0f}/{r['mañana_real']:.0f} | {r['tarde_q50']:.0f}/{r['tarde_real']:.0f} |")
+                 f"{'✔' if ok else '✘'} | " + " | ".join(f"{r[f'{f}_q50']:.0f}/{r[f'{f}_real']:.0f}" for f in franjas) + " |")
     L += ["", f"- Días con dato real: {len(D)} de 7.",
           f"- Acierto en sube/baja: {((D.p_sube > .5) == sube).sum()} de {len(D)}.",
           f"- Error medio del día: {100 * np.mean(np.abs(D.q50 - D.real) / D.real):.1f} %."]
@@ -210,13 +237,14 @@ def verificar(lunes, combo):
     return txt
 
 
-def validar(avisar=print, refit=4, combos=None):
+def validar(avisar=print, refit=4, combos=None, adelantos=(1, 15), archivo=None):
     """La respuesta en cada domingo de 2025 y 2026, con dos adelantos (semana siguiente y a 15 dias). Se reajusta
-    cada 'refit' domingos; entre ajustes, los modelos predicen con los datos al dia del origen."""
+    cada 'refit' domingos; entre ajustes, los modelos predicen con los datos al dia del origen. Otros 'adelantos' y
+    otro 'archivo': la curva por adelanto del cuaderno 26 (fila madurez_de_la_prediccion; pr.H >= adelanto + 6)."""
     y, cal, F = datos(); fin = y.last_valid_index()
     doms = pd.date_range("2024-12-29", fin, freq="W-SUN")
     filas, sem = [], []; t0 = time.time()
-    for lead in (1, 15):
+    for lead in adelantos:
         hs = list(range(lead, lead + 7))
         ors = [o for o in doms if o + pd.Timedelta(days=lead + 6) <= fin]
         cs = combos or list(COMBOS)
@@ -230,7 +258,7 @@ def validar(avisar=print, refit=4, combos=None):
                 filas.append(D.assign(origen=o, adelanto=lead, combo=c))
             if i % 10 == 0: avisar(f"  adelanto {lead}: {i + 1}/{len(ors)} ({time.time() - t0:.0f} s)")
     P = pd.concat(filas, ignore_index=True)
-    f = CARPETA / "validacion_semanal.parquet"
+    f = archivo or CARPETA / "validacion_semanal.parquet"
     if f.exists(): P = pd.concat([pd.read_parquet(f).query("combo not in @cs"), P], ignore_index=True)
     P.to_parquet(f)
     return P
@@ -270,7 +298,7 @@ def resumen_validacion(P, y):
             s = G[(G.p_sube >= lo) & (G.p_sube < hi)]
             fila[f"dice {int(lo * 100)}-{min(int(hi * 100), 100)} %: subió %"] = 100 * (s.real > s.normal).mean() if len(s) else np.nan
             fila[f"días {int(lo * 100)}"] = len(s)
-        for f in FRANJAS:
+        for f in [f for f in FRANJAS if f"{f}_q50" in G]:      # la validacion guardada antes del 13-10 trae 2 franjas
             fila[f"error {f} %"] = 100 * np.mean(np.abs(G[f"{f}_q50"] - G[f"{f}_real"]) / G[f"{f}_real"].clip(lower=1))
         filas.append(fila)
     return pd.DataFrame(filas).set_index(["combo", "adelanto (días)", "año"]), rhos

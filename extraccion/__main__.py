@@ -77,6 +77,14 @@ def series(eng, destino):
     """
     destino.mkdir(parents=True, exist_ok=True)
 
+    # El desenlace: triages por dia x hora y su suma por dia. Hasta el 2026-10-13 se escribian aparte y --series
+    # no los refrescaba; ahora van aqui para que la operacion semanal (operacion/) los tenga al dia.
+    print("  triages por dia x hora...", end=" ", flush=True)
+    horario = conteo_horario(eng)
+    horario.to_parquet(destino / "triage_horario.parquet", index=False)
+    horario.groupby("dia", as_index=False)["triages"].sum().to_parquet(destino / "triage_diario.parquet", index=False)
+    print(f"{len(horario):,} filas")
+
     print("  nivel de urgencia por dia x hora...", end=" ", flush=True)
     nivel = pd.read_sql("""
         SELECT CAST(t.HCTFECTRI AS DATE) AS dia,

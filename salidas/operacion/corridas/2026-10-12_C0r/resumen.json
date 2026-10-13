@@ -1,0 +1,12 @@
+{
+ "origen": "2026-10-12",
+ "modelo": "C0r",
+ "horizonte": 80,
+ "validado_hasta": 28,
+ "creado": "2026-10-13T16:25:33",
+ "commit": "cdb67af",
+ "perfil": "P52",
+ "ventana_aseguradoras": "T4",
+ "ultimo_dato": "2026-10-12",
+ "antiguedad_dias": 1
+}
