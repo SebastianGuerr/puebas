@@ -45,10 +45,12 @@ def colores():
     if oscuro():
         return dict(abajo=["#104281", "#1c5cab", "#3987e5"], medio="#383835", arriba=["#e66767", "#d03b3b", "#a82a2a"],
                     barra="#3987e5", barra_fuerte="#86b6ef", rango="#c3c2b7", real="#ffffff",
-                    texto_fuerte="#ffffff", texto_suave="#ffffff")
+                    texto_fuerte="#ffffff", texto_suave="#ffffff", serie2="#d95926",
+                    calor=["#1c2533", "#1c5cab", "#3987e5", "#86b6ef"])
     return dict(abajo=["#184f95", "#3987e5", "#9ec5f4"], medio="#f0efec", arriba=["#f2a3a2", "#e34948", "#a82a2a"],
                 barra="#2a78d6", barra_fuerte="#104281", rango="#52514e", real="#0b0b0b",
-                texto_fuerte="#ffffff", texto_suave="#0b0b0b")
+                texto_fuerte="#ffffff", texto_suave="#0b0b0b", serie2="#eb6834",
+                calor=["#eef4fc", "#9ec5f4", "#3987e5", "#184f95"])
 
 
 @st.cache_data(ttl=600)
@@ -60,6 +62,10 @@ def cargar():
     R = json.loads((c / "resumen.json").read_text(encoding="utf-8"))
     leer = lambda n: pd.read_parquet(CARPETA / n) if (CARPETA / n).exists() else pd.DataFrame()
     E = json.loads((CARPETA / "estado.json").read_text(encoding="utf-8")) if (CARPETA / "estado.json").exists() else None
+    aj = sorted((c / "ajustes").glob("*.parquet")) if (c / "ajustes").exists() else []
+    if aj:                                   # python -m operacion --ajustar: la red de hoy sobre la corrida, sin reentrenar
+        A = pd.read_parquet(aj[-1]); D = pd.concat([D[D.fecha < A.fecha.min()], A], ignore_index=True)
+        R = {**R, "ajuste_red": aj[-1].stem}
     return D, W, R, E, leer("historial.parquet")
 
 
@@ -78,6 +84,8 @@ def cabecera(R, E):
     st.caption(f"Última predicción con datos hasta el {fecha_larga(o)} de {o.year} · modelo {R['modelo']} · reentrenado "
                f"el {R['creado'][:10]}. Las cifras son pacientes que piden triage. El rango es el del 80 %: 8 de cada 10 "
                "días el valor real cae dentro.")
+    if R.get("ajuste_red"):
+        st.caption(f"Corregido con el registro de la red de urgencias del {R['ajuste_red']} (sin reentrenar).")
     if E:
         nivel = E["general"]
         st.markdown(f"#### {ICONO[nivel]} Estado del pronóstico: **{TEXTO_NIVEL[nivel]}**")
@@ -196,9 +204,63 @@ def detalle_futuro(r, c):
                       for g in GRANDES])
     b.markdown("**Las dos grandes, por jornada** (pacientes esperados):")
     b.dataframe(J, hide_index=True, width="stretch")
-    b.caption("Sura se predice bien. **Nueva EPS falla cuando cambia la atención de sus afiliados** (suspensiones o "
-              "reanudaciones): si el estado muestra un cambio de Nueva EPS, tome sus cifras con cuidado. Las "
-              "aseguradoras pequeñas traen pocos pacientes al día; se informan con su rango.")
+    b.caption("Sura se predice bien. **Nueva EPS cambia cuando un hospital suspende o reanuda la atención de sus "
+              "afiliados**: esos cambios entran por el registro de la red de urgencias (abajo). Las aseguradoras "
+              "pequeñas traen pocos pacientes al día; se informan con su rango.")
+    red_del_dia(r)
+    aseguradoras_por_hora(r, c)
+
+
+def red_del_dia(r):
+    if "red_eventos" not in r: return
+    st.markdown("#### Red de urgencias de Manizales")
+    ev = [e for e in str(r.red_eventos or "").split(" | ") if e]
+    f = r.get("f_red", 1.0)
+    if ev:
+        st.markdown("Episodios en curso ese día, según el registro (`datos/eventos_red.csv`):\n" + "\n".join(f"- {e}" for e in ev))
+    else:
+        st.markdown("Ningún episodio en curso en el registro para ese día.")
+    if pd.notna(f) and abs(f - 1) > .005:
+        st.info(f"Por la red (estado medido del convenio y episodios anunciados), Nueva EPS se espera **{100 * (f - 1):+.0f} %** "
+                f"frente a las 4 semanas anteriores a los datos; "
+                f"el total del día ya incluye ese ajuste (sin la red serían {ent(r.get('q50_sin_red'))}).")
+
+
+def aseguradoras_por_hora(r, c):
+    if "nueva_eps_h00_esp" not in r: return
+    st.markdown("#### A qué hora llega cada aseguradora")
+    T = pd.DataFrame([{"grupo": GRUPOS[g], "clave": g, "hora": h, "esperado": r[f"{g}_h{h:02d}_esp"]}
+                      for g in GRUPOS for h in range(24)])
+    T["prob"] = 1 - np.exp(-T.esperado)                   # llegadas por hora ~ Poisson: P(al menos una)
+    T["etiqueta"] = T.hora.map(lambda h: f"{h}:00 a {h + 1}:00")
+    orden = list(T.groupby("grupo").esperado.sum().sort_values(ascending=False).index)
+    calor = alt.Chart(T).mark_rect(cornerRadius=2, stroke=None).encode(
+        x=alt.X("hora:O", title="Hora del día"), y=alt.Y("grupo:N", sort=orden, title=None),
+        color=alt.Color("esperado:Q", title="Pacientes por hora", scale=alt.Scale(range=c["calor"])),
+        tooltip=[alt.Tooltip("grupo:N", title="Aseguradora"), alt.Tooltip("etiqueta:N", title="Hora"),
+                 alt.Tooltip("esperado:Q", title="Esperados", format=".1f"),
+                 alt.Tooltip("prob:Q", title="Prob. de que llegue al menos uno", format=".0%")])
+    st.altair_chart(calor.properties(height=260, title="Pacientes esperados por hora y aseguradora (más oscuro = más)"),
+                    width="stretch")
+    g = st.selectbox("Ver una aseguradora", list(GRUPOS), format_func=GRUPOS.get, key="aseg_hora")
+    G = T[T.clave == g].copy()
+    if g in GRANDES:
+        G["q10"] = [r[f"{g}_h{h:02d}_q10"] for h in range(24)]; G["q90"] = [r[f"{g}_h{h:02d}_q90"] for h in range(24)]
+    tt = [alt.Tooltip("etiqueta:N", title="Hora"), alt.Tooltip("esperado:Q", title="Esperados", format=".1f"),
+          alt.Tooltip("prob:Q", title="Prob. de al menos uno", format=".0%")]
+    barras = alt.Chart(G).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4, size=14, color=c["barra"]).encode(
+        x=alt.X("hora:O", title="Hora del día"), y=alt.Y("esperado:Q", title="Pacientes por hora"), tooltip=tt)
+    capas = [barras]
+    if g in GRANDES:
+        capas.append(alt.Chart(G).mark_rule(strokeWidth=2, opacity=.6, color=c["rango"]).encode(x="hora:O", y="q10:Q", y2="q90:Q"))
+    a, b = st.columns([7, 4])
+    a.altair_chart(alt.layer(*capas).properties(height=240, title=f"{GRUPOS[g]}: llegadas esperadas por hora"
+                                                + (" (línea = rango 80 %)" if g in GRANDES else "")), width="stretch")
+    top = G.sort_values("esperado", ascending=False).head(3).sort_values("hora")
+    b.markdown(f"**{GRUPOS[g]}:** ~{G.esperado.sum():.0f} pacientes en el día.  \n**Horas con más llegadas:** "
+               + ", ".join(f"{h}-{h + 1} h (~{e:.1f})" for h, e in zip(top.hora, top.esperado)) + ".")
+    b.caption("Es una probabilidad, no una cita: con menos de 1 paciente por hora, lo que se informa es la "
+              "probabilidad de que llegue al menos uno. La forma por hora sale de las últimas 4 semanas.")
 
 
 def barras_grupos(r, c, real=False):
@@ -241,6 +303,10 @@ def como_ha_predicho(Hs, c):
     anios = sorted(Hs.fecha.dt.year.unique())
     anio = st.radio("Año", anios, index=len(anios) - 1, horizontal=True, key="anio_hist")
     A = Hs[Hs.fecha.dt.year == anio]
+    if "q50_red" in A and A.q50_red.notna().any():
+        comparar_red(A, anio, c)
+        modo = st.radio("Mostrar la predicción", ["Con la red de urgencias", "Solo el modelo"], horizontal=True, key="modo_hist")
+        if modo.startswith("Con"): A = con_red(A)
     resumen_anio(A, anio, c)
     mes = elegir_mes(A.fecha, "mes_hist", defecto=A.fecha.max().strftime("%Y-%m"))
     M = A[A.fecha.dt.strftime("%Y-%m") == mes].copy()
@@ -259,6 +325,55 @@ def como_ha_predicho(Hs, c):
     op_ = list(C.clave)
     elegido = elegir_dia(ev, "hist", op_, op_[-1])
     detalle_pasado(M[M.fecha == pd.Timestamp(elegido)].iloc[0], c)
+
+
+def con_red(A):
+    """Las columnas corregidas por la red (sufijo _red) en lugar de las del modelo solo, donde existan."""
+    A = A.copy()
+    for col in [k[:-4] for k in A.columns if k.endswith("_red") and k[:-4] in A.columns]:
+        A[col] = A[f"{col}_red"].where(A[f"{col}_red"].notna(), A[col])
+    A["en_rango"] = A.real.between(A.q10, A.q90); A["error_pct"] = 100 * (A.q50 - A.real).abs() / A.real
+    return A
+
+
+def comparar_red(A, anio, c):
+    """Lo mismo predicho 15-21 días antes, con y sin la red de urgencias, frente a lo ocurrido."""
+    st.markdown(f"#### Con y sin la red de urgencias en {anio}")
+    B, R = A, con_red(A)
+    aj = A.log_f_red.abs() > 1e-6 if "log_f_red" in A else pd.Series(False, index=A.index)
+    def fila(X, nombre):
+        e = lambda g: (100 * (X[f"{g}_q50"] - X[f"{g}_real"]).abs() / X[f"{g}_real"].clip(lower=1)).mean()
+        dentro = lambda g: 100 * X[f"{g}_real"].between(X[f"{g}_q10"], X[f"{g}_q90"]).mean()
+        return {"Predicción": nombre, "Error del día": f"{X.error_pct.mean():.1f} %",
+                "Días dentro del rango": f"{100 * X.en_rango.mean():.0f} %",
+                "Error Nueva EPS": f"{e('nueva_eps'):.0f} %", "Nueva EPS dentro del rango": f"{dentro('nueva_eps'):.0f} %",
+                "Error Sura": f"{e('sura_eps'):.0f} %",
+                f"Error en los {int(aj.sum())} días con ajuste": f"{X[aj].error_pct.mean():.1f} %" if aj.any() else "—"}
+    st.dataframe(pd.DataFrame([fila(B, "Solo el modelo"), fila(R, "Con la red de urgencias")]), hide_index=True, width="stretch")
+    def semanal(col):
+        S = pd.DataFrame({"fecha": A.fecha, "Solo el modelo": B[col], "Con la red de urgencias": R[col],
+                          "Real": A[col.replace("q50", "real")] if col != "q50" else A.real})
+        S = S.set_index("fecha").resample("W-MON", label="left").mean().reset_index()
+        return S.melt("fecha", var_name="serie", value_name="valor")
+    escala = alt.Scale(domain=["Solo el modelo", "Con la red de urgencias", "Real"], range=[c["serie2"], c["barra"], c["real"]])
+    def graf(col, titulo):
+        S = semanal(col)
+        lineas = alt.Chart(S[S.serie != "Real"]).mark_line(strokeWidth=2).encode(
+            x=alt.X("fecha:T", title=None, axis=alt.Axis(format="%b")), y=alt.Y("valor:Q", title="Media por día"),
+            color=alt.Color("serie:N", scale=escala, title=None, legend=alt.Legend(orient="top")))
+        pts = alt.Chart(S[S.serie == "Real"]).mark_point(filled=True, size=45).encode(
+            x="fecha:T", y="valor:Q", color=alt.Color("serie:N", scale=escala, title=None))
+        reglas = alt.Chart(S).mark_rule(opacity=0).encode(
+            x="fecha:T", tooltip=[alt.Tooltip("fecha:T", title="Semana del", format="%d %b"), "serie:N",
+                                  alt.Tooltip("valor:Q", title="Media por día", format=".0f")])
+        return (lineas + pts + reglas).properties(height=220, title=titulo)
+    a, b = st.columns(2)
+    a.altair_chart(graf("q50", "Total del día, semana a semana"), width="stretch")
+    b.altair_chart(graf("nueva_eps_q50", "Nueva EPS, semana a semana"), width="stretch")
+    st.caption("Las dos predicciones se hicieron con los mismos datos, 15 a 21 días antes, sin reentrenar el modelo. La "
+               "corregida usa el **estado medido del convenio** con Nueva EPS (sus ingresos no urgentes en el SES, hasta el "
+               "día de los datos) y los episodios de la red **ya anunciados el día anterior** al que predice: lo que se "
+               "habría sabido en su momento.")
 
 
 def resumen_anio(A, anio, c):
@@ -315,8 +430,13 @@ def confiabilidad(Hs):
             e = (100 * (G[f"{g}_q50"] - G[f"{g}_real"]).abs() / G[f"{g}_real"].clip(lower=1)).mean()
             out[f"Error {GRUPOS[g]}"] = f"{e:.0f} %"
         return out
-    filas = [fila(Hs[(Hs.fuente == "reconstruida") & (Hs.fecha.dt.year == a)], f"{a}, reconstruido a 15-21 días")
-             for a in sorted(Hs.fecha.dt.year.unique()) if ((Hs.fuente == "reconstruida") & (Hs.fecha.dt.year == a)).any()]
+    filas = []
+    for a in sorted(Hs.fecha.dt.year.unique()):
+        G = Hs[(Hs.fuente == "reconstruida") & (Hs.fecha.dt.year == a)]
+        if G.empty: continue
+        filas.append(fila(G, f"{a}, reconstruido a 15-21 días"))
+        if "q50_red" in G and G.q50_red.notna().any():
+            filas.append(fila(con_red(G[G.q50_red.notna()]), f"{a}, reconstruido, con la red de urgencias"))
     nr = Hs[Hs.fuente != "reconstruida"]
     if len(nr): filas.append(fila(nr, f"{nr.fecha.min().day} {MESES[nr.fecha.min().month]} a {nr.fecha.max().day} "
                                       f"{MESES[nr.fecha.max().month]} {nr.fecha.max().year}, corridas guardadas"))

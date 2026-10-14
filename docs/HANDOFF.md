@@ -6,8 +6,52 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-10-13.**
+**Última actualización: 2026-10-14.**
 
+---
+
+## HECHO (2026-10-14): la red de urgencias corrige sin reentrenar (v2, en operación)
+
+**Pedido del propietario.** Integrar como variables del momento, sin reentrenar, el estado de la red de urgencias de
+Manizales: cierres y reaperturas a una aseguradora, en el SES y fuera. Probar si mejora la precisión de 2026 y verlo
+en el tablero, por aseguradora y por hora. Revierte la exclusión del convenio del 13-10.
+
+**Cómo quedó** (`CONTEXTO.md`, entradas del 14-10, de la primera a la (5)):
+- **v1** (solo el registro de prensa): no pasó su regla. El fin mal fechado del cierre del SES (E25) dañó abril de 2026.
+- **v2** (preregistro `red_de_urgencias_v2`):
+  - el estado del convenio SES–Nueva EPS se **mide** con los ingresos no urgentes de la base
+    (`salidas/ingresos_entidad.parquet`, `python -m extraccion --ingresos`, también dentro de `--series`);
+  - el registro `datos/eventos_red.csv` solo aporta lo **anunciado** que todavía no se ve en los datos;
+  - los otros hospitales cuentan solo si el SES atiende a Nueva EPS.
+- **v2 pasó la regla.** A 15 días, 2026: error del día de 11,6 % a 10,2 %, rango del 71 % al 77 % y Nueva EPS de
+  25,6 % a 20,3 %. 2025 también mejora (10,3 % → 10,0 %). Julio de 2026 pasa de 15,2 % a 6,8 % y abril ya no se daña.
+- `operacion.USAR_RED = True` (v2). `python -m operacion --ajustar` reaplica el registro y el estado medido a la última
+  corrida, sin reentrenar, y guarda `ajustes/<fecha_hora>.parquet`. Último: `2026-10-14_1501`. Para los días que
+  vienen, el factor es 1: el SES atiende a Nueva EPS según los datos y no hay episodios anunciados.
+- Tablero:
+  - «Cómo ha predicho» compara el modelo solo con la v2A (2026: 11,1 % → 9,9 %);
+  - el detalle del día muestra los episodios en curso y un mapa de calor de aseguradora × hora.
+
+  Probado con AppTest, sin excepciones.
+
+**Límites:**
+- es una segunda mirada a 2025-2026: la confirmación es prospectiva;
+- el coeficiente sale atenuado: julio bajó un 26 % y la caída real fue del 45 %;
+- una reapertura sin anuncio solo se ve con el rezago de los datos;
+- diciembre de 2025 sigue en ~20 %.
+
+**Todo SIN COMMIT.**
+
+**Esperando al propietario:**
+- commit de todo lo de hoy;
+- digiturno: nombre de la base y permiso (no está en `DWSES`; las otras 15 bases dan «sin acceso»);
+- mantener `datos/eventos_red.csv` al día (guía en `operacion/docs/OPERACION.md`).
+
+**Foco fijado por el propietario (14-10):** solo la precisión del total del día y del reparto por aseguradora del SES.
+Las indicaciones son:
+- **no** estudiar otros hospitales;
+- **no** abrir fuentes nuevas, como `RECEPCIONES_DW`, mencionada en `CONTEXTO.md` (5) y descartada por ahora;
+- el registro de la red se mantiene como está, sin ampliarlo.
 ---
 
 ## HECHO (2026-10-13): lo que pidió urgencias — operación autónoma, aseguradoras y tablero

@@ -22,6 +22,7 @@ import semana as sm              # noqa: E402
 import reparto as rp             # noqa: E402
 import aseguradoras as ag        # noqa: E402
 import madurez as md             # noqa: E402
+import red as rd                 # noqa: E402
 
 CARPETA = RAIZ / "salidas" / "operacion"
 CORRIDAS = CARPETA / "corridas"
@@ -44,6 +45,7 @@ ERROR_VERDE, ERROR_ROJO = 12., 18.           # error medio del día, %, en los �
 RANGO_VERDE, RANGO_ROJO = 65., 50.           # % de días dentro del rango del 80 %, mismos días
 NE_CAMBIO = .20                              # Nueva EPS: cambio de las 2 últimas semanas frente a las 8 anteriores
 MIN_VERIFICADOS = 14
+USAR_RED = True                              # ajuste por la red (fila red_de_urgencias_v2: pasó su regla el 2026-10-14; la v1 no)
 
 
 def _commit():
@@ -68,14 +70,48 @@ def _preparar(o, n):
     rp.MALOS = rp.MALOS.union([o + pd.Timedelta(days=1)])          # el día a medias no entra a los perfiles
 
 
-def _cadena(q, p24, a24, Pg, a_g, rng, n=4000):
-    """Total del día -> 24 horas (perfil horario) -> jornadas -> aseguradoras dentro de cada jornada."""
-    X = rp.simular(q, p24, a24, rng, n)
-    J = np.stack([X[:, lo:hi + 1].sum(1) for lo, hi in rp.FRANJAS.values()], 1)
-    G = np.zeros((n, len(rp.FRANJAS), len(ag.GRUPOS)), dtype=int)
-    for j in range(len(rp.FRANJAS)):
-        G[:, j] = rng.multinomial(J[:, j], rng.dirichlet(a_g * Pg[j] + 1e-6, size=n))
-    return X, J, G
+def _texto_episodio(e):
+    fin = f" hasta el {e.fecha_fin.date()}" if pd.notna(e.fecha_fin) else ""
+    return f"{e.prestador} · {e.eps} · {e.tipo.replace('_', ' ')} desde el {e.fecha_inicio.date()}{fin}"
+
+
+def _dias(o, fechas, Q, tau, usar_red=None):
+    """Lo de cada día predicho a partir de los cuantiles del total del modelo (Q, sin red): total corregido por la red
+    con lo sabido en tau, horas, jornadas, aseguradoras por día, jornada y hora (fila red_de_urgencias)."""
+    usar_red = USAR_RED if usar_red is None else usar_red
+    pf = rp.Perfiles(rp.horas(), rp.festivos())
+    dias_g, X_g = ag.conteos_grupo(); pa = ag.Proporciones(dias_g, X_g)
+    R_red = rd.registro() if rd.REGISTRO.exists() else None
+    ef = None
+    if usar_red and R_red is not None:
+        if rd.INGRESOS.exists(): ef = rd.EfectoV2(R_red, dias_g, X_g)
+        else: print("Sin salidas/ingresos_entidad.parquet: el ajuste por la red no se aplica (python -m extraccion --ingresos).")
+    rng = np.random.default_rng(0); filas = []
+    for k, t in enumerate(fechas):
+        p24, a24 = pf.perfil(PERFIL, o, t)
+        pg, a_g = pa.dia(VENTANA_ASEG, o, t); Ph = rd.por_hora(dias_g, X_g, o, pa.jornada(VENTANA_ASEG, o, t))
+        lf = ef.log_factor(o, t, tau, rng)[0] if ef else np.zeros(rd.NSIM)
+        T, Xh, Gh = rd.cadena(Q[k], p24, a24, pg, a_g, Ph, lf, rng)
+        f = rd.resumen_dia(T, Xh, Gh)
+        if not np.any(lf): f |= {c: Q[k, j] for j, c in enumerate(pr.QCOL)}      # sin ajuste: los cuantiles del modelo
+        f |= {"fecha": t, "festivo": t in pf.fest, "f_red": float(np.exp(np.median(lf))),
+              **{f"{c}_sin_red": Q[k, j] for j, c in enumerate(pr.QCOL)}}
+        if R_red is not None:
+            f["red_eventos"] = " | ".join(_texto_episodio(e) for e in rd.en_curso(R_red, t, tau).itertuples())
+        hq = np.quantile(Xh, [.1, .5, .9], axis=0)
+        f |= {f"h{h:02d}_{c}": hq[i, h] for h in range(24) for i, c in enumerate(("q10", "q50", "q90"))}
+        f |= {f"h{h:02d}_esperado": f["q50"] * p24[h] for h in range(24)}
+        for b, inicios in rp.BLOQUES.items():
+            esp = p24 * f["q50"]; s = max(inicios, key=lambda i: esp[i:i + 3].sum())
+            f |= {f"pico_{b}": s, f"pico_{b}_por_hora": esp[s:s + 3].mean()}
+        filas.append(f)
+    D = pd.DataFrame(filas)
+    b = ef.estimar(o, tau)[0] if ef else np.zeros(len(rd.EfectoV2.coeficientes))
+    info = {"usada": bool(ef), "version": "red_de_urgencias_v2", "episodios": 0 if R_red is None else len(R_red),
+            "conocido_al": str(pd.Timestamp(tau).date()),
+            "efectos": {v: round(float(x), 4) for v, x in zip(rd.EfectoV2.coeficientes, b)},
+            "ses_atiende_nueva_eps": None if ef is None else ef.abierto(o)}
+    return D, info
 
 
 def predecir(modelo=MODELO, avisar=print):
@@ -88,39 +124,47 @@ def predecir(modelo=MODELO, avisar=print):
     avisar(f"Reentrenando {modelo} con datos hasta el {o.date()}...")
     aj = sm.Ajuste(y, cal, sm.COMBOS[modelo]); aj.ajustar(o, hs)
     Q, normal = aj.predecir(o, hs, sm.COMBOS[modelo])
-    V = md.vara(y, [o] * len(fechas), fechas)
-    pf = rp.Perfiles(rp.horas(), rp.festivos())
-    dias_g, X_g = ag.conteos_grupo(); pa = ag.Proporciones(dias_g, X_g)
-    rng = np.random.default_rng(0); filas = []
-    for k, t in enumerate(fechas):
-        p24, a24 = pf.perfil(PERFIL, o, t)
-        pg, a_g = pa.dia(VENTANA_ASEG, o, t); Pg = pa.jornada(VENTANA_ASEG, o, t)
-        X, J, G = _cadena(Q[k], p24, a24, Pg, a_g, rng)
-        f = {"fecha": t, "adelanto": k + 1, "largo_plazo": k + 1 > VALIDADO, **{c: Q[k, j] for j, c in enumerate(pr.QCOL)},
-             "habitual": V[k], "p_sube": float(pr.prob_sobre(Q[[k]], V[[k]])[0]),
-             "control": normal[k, 0], "festivo": t in pf.fest}
-        for j, jn in enumerate(rp.FRANJAS):
-            f |= {f"{jn}_q10": np.quantile(J[:, j], .1), f"{jn}_q50": np.quantile(J[:, j], .5),
-                  f"{jn}_q90": np.quantile(J[:, j], .9)}
-        hq = np.quantile(X, [.1, .5, .9], axis=0)
-        f |= {f"h{h:02d}_{c}": hq[i, h] for h in range(24) for i, c in enumerate(("q10", "q50", "q90"))}
-        f |= {f"h{h:02d}_esperado": Q[k, 4] * p24[h] for h in range(24)}
-        for b, inicios in rp.BLOQUES.items():
-            esp = p24 * Q[k, 4]; s = max(inicios, key=lambda i: esp[i:i + 3].sum())
-            f |= {f"pico_{b}": s, f"pico_{b}_por_hora": esp[s:s + 3].mean()}
-        Gd = G.sum(1)
-        for g, gn in enumerate(ag.GRUPOS):
-            f |= {f"{gn}_q10": np.quantile(Gd[:, g], .1), f"{gn}_q50": np.quantile(Gd[:, g], .5),
-                  f"{gn}_q90": np.quantile(Gd[:, g], .9)}
-            for j, jn in enumerate(rp.FRANJAS):
-                f[f"{gn}_{jn}_q50"] = np.quantile(G[:, j, g], .5)
-        filas.append(f)
-    D = pd.DataFrame(filas)
+    hoy = pd.Timestamp(date.today())
+    D, info = _dias(o, fechas, Q, hoy)
+    D = _completar(D, y, o, normal)
     W = semanas(D, modelo)
     R = {"origen": str(o.date()), "modelo": modelo, "horizonte": n, "validado_hasta": VALIDADO, "creado": datetime.now().isoformat(timespec="seconds"),
          "commit": _commit(), "perfil": PERFIL, "ventana_aseguradoras": VENTANA_ASEG,
-         "ultimo_dato": str(o.date()), "antiguedad_dias": (pd.Timestamp(date.today()) - o).days}
+         "ultimo_dato": str(o.date()), "antiguedad_dias": (hoy - o).days, "red": info}
     return D, W, R
+
+
+def _completar(D, y, o, normal=None):
+    """Adelanto, vara del día habitual y probabilidad de pasarla, con los cuantiles ya corregidos."""
+    D = D.copy()
+    D["adelanto"] = (D.fecha - o).dt.days; D["largo_plazo"] = D.adelanto > VALIDADO
+    D["habitual"] = md.vara(y, [o] * len(D), D.fecha)
+    D["p_sube"] = pr.prob_sobre(np.sort(D[pr.QCOL].values, 1), D.habitual.values)
+    if normal is not None: D["control"] = normal[:, 0]
+    return D
+
+
+def ajustar(modelo=MODELO, avisar=print):
+    """Reaplica el registro de la red de hoy a la última corrida, SIN reentrenar: el uso diario de la fila
+    red_de_urgencias_v2. Guarda corridas/<corrida>/ajustes/<fecha_hora>.parquet; ninguno se rehace."""
+    warnings.filterwarnings("ignore")
+    u = ultima_corrida(modelo)
+    if u is None: raise SystemExit("No hay corrida guardada: corra primero `python -m operacion`.")
+    D0, _, R0 = u; o = pd.Timestamp(R0["origen"]); hoy = pd.Timestamp(date.today())
+    sin_red = [f"{q}_sin_red" for q in pr.QCOL]
+    if sin_red[0] not in D0: D0 = D0.assign(**{f"{q}_sin_red": D0[q] for q in pr.QCOL})   # corrida anterior: sin red
+    c = CORRIDAS / f"{R0['origen']}_{R0['modelo']}" / "ajustes"; destino = c / f"{datetime.now():%Y-%m-%d_%H%M}.parquet"
+    if destino.exists(): return destino, False
+    D0 = D0[D0.fecha > hoy - pd.Timedelta(days=1)]
+    Q = D0[sin_red].values
+    _preparar(o, int(R0["horizonte"]))
+    D, info = _dias(o, pd.DatetimeIndex(D0.fecha), Q, hoy)
+    y = sm.datos()[0].loc[:o]
+    D = _completar(D, y.reindex(pd.date_range(y.index[0], D.fecha.max())), o)
+    c.mkdir(parents=True, exist_ok=True); D.to_parquet(destino, index=False)
+    destino.with_suffix(".json").write_text(json.dumps(info, ensure_ascii=False, indent=1), encoding="utf-8")
+    avisar(f"Ajuste por la red con el registro al {hoy.date()}: {info}")
+    return destino, True
 
 
 def semanas(D, modelo):
@@ -241,6 +285,12 @@ def historial():
         ca = [c for c in A.columns if c.startswith(tuple(f"{g}_" for g in ag.GRUPOS))]
         B = R[llaves + pr.QCOL + ["real"] + cr].merge(A[llaves + ca], on=llaves, how="left")
         B["fuente"] = "reconstruida"; B["h"] = (B.fecha - pd.to_datetime(B.origen)).dt.days
+        fe = rd.CARPETA / "conteos_v2.parquet"               # la misma predicción corregida por la red (v2A)
+        if fe.exists():
+            E = pd.read_parquet(fe); E = E[(E.variante == "v2A") & (E.adelanto == 15) & (E.combo == MODELO)]
+            cols = (pr.QCOL + [f"{g}_{s}" for g in ag.GRUPOS for s in ("q10", "q50", "q90")]
+                    + [f"{j}_{s}" for j in rp.FRANJAS for s in ("q10", "q50", "q90")] + ["log_f"])
+            B = B.merge(E[llaves + cols].rename(columns={c: f"{c}_red" for c in cols}), on=llaves, how="left")
         partes.append(B)
     V = verificar()
     if not V.empty:
@@ -253,6 +303,10 @@ def historial():
     Hs = pd.concat(partes, ignore_index=True, sort=False).sort_values("fecha")
     Hs["origen"] = pd.to_datetime(Hs.origen)
     Hs["en_rango"] = Hs.real.between(Hs.q10, Hs.q90); Hs["error_pct"] = 100 * (Hs.q50 - Hs.real).abs() / Hs.real
+    if "q50_red" in Hs:
+        Hs = Hs.copy()
+        Hs["en_rango_red"] = Hs.real.between(Hs.q10_red, Hs.q90_red).where(Hs.q50_red.notna())
+        Hs["error_pct_red"] = 100 * (Hs.q50_red - Hs.real).abs() / Hs.real
     Hs.drop(columns=[c for c in Hs.columns if c.startswith("h") and c[1:3].isdigit()], errors="ignore", inplace=True)
     Hs.to_parquet(CARPETA / "historial.parquet", index=False)
     return Hs

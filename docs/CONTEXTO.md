@@ -14,6 +14,249 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-14 (6) — Foco en el producto mínimo viable: nada de otros hospitales ni fuentes nuevas
+
+**Decidido por el propietario.** El trabajo se ciñe a predecir bien el triage del SES y su reparto por aseguradora,
+con lo que ya existe. Se detuvo la búsqueda en la web de cierres en otros hospitales y no se usará `RECEPCIONES_DW`.
+El registro `datos/eventos_red.csv` y la v2 quedan como están.
+
+**Por qué:** cada fuente nueva aplaza la entrega. En sus palabras: «nos vamos a terminar desviando cada vez más y
+nunca sacamos el producto mínimo viable».
+
+---
+
+## 2026-10-14 (5) — La v2 pasa su regla: el estado medido del convenio evita el daño y conserva la mejora; entra en la operación
+
+**Medido** (`python notebooks/red.py --v2`, `salidas/pronostico/red/resumen_v2.csv`). Misma validación, misma semilla
+y 1.246 días. Adelanto 15, todos los días:
+
+| | 2025 sin red | 2025 v2A | 2026 sin red | 2026 v1 A | 2026 v2A |
+|---|---|---|---|---|---|
+| Error del día | 10,28 % | **10,03 %** | 11,61 % | 14,25 % | **10,21 %** |
+| Puntaje de cuantiles | 2,66 | **2,51** | 2,79 | 3,64 | **2,51** |
+| Total en rango 80 % | 83 % | 84 % | 71 % | 67 % | **77 %** |
+| Nueva EPS, error | 17,9 % | 16,6 % | 25,6 % | 26,6 % | **20,3 %** |
+| Nueva EPS en rango 80 % | 76 % | 77 % | 54 % | 55 % | **62 %** |
+| Sura, error | 15,2 % | 15,2 % | 14,5 % | — | 14,5 % |
+
+**Regla de la fila `red_de_urgencias_v2`: v2A ENTRA.** Mejora 2026 un 10 % en el puntaje, también mejora 2025 y la
+cobertura queda en 77-84 %. v2B y v2D también la pasan, con menos mejora:
+- v2D, solo datos y sin registro: 2026 11,40 %;
+- v2B: 2026 10,97 %.
+
+Lectura: **el registro de prensa aporta la anticipación** (julio) y **el estado medido evita el daño** (abril).
+
+**Mes a mes** (error del día, sin red → v2A):
+
+| Mes | Sin red | v2A |
+|---|---|---|
+| Nov-2025 | 22,3 % | 17,8 % |
+| Dic-2025 | 20,1 % | 19,7 % |
+| Mar-2026 | 16,0 % | 15,0 % |
+| Abr-2026 | 9,0 % | **8,2 %** (con la v1 era 36,7 %) |
+| **Jul-2026** | 15,2 % | **6,8 %** |
+| Ago-2026 | 15,9 % | 15,1 % |
+
+Único mes peor: oct-2025, de 6,9 % a 8,2 %. A 1 día, 2026 mejora (9,28 % → 8,92 %) y 2025 empeora 0,1 puntos.
+
+**Límites que quedan, dichos de frente:**
+- **Es una segunda mirada a 2025-2026.** El diagnóstico de la v1 se vio antes de diseñar la v2. La confirmación es
+  prospectiva: las corridas y los ajustes guardados con fecha desde hoy.
+- **El coeficiente del acceso sale atenuado** (bA ≈ 0,10-0,15 por unidad de log): el ruido semanal de la señal
+  diluye la pendiente. En julio el ajuste bajó a Nueva EPS un 26 %, y bajó un 45 %. Corregir eso sería otra versión,
+  con otro preregistro.
+- **Una reapertura sin anuncio no se anticipa** (ago-2026). Se ve en los datos con el rezago de la extracción.
+- **La primera vez de un tipo de episodio** solo la cubre la ventana del mismo estado, cuando ya hay 7 días del
+  nuevo estado antes del origen.
+- **Diciembre de 2025 sigue en ~20 %**: los primeros días del primer cierre del SES no los cubre ninguna pieza.
+
+**Decisión:** `operacion.USAR_RED = True` con la v2. `--ajustar` guarda un archivo por fecha y hora (ninguno se
+rehace). El historial del tablero compara el modelo solo con la v2A. Requisito operativo: `ingresos_entidad.parquet`
+se actualiza con `--series` cada semana. Sin él, el ajuste no se aplica y la operación lo avisa.
+
+**Dato nuevo visto mientras corría, sin usar todavía:** `RECEPCIONES_DW`, las remisiones que otros hospitales ofrecen
+al SES desde 2023 (21.204), con EPS y resultado. Para Nueva EPS, el «no aceptado» bajó de ~50 % (2024 a jul-2025) a
+1-12 % durante los cierres (ya solo se ofrecían urgencias vitales) y volvió a 21-25 % desde agosto de 2026, otra
+huella de la reapertura. Sura: el «no aceptado» sube del 0-20 % al 30-45 % desde sep-2025, una presión distinta que
+no se ha estudiado. Es candidata para medir la saturación de la red.
+
+---
+
+## 2026-10-14 (4) — v2: el convenio medido con los ingresos no urgentes; extracción nueva y preregistro
+
+**Autorizado por el propietario** («implementa y prueba»). Se añadió `python -m extraccion --ingresos` →
+`salidas/ingresos_entidad.parquet`: ingresos por día × tipo × si vienen de triage × entidad, 45.108 filas. Las fechas
+van de 2020 a 2026, pero **la entidad solo existe en `DIM_INGRESO` desde 2024**. También corre dentro de `--series`.
+
+**Qué es cada ingreso** (la base no trae catálogo; cruce agregado de 2025-2026):
+
+| | Sin triage | Con triage |
+|---|---|---|
+| Tipo 1 | ~253.000 (`AINURGCON` = 1) | ~26.500 |
+| Tipo 2 | ~11.700 | ~12.300 |
+
+Lectura: «sin triage» = **no urgentes** (consulta y procedimientos). Son los que desaparecen cuando el SES deja a una
+EPS solo con urgencias vitales. Por eso la señal es esa, y no el tipo 1 entero, que mezcla las urgencias.
+
+**La razón Nueva EPS / Sura de los no urgentes deriva sola**: 1,2 en ene-2024, 5,8 en oct-2025, 2,6 en jun-2026.
+Refleja afiliados que se mueven entre EPS. Por eso la v2 no usa umbrales fijos de abierto o cerrado. Usa cambios, «días
+en el mismo estado que hoy» y un abierto relativo al máximo de 26 semanas.
+
+**Preregistro:** fila `red_de_urgencias_v2`, escrita antes de calcular y declarada como **segunda mirada** a
+2025-2026. Las tres piezas son:
+- la ventana del mismo estado, sin coeficiente, que sirve la primera vez;
+- lo anunciado en el registro que todavía no se ve en los datos;
+- los otros hospitales, que solo cuentan si el SES atiende a Nueva EPS.
+
+Variantes: v2A, v2B y v2D (solo datos, sin registro).
+
+---
+
+## 2026-10-14 (3) — El estado del convenio SES–Nueva EPS está en la base: los ingresos ambulatorios lo miden día a día
+
+**Pedido del propietario:** buscar en la base y en las fuentes externas el dato que faltaba (cuándo reabrió el SES a
+Nueva EPS), porque «de nada sirve que arregle una parte y dañe la otra».
+
+**Medido** (solo esquema y conteos agregados, protocolo de `extraccion/__init__.py`).
+`DIM_INGRESO` cuenta por día, tipo de ingreso (`AINTIPING`) y entidad (`GEENENTADM`: Nueva EPS = 238 y 100, Sura =
+227). Ninguna columna sensible. Guardado en el scratchpad, no en `salidas/`. El tipo 1 son 231.736 ingresos y el 2,
+19.160. Ingresos de tipo 1 de Nueva EPS por semana:
+
+| Periodo | Nueva EPS / semana | Lectura |
+|---|---|---|
+| jun-oct 2025 | 1.800-2.900 | abierto |
+| semana del 3-nov-2025 | 2.077 | restricción de lo no urgente (4-nov) |
+| desde el 24-nov-2025 | 90-250 | **solo urgencias vitales** (desde el 21-nov) |
+| semana del 23-feb-2026 | 205 | empieza a reabrir: 32 el 25-feb, 51 el 26-feb |
+| desde el 2-mar-2026 | 680 → 1.200-1.900 | **reabierto**: 118 el lunes 2-mar |
+| desde el 29-jun-2026 | 760 → ~200 | **cerrado** desde el 1-jul |
+| desde el 24-ago-2026 | 496 → 790 → 1.010 → 1.260 | **reapertura gradual que ninguna noticia publicó** |
+
+Sura en esos periodos: 450-1.000 por semana, sin escalones.
+
+**Consecuencias:**
+1. **La fecha que faltaba existe y es interna:** el SES reabrió a Nueva EPS entre el 25-feb y el 2-mar de 2026, no el
+   8-abr. Explica la subida del triage desde principios de marzo y la falla de abril de la entrada (2).
+2. **El registro también está mal hoy.** Dice que el SES sigue cerrado desde el 1-jul, pero desde finales de agosto se
+   volvió a atender a Nueva EPS, al menos en parte (la razón Nueva EPS / Sura va en 1,2, frente a 2,3 antes del cierre
+   y 4-5 en 2025). Coincide con la subida del triage de Nueva EPS en septiembre (~50 → 68), que no tenía causa
+   conocida.
+3. **Los giros de la ADRES no sirven como señal del convenio.** Nueva EPS → SES, en miles de millones por mes: nov-2025
+   10,9, mar-2026 4,5, abr-2026 3,1, ago-2026 7,8. El giro sigue pagando facturas viejas durante los cierres y cayó
+   justo cuando el SES reabría.
+4. **La prensa sirve para lo que viene** (anuncios con días de antelación). **La base sirve para lo que ya pasó**:
+   mide el estado real con el mismo rezago que el triage. El fallo de la entrada (2) fue usar la prensa para el
+   pasado.
+
+**Decisión pendiente del propietario:** usarlo como estado medido del convenio en el ajuste (v2) y en la ventana de
+aseguradoras. Eso implica una consulta agregada nueva en `extraccion/` y un preregistro nuevo, declarado como segunda
+mirada a 2025-2026.
+
+---
+
+## 2026-10-14 (2) — Resultado de la red de urgencias: no pasa la regla; funciona en el caso limpio y falla con registro dudoso o episodios nuevos
+
+**Medido** (`python notebooks/red.py`, salida en `salidas/pronostico/red/`). Validación semanal C0r, 1.246 días
+predichos, misma semilla con y sin ajuste. Adelanto 15, todos los días:
+
+| | 2025 sin red | 2025 A | 2025 B | 2026 sin red | 2026 A | 2026 B |
+|---|---|---|---|---|---|---|
+| Error del día | 10,28 % | 11,19 % | 10,04 % | 11,61 % | **14,25 %** | 11,56 % |
+| Puntaje de cuantiles | 2,66 | 2,93 | 2,56 | 2,79 | 3,64 | 2,77 |
+| Total en rango 80 % | 83 % | 82 % | 84 % | 71 % | 67 % | 72 % |
+| Nueva EPS, error | 17,9 % | 19,1 % | 16,3 % | 25,6 % | 26,6 % | 23,3 % |
+| Nueva EPS en rango 80 % | 76 % | 77 % | 79 % | 54 % | 55 % | 59 % |
+
+**Regla preregistrada (variante A, adelanto 15): NO ENTRA.** No mejora 2026, empeora 2025 más del 1 % y la cobertura
+de 2026 queda en 67 %. `operacion.USAR_RED` queda en `False`.
+
+**Por qué falla, mes a mes** (error del día, sin red → A):
+- **Julio de 2026 es el caso limpio y funciona:** de 15,2 % a 7,0 %. Nueva EPS predicha en 66, frente a 88 sin red y
+  52 real. El cierre se anunció 6 días antes y el efecto ya se había visto en noviembre de 2025.
+- **Abril de 2026 hunde el año:** de 9,0 % a 36,7 %. El fin del cierre del SES de noviembre (E25) estaba fechado el
+  8-abr, **inferido** de una nota que en realidad dice que el SES «mantiene activo» a Nueva EPS. La reapertura fue
+  antes, en fecha no encontrada. El ajuste «reabrió» en abril lo que ya estaba abierto y duplicó a Nueva EPS (141
+  frente a 93).
+- **Diciembre de 2025:** de 20,1 % a 27,4 %. El cierre del SES ocurría **por primera vez**, así que no tenía efecto
+  estimado. El cierre de Santa Sofía del 1-dic, en cambio, sí lo tenía (positivo, aprendido de Avidanti), y empujó a
+  Nueva EPS hacia arriba justo cuando bajaba.
+
+**Sensibilidad declarada como posterior a ver el resultado** (no cambia la decisión): fin de E25 en los compromisos de
+febrero (25-feb), conocido desde el 8-abr. En 2026: error de 11,61 % a 10,86 % y Nueva EPS de 25,5 % a 17,0 %, con
+rango del 71 % en vez del 55 %. **2025 sigue peor** (10,30 % → 11,21 %, por diciembre). Tampoco pasaría la regla.
+Archivos: `salidas/pronostico/red/sensibilidad_E25_*.csv`.
+
+**La variante B** (solo lo sabido al cortar los datos) mejora un poco los dos años. No se adopta: la regla se fijó
+sobre A, y la mejora es de 0,1-0,2 puntos.
+
+**Aseguradora por hora** (informativo, sin regla; adelanto 15, sin red). Error absoluto medio por hora frente al piso
+de ruido Poisson:
+- Nueva EPS: 1,72 frente a 1,56 (2025) y 1,46 frente a 1,25 (2026);
+- Sura: 1,16 frente a 1,08 y 1,26 frente a 1,17;
+- rango del 80 % por hora: 86-89 %, un poco ancho.
+
+Lectura: el reparto por hora está cerca del límite del azar y **se informa**.
+
+**Lectura de conjunto.** El mecanismo es real, y cuando el registro es correcto y el tipo de episodio ya se vio, la
+corrección es grande (julio). Hay dos debilidades que el diseño no resuelve con datos:
+1. **El primer episodio de cada tipo no tiene efecto estimado**, y los de otro tipo pueden empujar en contra.
+2. **Un error en la fecha de fin de un episodio pasado inyecta error.** La ventana de 28 días compara contra el estado
+   que el registro dice, no contra el que hubo.
+
+El registro escrito a mano es la pieza crítica: su calidad decide si el ajuste ayuda o daña.
+
+**Qué queda en la operación:**
+- la cadena nueva (aseguradoras por hora);
+- `--ajustar` para refrescar a diario con el registro, sin reentrenar;
+- el tablero, que muestra los episodios en curso y la comparación con y sin la red, para que se vea dónde ayuda y
+  dónde no.
+
+---
+
+## 2026-10-14 — La red de urgencias entra como contexto que corrige sin reentrenar; digiturno no está en la base
+
+**Cambio de alcance, decidido por el propietario.** El 13-10 dejó fuera el estado del convenio hospital-EPS. Hoy
+pide integrarlo, junto con el estado de los demás hospitales de Manizales, y **revierte** esa exclusión. La forma la
+fijó él: no son datos para reentrenar, son **variables del momento que corrigen el día o la semana, no el año**.
+
+**Lo que se encontró antes de decidir** (búsqueda en la web del 14-10; detalle de fuentes en
+`calendarios/docs/FUENTES_EXTERNAS.md`, actualización del 14-10):
+- Los escalones de Nueva EPS en el SES tienen fecha en prensa. El **21-nov-2025** el SES deja de atenderla salvo
+  urgencias vitales, y el **1-jul-2026** cierra sus servicios generales (anunciado el 26-jun).
+- El escalón de **marzo de 2026** no fue una reapertura del SES. Coincide con cierres de **otros** hospitales a Nueva
+  EPS (San Isidro en febrero, Santa Sofía el 26-mar), que mandan sus pacientes a las urgencias del SES. El estado de
+  la red pesa tanto como el del convenio propio.
+- Entre 2024 y 2026 hay unos 25 episodios fechados (cierres y reaperturas a Nueva EPS en el SES, Santa Sofía, Avidanti,
+  el Infantil, San Isidro, y el cierre de urgencias de Ospedale de 2024). Se obtienen de la API WordPress de la Alcaldía
+  y de la sección de salud de La Patria, con 0 a 1 día de rezago.
+- Dos cifras de prensa, contrastadas con `salidas/` como prueba de plausibilidad:
+  - del 1 al 5 de septiembre de 2025 la prensa dio ~240 triages diarios en el SES, y los datos dan 225-249;
+  - tras el cierre de Avidanti (21-ago-2025), Nueva EPS en el SES pasó de 122,8 a 133,6 por día en 30 días. Es una
+    comparación cruda, sin ajustar.
+
+**Decisión de diseño.**
+- Un **registro escrito a mano**, `datos/eventos_red.csv`, con fecha de inicio, de **anuncio**, de fin y de anuncio
+  del fin.
+- Un ajuste **después** del modelo: el factor de Nueva EPS se estima con la razón Nueva EPS / Sura en primeras
+  diferencias semanales, y se aplica a su proporción del día y al total.
+- La regla de evidencia es la misma del clima: **evaluar con lo que se sabía en su momento** (variantes A, el día
+  anterior, y B, el corte de los datos).
+- Preregistrado en `patrones/datos/variables.csv`, fila `red_de_urgencias`, **antes de calcular ningún resultado**.
+
+**Por qué no meterlo en el entrenamiento.** Con unos 25 episodios, una variable más dentro de LightGBM o SARIMAX se
+estima mal y se mezcla con la tendencia. Hay un mecanismo nombrado (la puerta de urgencias abierta o cerrada para
+una aseguradora) y un grupo de control natural (Sura, que no tiene episodios). Eso deja estimar el efecto aparte, de
+forma transparente, y aplicarlo solo mientras el episodio dura.
+
+**Digiturno.** Pedido el 14-10 para tener la aseguradora con la que llega quien pide triage. Se miró solo el
+esquema. **No existe una tabla de turnos en `DWSES`**: hay 174 tablas y ninguna con TURN o DIGI salvo
+`TURNOS_ALIMENTOS`. Las demás bases del servidor (AM, Manillas, ControlPagos y otras 12) responden «sin acceso» a esta
+cuenta. La aseguradora del triage ya está en `DIM_TRIAGE.GEENENTADM` (bajada en `salidas/triage_entidad.parquet`):
+el reparto por aseguradora no depende de digiturno. Lo que digiturno aportaría es la **hora de llegada antes del
+triage**. Hace falta el nombre de la base y el permiso, y eso lo da el superior.
+
+---
+
 ## 2026-10-13 (6) — Datos al 12 de octubre: la precisión medida, el pronóstico hasta diciembre y el alcance de la entrega
 
 **Extracción** (autorizada por el propietario). Se corrió `python -m extraccion --series`.

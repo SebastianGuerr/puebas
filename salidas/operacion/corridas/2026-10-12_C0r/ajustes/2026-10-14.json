@@ -1,0 +1,10 @@
+{
+ "usada": false,
+ "episodios": 30,
+ "conocido_al": "2026-10-14",
+ "efectos": {
+  "ses_vitales": 0.0,
+  "ses_restriccion": 0.0,
+  "externos": 0.0
+ }
+}

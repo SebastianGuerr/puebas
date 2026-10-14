@@ -498,3 +498,71 @@ Verificado en la web el 2026-10-05. Solo lo nuevo o lo que cambió desde el 2026
 - **DesInventar:** se descarta, porque llega solo hasta 2018.
 - **El SGC FDSN** sigue dando 404. Para sismos se usa el **USGS**: 27 sismos de M ≥ 3 a menos de 100 km
   desde 2020.
+
+
+---
+
+## Actualización del 2026-10-14: la red de urgencias y la situación de las EPS
+
+Verificado en la web el 2026-10-14 ([V] = abierto o consultado; [I] = indicativo). Sirve a la fila
+`red_de_urgencias` de `patrones/datos/variables.csv` y al registro escrito a mano `datos/eventos_red.csv`.
+
+### Episodios con fecha (cierres y reaperturas de hospitales de Manizales a una EPS)
+
+- **API WordPress de la Alcaldía** [V]: `centrodeinformacion.manizales.gov.co/wp-json/wp/v2/posts?search=...`, sin
+  clave, de 2021 a hoy, el mismo día del hecho. Trae los boletines de la Secretaría de Salud sobre cada cierre a Nueva
+  EPS y las alertas hospitalarias municipales (p. ej. circular S-CIR-SSP-2026-142, 15-abr-2026). Las fechas vienen en el
+  texto, no en un campo.
+- **La Patria, sección salud** [V]: `lapatria.com/salud?page=N`, listado paginado con fecha (la página 100 llega a
+  jul-2025). `rss.xml` solo trae 10 ítems; `/search/` está bloqueado en robots.txt. Es la que da las fechas exactas de
+  entrada en vigor («desde este 21 de noviembre»).
+- **Eje21** [V]: WordPress con `/feed/` y `/wp-json/` abiertos.
+- BluRadio, La FM y Portafolio responden 403: solo para confirmar a mano.
+- **Lo que no es público:** el aviso de 15 días de cierre de urgencias (Res. 3100/2019), las novedades REPS con fecha y
+  las circulares de alerta de la DTSC/CRUE. `saluddecaldas.gov.co` no tiene API ni feed.
+
+### Ocupación y capacidad
+
+- **datos.gov.co `s2ru-bqt6`** [V]: capacidad instalada por sede, **una sola foto con corte REPS del 5-nov-2022**.
+  Trae gerente, correo y teléfono: bajar solo las columnas de capacidad. Camillas de observación de adultos en
+  Manizales: SES 44, Ospedale 34 (+11 pediátricas), Avidanti 20, Confa 20, Santa Sofía 15, CME 7, Assbasalud 6,
+  La Presentación 4, San Juan de Dios 8. No aparecen el Infantil ni San Isidro: está incompleta.
+- **`uwc4-gvg3`** «Registro diario de ocupación de capacidad instalada» [V]: a pesar del nombre, **un solo corte** (30-nov-2022).
+- **La Secretaría de Salud de Manizales recibe de cada IPS con urgencias un reporte diario de disponibilidad de camas**
+  (Sistema de Emergencias Médicas, Res. 926/2017 y Decreto 0642/2019; nota del 9-sep-2026) [V]. No se publica. Es la
+  señal diaria que habría que pedir.
+- No hay tablero público de ocupación en Caldas [V]. Bogotá publica la ocupación de urgencias mensual (SaluData) [I].
+
+### Relación EPS–hospital
+
+- **ADRES, giro directo** [V]: `adres.gov.co/analitica/giro-directo`, un Power BI público. Trae lo que cada EPS gira a
+  cada IPS (por NIT) por fecha de giro, desde 2018, con ~1 semana de rezago. **El SES (NIT 890807591) aparece.** Se
+  consulta por una API no documentada del Power BI: hay que decidir si se acepta (pendiente (f) del HANDOFF). Es ruidosa
+  (2-4 giros al mes) y no se desplomó antes del cierre de noviembre de 2025. Sirve como covariable de liquidez, no como
+  alarma.
+- **SECOP II** (`jbjy-vk9h`) [V]: no hay contratos del SES con Nueva EPS ni con Sura (el SES es privado).
+- Cartera por IPS (Circular 030) y actas de conciliación: no son públicas (PISIS, con usuario).
+- **Dentro del hospital:** `DWSES.GEN_CARTERA` (cartera por tercero, días de atraso, saldo) está en el diccionario de la
+  base. No se ha consultado.
+
+### Situación de cada EPS
+
+- **PQRD de la Supersalud** [V]:
+  - Excel mensuales en `docs.supersalud.gov.co/PortalWeb/ProteccionUsuario/EstadisticasPQRD/` con tasa por 10.000
+    afiliados por EPS, más Caldas y Manizales. Los informes ejecutivos van desde abr-2018 y los que traen municipio,
+    desde 2023. Rezago de 3-4 semanas; usar `curl --ssl-no-revoke`.
+  - Microdatos en `mapas.supersalud.gov.co/arcgisportal`, 2017 a 2025-S2, con EPS × municipio. Traen un ID seudonimizado
+    y la edad: **agregar al descargar**.
+- **Medidas especiales** [V]: los Excel CTFT21 traen, en cada fila vigente, la cadena completa de resoluciones con
+  fecha. La biblioteca de resoluciones se consulta por SharePoint REST sin autenticación
+  (`docs.supersalud.gov.co/PortalWeb/Juridica/_api/web/lists/getbytitle('Resoluciones')/items`, 3.203 registros desde
+  2007). Sirve para enterarse a diario. **Sanitas:** la Corte (SU-277) dejó sin efecto su intervención el 26-jun-2025 y
+  la devolución empezó hacia sep-2025; eso resuelve la discrepancia con FENIX.
+- **Afiliados por EPS × municipio**:
+  - Tableau de MinSalud con `allowDataAccess=true`: exporta CSV con `EPStab.csv?:showVizHome=no&Municipio=MANIZALES`,
+    pero la hoja de EPS solo tiene jun-2025;
+  - `wctu-xgdj` (trimestral desde 2017) ahora es **privado**.
+  - Antes de jul-2025 no hay serie pública.
+- **Estados financieros por EPS** (FT001) [V]: mensuales desde ene-2025 en el ArcGIS de la Supersalud, con unas 6
+  semanas de rezago.
+- **Tutelas** (`g3ma-7zce`) [V]: diarias por municipio, sin la EPS demandada.

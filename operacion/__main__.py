@@ -3,6 +3,7 @@
     python -m operacion --extraer       lo mismo, pero antes baja los conteos de SQL Server (solo en el hospital)
     python -m operacion --estado        solo el semáforo, sin reentrenar
     python -m operacion --modelo M3s    otra receta (por defecto C0r; ver docs/OPERACION.md)
+    python -m operacion --ajustar       reaplica el registro de la red de hoy a la última corrida, sin reentrenar
 
 Después: streamlit run operacion/tablero.py
 """
@@ -17,7 +18,13 @@ def main(argv=None):
     ap.add_argument("--extraer", action="store_true", help="bajar los conteos de SQL Server antes de predecir")
     ap.add_argument("--estado", action="store_true", help="solo verificar y calcular el semáforo")
     ap.add_argument("--modelo", default=op.MODELO, choices=["C0r", "M3s"])
+    ap.add_argument("--ajustar", action="store_true",
+                    help="reaplicar datos/eventos_red.csv a la última corrida, sin reentrenar (uso diario)")
     a = ap.parse_args(argv)
+    if a.ajustar:
+        d, nuevo = op.ajustar(a.modelo)
+        print(f"{'Guardado' if nuevo else 'Ya existía el de hoy (no se rehace)'}: {d}")
+        return 0
     if a.extraer:
         print("Bajando conteos agregados de la base..."); op.extraer()
     if not a.estado:

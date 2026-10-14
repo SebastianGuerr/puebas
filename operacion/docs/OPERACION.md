@@ -21,6 +21,7 @@ Es una herramienta que **informa** a urgencias de cuántas personas van a pedir 
 | Ciclo sin bajar datos | `python -m operacion` | Si la extracción la hace otra persona |
 | Solo el semáforo | `python -m operacion --estado` | Para revisar sin reentrenar |
 | Abrir el tablero | `operacion\tablero.cmd` (equivale a `streamlit run operacion/tablero.py`) | Cuando se quiera mirar |
+| Corregir por la red de urgencias, sin reentrenar | Anotar el episodio en `datos/eventos_red.csv` y correr `python -m operacion --ajustar` | El día que un hospital de Manizales anuncie un cierre o una reapertura a una aseguradora |
 
 El ciclo completo tarda unos 2 minutos sin la extracción. Hace seis cosas, en orden:
 1. **Extrae los datos (opcional).** Baja de SQL Server solo **conteos agregados**: triages por día, hora, nivel,
@@ -84,6 +85,64 @@ python calendario_colombia.py --fin 2035-12-31
 Después hay que revisar que los festivos nuevos de Colombia estén. La librería `holidays` los trae, pero una ley
 nueva puede tardar en llegar.
 
+## La red de urgencias: el registro que se mantiene a mano
+
+**Qué es.** `datos/eventos_red.csv` es la lista de episodios en los que un hospital de Manizales cierra, restringe o
+reabre la atención a una aseguradora. El SES es uno más de la lista. El pronóstico la usa para corregir el día y la
+semana **sin reentrenar**. Se mide así:
+- **cuánto baja o sube Nueva EPS** con cada tipo de episodio, comparada con Sura, que no tiene episodios;
+- se aplica **solo mientras el episodio está en curso**;
+- **el año no cambia.**
+
+El porqué y la evidencia están en `docs/CONTEXTO.md` (entrada del 2026-10-14) y la regla preregistrada en
+`patrones/datos/variables.csv` (fila `red_de_urgencias`).
+
+**Cuándo anotar.** El día en que se **anuncia** un episodio, no cuando empieza, y otra vez cuando se anuncia su fin.
+Las fuentes con fecha son:
+- los boletines de la Secretaría de Salud en `centrodeinformacion.manizales.gov.co`;
+- la sección de salud de La Patria;
+- BC Noticias.
+
+**Cómo anotar.** Una fila por episodio:
+
+| Columna | Qué poner |
+|---|---|
+| `id` | E + número correlativo |
+| `prestador` | Nombre corto: SES, Santa Sofía, Avidanti, Infantil, San Isidro, Ospedale… |
+| `eps` | `nueva_eps`, `otra_eps` o `todas` (hoy solo cuenta `nueva_eps`) |
+| `tipo` | `solo_urgencias_vitales`, `cierre_total`, `cierre_urgencias`, `restriccion_no_urgente`, `alerta_hospitalaria` o `amenaza_sin_ejecutar` |
+| `alcance_urgencias` | `si` si las urgencias **no vitales** quedan cerradas para esa EPS; `no` si siguen abiertas; `desconocido` |
+| `fecha_inicio` / `fecha_anuncio` | Día en que entra en vigor / día en que se publicó la primera noticia |
+| `fecha_fin` / `fecha_anuncio_fin` | Reapertura / día en que se publicó. **En blanco mientras no se sepa:** el modelo supone que sigue |
+| `fuente_inicio`, `fuente_fin`, `nota` | URL y una frase con la cita que sostiene las fechas |
+
+**Dos fuentes, cada una para lo suyo (versión 2, en operación desde el 2026-10-14).**
+- **Lo que ya pasó lo mide la base.** Los ingresos **no urgentes** de Nueva EPS en el SES caen casi a cero cuando el
+  SES la deja solo con urgencias vitales, y vuelven cuando reabre. Se bajan cada semana con la extracción
+  (`salidas/ingresos_entidad.parquet`). Si falta ese archivo, el ajuste no se aplica y la operación lo avisa.
+- **Lo que viene lo dice el registro:** cierres o reaperturas **anunciados** que todavía no se ven en los datos.
+
+La versión 1 usaba el registro también para el pasado y falló: una fecha de fin mal deducida duplicó a Nueva EPS en
+abril de 2026.
+
+**Qué cuenta del registro.** Las filas de Nueva EPS:
+- si el prestador es el SES con `solo_urgencias_vitales`, `cierre_total` o `cierre_urgencias` y el episodio empieza
+  (o termina) después del último dato, mueve el estado del SES;
+- si es otro prestador con `alcance_urgencias = si`, cuenta como un hospital más cerrado, **solo mientras el SES
+  atiende a Nueva EPS** (si el SES no la recibe, los pacientes desviados no llegan aquí).
+
+Las alertas y las amenazas no ejecutadas se muestran como contexto, pero no corrigen. Un tipo de episodio que nunca ha
+ocurrido no corrige nada hasta que haya pasado al menos dos semanas con datos: no se ajusta por algo que nunca se ha
+visto.
+
+**Después de anotar:** `python -m operacion --ajustar` rehace los días que vienen de la última corrida con el registro
+de hoy. No reentrena. Guarda `salidas/operacion/corridas/<corrida>/ajustes/<fecha_hora>.parquet` (ninguno se rehace) y
+el tablero muestra el último.
+
+**Qué tanto ayuda** (validación de 2025-2026, a 15-21 días): en 2026 el error del día pasa de 11,6 % a 10,2 % y el de
+Nueva EPS de 25,6 % a 20,3 %. En julio de 2026, con el cierre anunciado del SES, pasa de 15,2 % a 6,8 %. No anticipa
+una reapertura que nadie anunció: esa se ve cuando llegan los datos.
+
 ## El semáforo: qué significa y qué hacer
 
 | Señal | Verde | Amarillo | Rojo | Qué hacer |
@@ -102,8 +161,9 @@ primeras semanas.
 ## Lo que no hace bien, dicho de frente
 
 - **Los cambios de convenio de Nueva EPS.** Es la aseguradora más grande. Su volumen salta entre un 30 y un 50 %
-  cuando se suspende o se reanuda la atención, y ningún dato pasado lo anticipa: en esos meses su rango acertó el 5 %.
-  Lo que lo arreglaría es **registrar con fecha el estado del convenio**, conocido antes. Eso no está en la base.
+  cuando se suspende o se reanuda la atención, y ningún dato del triage lo anticipa: en esos meses su rango acertó el 5 %.
+  Desde el 2026-10-14 se registran con fecha en `datos/eventos_red.csv` (ver «La red de urgencias»). La corrección solo
+  sirve si alguien mantiene el registro al día.
 - **Los días puntuales de pico.** El modelo acierta el nivel de la semana. Decir qué día concreto va a ser
   excepcionalmente alto no le gana al calendario.
 - **Las aseguradoras pequeñas por hora.** Con 2 o 3 pacientes de ARL al día, la hora es azar. Se informan por día y
@@ -120,4 +180,6 @@ primeras semanas.
 | `notebooks/semana.py`, `pronostico.py` | Los modelos (C0r y M3s) |
 | `notebooks/reparto.py` | El reparto por hora y jornada |
 | `notebooks/aseguradoras.py` | El reparto por aseguradora |
+| `notebooks/red.py` | El ajuste por la red de urgencias y la cadena total → horas → aseguradoras por hora |
+| `datos/eventos_red.csv` | El registro de episodios de la red, escrito a mano |
 | `salidas/operacion/corridas/` | Cada predicción guardada. Se versiona en git como constancia de la fecha |

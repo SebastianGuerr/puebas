@@ -4,6 +4,7 @@ Las consultas. Todas agregadas, todas sobre columnas no sensibles.
     python -m extraccion --esquema      lista columnas y las clasifica
     python -m extraccion --cobertura    que esta lleno y desde cuando
     python -m extraccion --series       escribe salidas/*.parquet
+    python -m extraccion --ingresos     solo salidas/ingresos_entidad.parquet (estado medido del convenio)
 
 CADA CONSULTA VA CON SU GROUP BY. NO HAY NINGUNA QUE DEVUELVA FILAS DE PACIENTE.
     Es lo que hace que esto se pueda correr sin revisar nada: el agregado mas fino
@@ -145,6 +146,33 @@ def entidad(eng, destino):
                  n.OID, n.ENTNOMBRE, n.ENTTIPENT""", eng)
     tabla["dia"] = pd.to_datetime(tabla["dia"])
     tabla.to_parquet(destino / "triage_entidad.parquet", index=False)
+    print(f"{len(tabla):,} filas")
+
+
+def ingresos(eng, destino):
+    """
+    Ingresos al hospital por dia x tipo de ingreso x entidad administradora (fila red_de_urgencias_v2).
+
+    Mide el estado real del convenio con cada EPS: cuando el SES le cierra los servicios
+    generales, sus ingresos que NO vienen de triage (los no urgentes: 83 % de 2025-2026) caen
+    casi a cero y vuelven al reabrir; las urgencias vitales siguen (CONTEXTO, 2026-10-14 (3)
+    y (4)). Columnas: AINFECING, AINTIPING, GEENENTADM y si HCENTRIAGE esta lleno (la llave al
+    triage solo se usa como marca 0/1, no sale). GENPACIEN, AINCONSEC y GEENUSUARIO no se
+    tocan. La base no trae catalogo de AINTIPING: 1 y 2 se bajan tal cual. La entidad es una ORGANIZACION; la granularidad (dia x entidad) es la misma de
+    triage_entidad, que se baja sin supresion: un conteo por EPS y dia no identifica a nadie.
+    """
+    destino.mkdir(parents=True, exist_ok=True)
+    print("  ingresos por dia x tipo x entidad...", end=" ", flush=True)
+    tabla = pd.read_sql("""
+        SELECT CAST(i.AINFECING AS DATE) AS dia, i.AINTIPING AS tipo_ingreso,
+               CASE WHEN i.HCENTRIAGE IS NOT NULL AND i.HCENTRIAGE <> 0 THEN 1 ELSE 0 END AS por_triage,
+               i.GEENENTADM AS entidad_oid, COUNT(*) AS n
+        FROM dbo.DIM_INGRESO i
+        WHERE i.AINFECING IS NOT NULL AND i.AINFECING >= '2020-01-01'
+        GROUP BY CAST(i.AINFECING AS DATE), i.AINTIPING,
+                 CASE WHEN i.HCENTRIAGE IS NOT NULL AND i.HCENTRIAGE <> 0 THEN 1 ELSE 0 END, i.GEENENTADM""", eng)
+    tabla["dia"] = pd.to_datetime(tabla["dia"])
+    tabla.to_parquet(destino / "ingresos_entidad.parquet", index=False)
     print(f"{len(tabla):,} filas")
 
 
@@ -321,11 +349,13 @@ def main(argv=None):
     parser.add_argument("--series", action="store_true")
     parser.add_argument("--entidad", action="store_true",
                         help="solo la serie por entidad administradora (EPS, SOAT, ARL)")
+    parser.add_argument("--ingresos", action="store_true",
+                        help="ingresos por dia x tipo x entidad: el estado medido del convenio con cada EPS")
     parser.add_argument("--perfil", action="store_true",
                         help="perfil del hospital: ingreso, area, causa, CIE-10, remisiones (solo agregados)")
     args = parser.parse_args(argv)
 
-    if not (args.esquema or args.cobertura or args.series or args.entidad or args.perfil):
+    if not (args.esquema or args.cobertura or args.series or args.entidad or args.ingresos or args.perfil):
         parser.print_help()
         return 1
 
@@ -339,6 +369,8 @@ def main(argv=None):
         series(eng, salidas)
     if args.series or args.entidad:
         entidad(eng, salidas)
+    if args.series or args.ingresos:
+        ingresos(eng, salidas)
     if args.perfil:
         perfil(eng, salidas)
     return 0
