@@ -13,24 +13,31 @@ Es una herramienta que **informa** a urgencias de cuántas personas van a pedir 
 
 **No asigna turnos.** Urgencias decide el personal con esta información.
 
+Cada semana corren dos modelos desde los mismos datos: **M3s**, el principal, que es el que ve urgencias, y **C0r**, la
+comparación, que sirve de vara (ver «El modelo M3s, con C0r al lado como vara»).
+
 ## Cómo se usa
 
 | Qué | Comando (desde la carpeta del proyecto) | Cuándo |
 |---|---|---|
 | Ciclo completo con datos nuevos | `operacion\semanal.cmd` (equivale a `python -m operacion --extraer`) | Una vez por semana, el lunes temprano |
 | Ciclo sin bajar datos | `python -m operacion` | Si la extracción la hace otra persona |
+| Solo un modelo | `python -m operacion --modelo C0r` (o `M3s`) | Para rehacer uno solo; sin `--modelo` corren los dos |
 | Solo el semáforo | `python -m operacion --estado` | Para revisar sin reentrenar |
 | Abrir el tablero | `operacion\tablero.cmd` (equivale a `streamlit run operacion/tablero.py`) | Cuando se quiera mirar |
-| Corregir por la red de urgencias, sin reentrenar | Anotar el episodio en `datos/eventos_red.csv` y correr `python -m operacion --ajustar` | El día que un hospital de Manizales anuncie un cierre o una reapertura a una aseguradora |
+| Corregir por la red de urgencias, sin reentrenar | Anotar el episodio en `datos/eventos_red.csv` y correr `python -m operacion --ajustar` (ajusta la última corrida de los dos modelos) | El día que un hospital de Manizales anuncie un cierre o una reapertura a una aseguradora |
+| Poner al día el contexto externo de M3s | `python -m contexto` (lo corre su tarea programada) | Antes del ciclo semanal; ver «El modelo M3s» |
 
-El ciclo completo tarda unos 2 minutos sin la extracción. Hace seis cosas, en orden:
+El ciclo completo tarda unos 10 minutos sin la extracción (medido el 2026-10-15, horizonte de 78 días: M3s 373 s, C0r 229 s). Hace seis cosas, en orden:
 1. **Extrae los datos (opcional).** Baja de SQL Server solo **conteos agregados**: triages por día, hora, nivel,
    banda de edad y aseguradora. Nunca baja nombres, documentos ni texto clínico. El protocolo está en
    `extraccion/__init__.py`.
 2. **Corta el último día.** La extracción corre de día, así que el último día siempre está a medias.
-3. **Reentrena** el modelo desde cero con todo lo conocido. La receta es fija y no vuelve a elegir variables.
-4. **Predice los 28 días siguientes y los guarda** en `salidas/operacion/corridas/<fecha>_<modelo>/`. Una corrida
-   guardada no se rehace: es la prueba de lo que se dijo antes de que pasara.
+3. **Reentrena** los dos modelos desde cero con todo lo conocido, uno detrás de otro (el equipo solo aguanta una
+   cosa pesada a la vez): primero M3s y después C0r. La receta es fija y no vuelve a elegir variables.
+4. **Predice hasta el 31 de diciembre (mínimo 28 días, máximo 120) y guarda las dos corridas** en
+   `salidas/operacion/corridas/<fecha>_M3s/` y `<fecha>_C0r/`. Una corrida guardada no se rehace: es la prueba de lo
+   que se dijo antes de que pasara. Si ya existe la corrida de ese origen, ese modelo ni siquiera se reentrena.
 5. **Verifica** las corridas anteriores contra lo que ya ocurrió (`salidas/operacion/verificacion.parquet`).
 6. **Calcula el semáforo** (`salidas/operacion/estado.json`), que el tablero muestra arriba.
 
@@ -58,13 +65,54 @@ sobrepredice 2026 de forma sistemática. Reentrenar con la misma receta no es lo
 
 La validación de 2025-2026 reajustaba cada 4 semanas con esta misma receta. Eso es lo que se midió.
 
-**El modelo C0r, y no el M3s.** C0r usa solo el triage y el calendario de festivos. M3s añade la Feria, las fiestas de
-los pueblos, los desastres, la seguridad y la salud pública, pero:
-- esos calendarios se mantienen a mano y terminan en 2026: sin quien los actualice, M3s se degrada **sin avisar**;
-- en la prueba que corrige por haber elegido entre muchos diseños, M3 no se separa de C0r;
-- en la semana prospectiva del 5 al 11 de octubre de 2026, C0r tuvo un error del 7,3 % y M3s del 6,8 %.
+**El modelo M3s, con C0r al lado como vara (desde el 2026-10-15).**
+- **C0r** usa solo el triage y el calendario de festivos: día de la semana, festivos, estación, nivel reciente y
+  memoria de las últimas semanas.
+- **M3s** es C0r más el contexto externo, en la forma en que se midió (`notebooks/mecanismos.py`): la Feria de
+  Manizales, las fiestas de los pueblos lejanos, las noches del 7, 24 y 31 de diciembre y sus días siguientes, los
+  terremotos con daños, el paro de 2021, las olas de salud pública, el estado de la red y la seguridad (MinDefensa).
+  Es el que contesta «por qué» va a subir un día, que es lo que pide el proyecto; C0r se acerca a la proyección del
+  calendario que `CLAUDE.md` descarta como producto.
 
-M3s sigue disponible con `--modelo M3s` si alguien mantiene sus calendarios.
+*Historia: esto revierte la decisión del 2026-10-13.* Ese día se puso C0r como principal y M3s quedó como opción. El
+motivo no fue de acierto sino de mantenimiento: los calendarios de M3s se mantenían a mano y se acababan en 2026, y sin
+nadie que los pusiera al día M3s se habría degradado **sin avisar**. El 2026-10-15 el propietario decidió automatizarlos:
+cada fuente tiene su actualizador, los calendarios llegan a 2027-2028 y un orquestador, `python -m contexto`, los corre
+todos y deja la frescura de cada fuente en `salidas/contexto/frescura.csv`. Con eso cayó el motivo.
+
+La evidencia a favor de M3s es poca y no es una promesa:
+- gana a C0r en la validación de 2025 (criterio 5,98 contra 4,46), pero 2025 es el año con el que se eligió;
+- empata en 2026, y en la prueba que corrige por haber elegido entre muchos diseños (SPA) no se separa de C0r;
+- en la semana prospectiva del 5 al 11 de octubre de 2026, M3s tuvo un error del 6,8 % y C0r del 7,3 %.
+
+Por eso **C0r sigue corriendo cada semana**, desde el mismo origen y con los mismos datos, y se guarda igual que M3s.
+La regla está preregistrada (fila `operacion_m3s_contexto_automatico` de `patrones/datos/variables.csv`):
+- se comparan los **días comunes**: los que los dos modelos predijeron con 15 a 21 días de anticipación, desde el
+  mismo origen, en una corrida guardada antes de que empezara el día;
+- se mide el **error del día** y el **% de días dentro del rango del 80 %**; decide solo el error;
+- **regla de vuelta atrás:** a los 84 días comunes (12 semanas) y después cada 84 más, sobre todo lo acumulado, si
+  M3s tiene **más** error del día que C0r, la operación vuelve a C0r: se cambia `MODELO = "C0r"` y
+  `COMPARACION = "M3s"` en `operacion/__init__.py`. Volver después a M3s exige una decisión nueva, escrita en
+  `docs/CONTEXTO.md` y preregistrada;
+- **por qué 12 semanas y no 8:** M3s solo difiere de C0r en los días con mecanismo. Con el primer día común hacia el
+  27 de octubre de 2026, 8 semanas acabarían antes de las noches de diciembre y de la Feria de enero, y se decidiría
+  con los días en que los dos dicen casi lo mismo. Además, el error de días seguidos está correlacionado (0,47): 84
+  días equivalen a unos 30 independientes.
+
+La señal «Comparación» del semáforo lleva esta cuenta. Con los cientos de días que hacen falta para separar medio
+punto de error, la regla no prueba que uno sea mejor: es una salvaguarda contra un M3s que empeore de forma sostenida.
+
+**Qué pasa si el contexto se atrasa.** M3s usa los calendarios **como estén** el día de la corrida. Si el orquestador
+deja de correr, los eventos futuros que no estén escritos no existen para el modelo, y M3s se va pareciendo a C0r. La
+señal «Contexto externo» lo avisa con la frescura de cada fuente. Si se queda en rojo semanas, la salida segura es
+correr la operación con `--modelo C0r` y poner `MODELO = "C0r"` hasta que vuelva el contexto.
+
+**Más allá de 28 días con M3s.** Las variables de M3s están construidas para cualquier adelanto: las que se saben de
+antemano (Feria, fiestas, noches de diciembre) se leen del calendario del día predicho, y las que se saben al
+ocurrir (catástrofe, salud pública, red, seguridad) se toman con el valor del día de los datos. El clima de rezago
+corto, que exigía predecir como mucho 7 días, está fuera de M3s (`semanal=True` en `pronostico.EXPERIMENTOS["m3s"]`;
+`mecanismos.contexto` comprueba `H <= 7` solo cuando falta esa marca).
+Las variables de red de M3s leen el triage por aseguradora **hasta el origen** de la corrida (`indices.FIN_RED`, que fija `operacion._preparar`); antes del 2026-10-15 quedaban congeladas en el 20 de septiembre. Se comprobó que la fila que se predice, a cualquier adelanto entre 1 y 78 días, no cambia si se altera todo lo posterior al origen.
 
 **28 días.** Con datos semanales, el aviso útil está a 15-21 días. 28 cubre el mes siguiente con margen. Más allá, el
 error crece y lo que manda es el estado de la red de salud, que nadie conoce de antemano.
@@ -143,6 +191,16 @@ el tablero muestra el último.
 Nueva EPS de 25,6 % a 20,3 %. En julio de 2026, con el cierre anunciado del SES, pasa de 15,2 % a 6,8 %. No anticipa
 una reapertura que nadie anunció: esa se ve cuando llegan los datos.
 
+## Después de un golpe: el rango se ensancha solo
+
+Cuando los últimos datos muestran un quiebre del total, el rango del 80 % de esa corrida se ensancha automáticamente.
+El quiebre se define así: la media de los últimos 7 días, ajustada por día de la semana, se aleja de la de los últimos
+28 más de 2 desviaciones de lo habitual. Pasa en pocas corridas (7 de 90 en 2025-2026). En las semanas posteriores a
+un golpe, los días dentro del rango subieron del 54 % al 61 %.
+
+No se mueve el número central. Se probó reanclarlo a la última semana y empeoró: un golpe pasajero, como el sismo, se
+confundía con un cambio de nivel.
+
 ## El semáforo: qué significa y qué hacer
 
 | Señal | Verde | Amarillo | Rojo | Qué hacer |
@@ -151,6 +209,12 @@ una reapertura que nadie anunció: esa se ve cuando llegan los datos.
 | Error del día (últimos 28 días verificados) | ≤ 12 % | 12-18 % | > 18 % | Si dura más de dos semanas, buscar un cambio de la red (cierres, convenios) |
 | Rango del 80 % (mismos días) | ≥ 65 % dentro | 50-65 % | < 50 % | El rango está siendo demasiado optimista: leer el número como orientativo |
 | Nueva EPS | cambio < 20 % | cambio ≥ 20 % | — | Su convenio cambió: el total y el reparto por aseguradora fallan unas semanas |
+| Contexto externo | todas las fuentes al día | alguna fuente en amarillo, o en rojo una que M3s no usa | en rojo una fuente que usa M3s | Revisar `python -m contexto` y su tarea programada; si sigue en rojo, correr con `--modelo C0r` |
+| Comparación (no entra en el estado general) | error de M3s ≤ C0r en los días comunes | error de M3s mayor, antes de los 84 días | la regla de vuelta atrás se cumplió | Rojo: poner `MODELO = "C0r"` y `COMPARACION = "M3s"` y anotarlo en `docs/CONTEXTO.md` |
+
+El error del día y el rango son los del modelo principal (M3s). «Comparación» queda en gris con menos de 14 días
+comunes y no cambia el estado general que ve urgencias, porque no dice si el número es fiable sino cuál de los dos
+modelos conviene; «Contexto externo» queda en gris si el orquestador todavía no ha escrito `frescura.csv`.
 
 Los umbrales salen de la validación de 2025-2026: el error del día estuvo entre el 8 y el 12 %, y el rango cubrió
 entre el 71 y el 84 %. Solo cuentan los días predichos **antes** de empezar.
@@ -178,6 +242,8 @@ primeras semanas.
 | `operacion/tablero.py` | El tablero de Streamlit. Solo lee `salidas/operacion/`; no reentrena ni toca la base |
 | `operacion/semanal.cmd`, `operacion/tablero.cmd` | Lanzadores para Windows |
 | `notebooks/semana.py`, `pronostico.py` | Los modelos (C0r y M3s) |
+| `notebooks/mecanismos.py` | Las variables de contexto externo de M3s |
+| `salidas/contexto/frescura.csv` | La frescura de cada fuente externa, que escribe `python -m contexto`; la lee el semáforo |
 | `notebooks/reparto.py` | El reparto por hora y jornada |
 | `notebooks/aseguradoras.py` | El reparto por aseguradora |
 | `notebooks/red.py` | El ajuste por la red de urgencias y la cadena total → horas → aseguradoras por hora |

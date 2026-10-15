@@ -56,3 +56,43 @@ fecha_hora,fuente,accion,archivo,filas,sha256,detalle
 2026-10-05T10:56:06,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-feb-2026_caldas.csv.gz,4656,841567e41b4eaf50,cifras-afiliacion-salud-feb-2026.zip
 2026-10-05T10:56:10,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-jun-2026_caldas.csv.gz,4579,49cbd4f1e07c4542,cifras-afiliacion-salud-jun-2026.zip
 2026-10-05T10:56:13,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-afiliacion-salud-marzo-2026_caldas.csv.gz,4628,d7f9f8bb046a76f5,cifras-afiliacion-salud-marzo-2026.zip
+2026-10-15T11:24:00,powerbi,sin_cambios,,,,ultima foto 2026-10-15 (< 6 dias)
+2026-10-15T11:24:11,bdua,sin_cambios,,,,"contributivo, corte 2026-10-02"
+2026-10-15T11:24:24,bdua,sin_cambios,,,,"subsidiado, corte 2026-10-02"
+2026-10-15T11:24:27,afiliacion,nuevo,calendarios/capturas/afiliacion/cifras-sep-2026_caldas.csv.gz,4575,019a6f187c9e83c5,cifras-sep-2026.zip
+2026-10-15T11:24:29,medidas,nuevo,calendarios/capturas/medidas/2026-10-15/CTFT21-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-forzosa-administrativa-para-administrar-EPS.csv,7,b19f5d0a92eefdbc,CTFT21-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-for
+2026-10-15T11:24:30,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: CTFT21-programa-de-recuperacion.xlsx
+2026-10-15T11:24:31,medidas,nuevo,calendarios/capturas/medidas/2026-10-15/M3-FT-1 entidades-en-proceso-de-liquidacion.csv,647,2eccc864572e4f81,M3-FT-1 entidades-en-proceso-de-liquidacion.xlsx
+2026-10-15T11:24:36,medidas,nuevo,calendarios/capturas/medidas/2026-10-15/M3-FT-2 Base-de-Datos-de-Entidades-Liquidadas-no-Ordenadas-por-la-SNS.csv,503,35699b9e1bf42d67,M3-FT-2 Base-de-Datos-de-Entidades-Liquidadas-no-Ordenadas-por-la-SNS.xlsx
+2026-10-15T11:24:37,medidas,nuevo,calendarios/capturas/medidas/2026-10-15/M4-FT-16-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-forzosa-administrativa-para-administrar-IPS.csv,10,605f5db65c1b515c,M4-FT-16-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-f
+2026-10-15T11:24:37,medidas,nuevo,calendarios/capturas/medidas/2026-10-15/M4-FT-16-listado-de-entidades-en-medida-preventiva-y-entidades-en-administracion-forzosa(1).csv,2,cb31858a53440d06,M4-FT-16-listado-de-entidades-en-medida-preventiva-y-entidades-en-administracion
+2026-10-15T11:24:38,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M4-FT-17 listado-de-entidades-liquidadas-por-Intervencion-fo
+2026-10-15T11:24:39,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M4-FT-18 entidades-en-intervencion.xlsx
+2026-10-15T11:24:40,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M5-FT-26_listado-de-entidades-en-acuerdo-de-reestructuracion
+2026-10-15T11:24:40,oni,sin_cambios,,,,
+2026-10-15T11:48:15,powerbi,sin_cambios,,,,ultima foto 2026-10-15 (< 6 dias)
+2026-10-15T11:48:23,bdua,sin_cambios,,,,"contributivo, corte 2026-10-02"
+2026-10-15T11:48:35,bdua,sin_cambios,,,,"subsidiado, corte 2026-10-02"
+2026-10-15T11:48:39,medidas,sin_cambios,,,,CTFT21-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-for
+2026-10-15T11:48:40,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: CTFT21-programa-de-recuperacion.xlsx
+2026-10-15T11:48:41,medidas,sin_cambios,,,,M3-FT-1 entidades-en-proceso-de-liquidacion.xlsx
+2026-10-15T11:48:41,medidas,sin_cambios,,,,M3-FT-2 Base-de-Datos-de-Entidades-Liquidadas-no-Ordenadas-por-la-SNS.xlsx
+2026-10-15T11:48:42,medidas,sin_cambios,,,,M4-FT-16-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-f
+2026-10-15T11:48:42,medidas,sin_cambios,,,,M4-FT-16-listado-de-entidades-en-medida-preventiva-y-entidades-en-administracion
+2026-10-15T11:48:43,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M4-FT-17 listado-de-entidades-liquidadas-por-Intervencion-fo
+2026-10-15T11:48:44,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M4-FT-18 entidades-en-intervencion.xlsx
+2026-10-15T11:48:44,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M5-FT-26_listado-de-entidades-en-acuerdo-de-reestructuracion
+2026-10-15T11:48:45,oni,sin_cambios,,,,
+2026-10-15T12:48:20,powerbi,sin_cambios,,,,ultima foto 2026-10-15 (< 6 dias)
+2026-10-15T12:48:27,bdua,sin_cambios,,,,"contributivo, corte 2026-10-02"
+2026-10-15T12:48:39,bdua,sin_cambios,,,,"subsidiado, corte 2026-10-02"
+2026-10-15T12:48:45,medidas,sin_cambios,,,,CTFT21-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-for
+2026-10-15T12:48:46,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: CTFT21-programa-de-recuperacion.xlsx
+2026-10-15T12:48:46,medidas,sin_cambios,,,,M3-FT-1 entidades-en-proceso-de-liquidacion.xlsx
+2026-10-15T12:48:47,medidas,sin_cambios,,,,M3-FT-2 Base-de-Datos-de-Entidades-Liquidadas-no-Ordenadas-por-la-SNS.xlsx
+2026-10-15T12:48:48,medidas,sin_cambios,,,,M4-FT-16-Listado-de-entidades-en-medida-preventiva-y-entidades-en-intervencion-f
+2026-10-15T12:48:48,medidas,sin_cambios,,,,M4-FT-16-listado-de-entidades-en-medida-preventiva-y-entidades-en-administracion
+2026-10-15T12:48:49,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M4-FT-17 listado-de-entidades-liquidadas-por-Intervencion-fo
+2026-10-15T12:48:49,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M4-FT-18 entidades-en-intervencion.xlsx
+2026-10-15T12:48:50,medidas,sin_cambios,,,,tabla limpia igual a 2026-10-05: M5-FT-26_listado-de-entidades-en-acuerdo-de-reestructuracion
+2026-10-15T12:48:50,oni,sin_cambios,,,,

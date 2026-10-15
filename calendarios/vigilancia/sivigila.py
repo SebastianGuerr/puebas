@@ -1,7 +1,8 @@
 """
 Microdatos SIVIGILA del INS -> series semanales de vigilancia para Manizales.
 
-    python calendarios/vigilancia/sivigila.py                    (995 y 998, 2011-2025)
+    python calendarios/vigilancia/sivigila.py                    (995 y 998, 2011 al ano en curso)
+    python calendarios/vigilancia/sivigila.py --forzar           (acepta que cambie o falte el pasado)
     python calendarios/vigilancia/sivigila.py --sin-descargar    (solo lo que ya esta en crudo/)
     python -m calendarios.vigilancia.sivigila --solo-descargar --eventos 998
     python calendarios/vigilancia/sivigila.py --cabeceras        (solo nombres de columna)
@@ -13,6 +14,10 @@ Sale:   calendarios/vigilancia_sivigila.csv.gz               formato largo
         calendarios/vigilancia_sivigila_instituciones.csv.gz  Manizales, por UPGD (995)
         y, al final, la auditoria impresa (ver calendarios/docs/VIGILANCIA.md).
         Si una corrida no procesa un evento, sus filas se conservan del archivo previo.
+        Si el contenido no cambia, los .gz no se reescriben (calendarios/actualizacion.py).
+        Si una corrida haria desaparecer o cambiar filas que ya estaban (un rango de
+        anos mas corto, o un ano que el INS republico), se aborta sin escribir y sale
+        con codigo 1, salvo con --forzar (calendarios/docs/CAPTURAS.md).
 
 QUE EVENTOS
     995 (morbilidad por IRA, colectiva semanal): cada institucion (UPGD) notifica
@@ -875,7 +880,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--eventos", nargs="+", type=int, default=[995, 998])
     ap.add_argument("--desde", type=int, default=2011)
-    ap.add_argument("--hasta", type=int, default=2025)
+    ap.add_argument("--hasta", type=int, default=date.today().year)   # el ano que aun no existe da 404 y se salta
+    ap.add_argument("--forzar", action="store_true", help="escribe aunque cambien o falten filas del pasado")
     ap.add_argument("--solo-descargar", action="store_true")
     ap.add_argument("--cabeceras", action="store_true",
                     help="imprime solo los NOMBRES de columna de cada crudo y sale")
@@ -956,7 +962,14 @@ def main():
     largo["fecha_inicio_semana"] = pd.to_datetime(largo["fecha_inicio_semana"]).dt.date
     largo["fecha_fin_semana"] = pd.to_datetime(largo["fecha_fin_semana"]).dt.date
     largo = largo.sort_values(["evento", "ambito", "variable", "anio", "semana_epi"])
-    largo.to_csv(SALIDA, index=False, float_format="%.6g")
+    sys.path.insert(0, str(RAIZ))
+    from calendarios.actualizacion import cambios_largo, escribir_si_cambia
+    perdidas, cambiadas = cambios_largo(previo, largo, ["evento", "anio", "semana_epi", "ambito", "variable"])
+    print(f"{SALIDA.name}: frente al archivo previo, {perdidas} filas desaparecerian y {cambiadas} valores cambiarian")
+    if (perdidas or cambiadas) and not args.forzar:
+        sys.exit(f"{SALIDA.name}: no se escribe para no mover el pasado (--forzar para aceptarlo)")
+    # Sin cambios, no se toca: un .gz reescrito cambia de bytes (la cabecera lleva la hora) y git lo ve.
+    escritos = [SALIDA.name] if escribir_si_cambia(largo, SALIDA, index=False, float_format="%.6g") else []
     print(f"\n{SALIDA.name}: {len(largo)} filas; por evento: "
           + ", ".join(f"{e}: {g['anio'].min()}-{g['anio'].max()}, {g['variable'].nunique()} variables"
                       for e, g in largo.groupby("evento")))
@@ -964,13 +977,19 @@ def main():
     if r995 is not None:
         upgd, _, notas = r995
         inst = instituciones(upgd, 995)
-        inst.to_csv(SALIDA_INSTITUCIONES, index=False)
+        n_previo = len(pd.read_csv(SALIDA_INSTITUCIONES)) if SALIDA_INSTITUCIONES.exists() else 0
+        if len(inst) < n_previo and not args.forzar:
+            sys.exit(f"{SALIDA_INSTITUCIONES.name}: {len(inst)} filas contra {n_previo}; no se escribe (--forzar)")
+        if escribir_si_cambia(inst, SALIDA_INSTITUCIONES, index=False):
+            escritos.append(SALIDA_INSTITUCIONES.name)
         print(f"{SALIDA_INSTITUCIONES.name}: {len(inst)} filas, {inst['cod_upgd'].nunique()} instituciones")
         auditar(largo[largo["evento"] == 995], inst, notas)
         escalones(upgd)
         comparar_criterio_municipio(upgd)
     if r998 is not None:
         auditar_998(largo[largo["evento"] == 998], r998[2], r998[0])
+    final = f"escritos: {', '.join(escritos)}" if escritos else "sin cambios, no se toca ningun archivo"
+    print(f"\n{final}", flush=True)
 
 if __name__ == "__main__":
     main()

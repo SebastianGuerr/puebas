@@ -4,7 +4,11 @@ Calendario natural de Colombia.
 Genera una dimensión de fechas (una fila por día) con festivos oficiales,
 festividades culturales y estructura laboral.
 
-    python calendario_colombia.py --inicio 2020-01-01 --fin 2030-12-31
+    python calendarios/calendario_colombia.py      escribe calendarios/calendario_Colombia.csv (2020 a 2030)
+    python calendarios/calendario_colombia.py --inicio 2020-01-01 --fin 2030-12-31 --salida otro.csv
+
+Por defecto escribe junto a este script, se corra desde donde se corra (antes escribia en la carpeta actual).
+Se niega a escribir un calendario mas corto que el que ya hay, y no toca el archivo si no cambio.
 
 Dependencias:
     pip install pandas holidays pyarrow
@@ -13,7 +17,9 @@ Dependencias:
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import timedelta
+from pathlib import Path
 
 import holidays
 import pandas as pd
@@ -265,10 +271,14 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Calendario natural de Colombia')
     ap.add_argument('--inicio', default='2020-01-01')
     ap.add_argument('--fin', default='2030-12-31')   # 2026-10-13: hasta 2030 para que la operacion no se rompa en enero
-    ap.add_argument('--salida', default='calendario_Colombia.csv')
+    ap.add_argument('--salida', default=str(Path(__file__).resolve().parent / 'calendario_Colombia.csv'))
     args = ap.parse_args()
 
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from calendarios.actualizacion import escribir_si_cambia, proteger
     calendario = construir_calendario(args.inicio, args.fin)
-    calendario.to_csv(args.salida, index=False, encoding='utf-8-sig')
+    viejo = pd.read_csv(args.salida, usecols=['fecha']) if Path(args.salida).exists() else None
+    proteger(viejo, calendario, 'fecha', Path(args.salida).name, tolerancia=0)
+    escrito = escribir_si_cambia(calendario, args.salida, index=False, encoding='utf-8-sig')
     resumen(calendario)
-    print(f'\nGuardado en {args.salida}')
+    print(f'\n{"Guardado en" if escrito else "Sin cambios, no se toca"} {args.salida}')

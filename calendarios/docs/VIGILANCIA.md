@@ -603,3 +603,42 @@ usar la proporción, que ya es cociente.
 - El 998 del 006 (`Salida_para_rutinaria_998 2026`) no se descargó: el municipio de
   procedencia no se validó.
 - Umbral en el límite: 620 entra con 1,04; 414, 735 y 750 quedan fuera con 0,94-0,96.
+
+> **Actualizado el 2026-10-15.** La descarga semanal ya la hace la tarea programada (`CAPTURAS.md`); hay
+> carpetas del 2026-09-28, 2026-10-05 y 2026-10-15.
+
+## Actualización automática (2026-10-15)
+
+Detalle y evidencia en `CAPTURAS.md`, «Actualización incremental». Lo que cambia aquí:
+
+- **`powerbi.py` ya no deja carpetas a medias.** Una carpeta `AAAA-MM-DD` solo existe si bajaron los siete
+  archivos y ninguno trae menos filas que la descarga anterior (los dos del 006, que son de un solo año, se
+  exceptúan cuando cambia el año). Si no, lo bajado va a `powerbi/_parciales/AAAA-MM-DD/` y el proceso sale con
+  código 1. Importa porque `notebooks/indices.familias_operativas()` lee siempre la última carpeta `20*`.
+- **Si la lista `MenuReporteNivel2` no responde**, se usan las claves de la última descarga (`metadatos.json`).
+  El 2026-10-15 el portal SIVIGILA respondía 500 por falta de memoria de su servidor, también la lista
+  `Microdatos` que usa `eventos.py`, mientras el Power BI funcionaba. El `metadatos.json` anota de dónde salieron
+  las claves (`"claves"`).
+- **`sivigila.py` y `eventos.py` bajan hasta el año en curso** (antes, 2025 fijo). Mientras 2026 no esté
+  publicado, el portal da 404 y se salta.
+- **No escriben si moverían el pasado.** Si la salida nueva pierde filas o cambia valores del archivo previo, se
+  aborta con código 1 salvo con `--forzar`. Antes, `--desde 2024` reescribía el archivo solo con 2024-2025.
+  Cuando el INS publique 2026, la corrida mensual lo añadirá; si al hacerlo republica 2025 con cambios, se parará
+  y habrá que decidir.
+- **Si la lista `Microdatos` no responde, `eventos.py` usa el catálogo de la última consulta buena**
+  (`crudo/catalogo_microdatos.json`), igual que `powerbi.py` con sus claves. Cuenta como fallo de la lista un
+  error de red o HTTP, una respuesta que no es JSON y una lista vacía o sin las columnas del catálogo; el guardado
+  solo se sustituye con una lista válida y de forma atómica, así que una respuesta rota no borra el respaldo. Con
+  el catálogo guardado se intenta bajar lo que falte; si no hay nada nuevo, sale con **código 0** y la línea
+  `AVISO: portal del INS caído; sin datos nuevos; se usa lo ya descargado`. Por qué 0 y no 1: los microdatos
+  anuales llegan ~8 meses tarde, y un día sin portal no atrasa nada. Sigue saliendo con **1** si no hay catálogo
+  guardado, si el portal responde pero una descarga falla (como antes), y si el procesado movería el pasado.
+  Medido el 2026-10-15, con la lista dando 500 de verdad: la descarga del paso sale con 0 en 2 s; con la URL
+  forzada a fallar y el catálogo guardado, 0 (descarga y procesado, sin tocar ningún archivo); sin catálogo
+  guardado, 1; con `--desde 2024` (89.439 filas se perderían), 1.
+- **`sivigila.py` y `eventos.py` no reescriben sus salidas si el contenido no cambió** (`escribir_si_cambia` de
+  `calendarios/actualizacion.py`). Antes, cada corrida reescribía los `.gz` con otra hora en la cabecera gzip y
+  `git status` los daba por modificados aunque el contenido fuese el mismo. La última línea de la salida dice qué
+  se escribió (`escritos: ...` o `sin cambios, no se toca ningun archivo`): es la que el orquestador guarda como
+  detalle. Medido: dos corridas seguidas de `sivigila.py` dejan los dos `.gz` con los mismos bytes y la misma
+  fecha, y `git status` limpio.

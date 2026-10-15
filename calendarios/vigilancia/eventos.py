@@ -20,6 +20,10 @@ Sale:   calendarios/vigilancia_sivigila_eventos.csv.gz   formato largo, la misma
         calendarios/vigilancia_sivigila_eventos_censo.csv  casos de Manizales por
             evento y ano, y el estado de cada evento (integrada / marcador /
             volumen insuficiente)
+        Si el contenido no cambia, no se reescriben. Si la lista 'Microdatos' no
+        responde, se usa el catalogo de la ultima consulta buena
+        (crudo/catalogo_microdatos.json) y se sale con 0 y un AVISO; sin catalogo
+        guardado, con 1 (calendarios/docs/VIGILANCIA.md, "Actualizacion automatica").
 
 PRIVACIDAD, EN EL MISMO PASO DE LECTURA
     Cada fila se recorta a la LISTA BLANCA antes de existir en un DataFrame:
@@ -80,13 +84,44 @@ VERSION_RESUMEN = 2
 # CATALOGO Y DESCARGA
 # ==========================================================
 
+AVISO_CAIDO = "portal del INS caído; sin datos nuevos; se usa lo ya descargado"
+
+
+def lista_portal():
+    """Los elementos de la lista 'Microdatos'. Lanza si el portal falla o devuelve algo que no es el catalogo."""
+    r = requests.get(LISTA, headers={"Accept": "application/json;odata=nometadata"}, timeout=120)
+    r.raise_for_status()
+    v = r.json()["value"]
+    if not v or not all({"FileLeafRef", "CodigoEvento", "File"} <= set(x) for x in v):
+        raise ValueError(f"la lista Microdatos llego vacia o sin las columnas esperadas ({len(v)} elementos)")
+    return v
+
+
 def catalogo(refrescar=True):
-    """Lista de archivos del portal: DataFrame (evento, anio, archivo, bytes, modificado)."""
+    """Lista de archivos del portal: (DataFrame (evento, anio, archivo, bytes, modificado), caido).
+
+    Si la lista no responde (el 2026-10-15 daba 500 por falta de memoria del servidor del INS) y hay un
+    catalogo guardado de la ultima consulta buena, se usa ese, como powerbi.py con sus claves: `caido` trae
+    entonces el error. Sin catalogo guardado, el error sube y el proceso sale con codigo 1. El guardado solo
+    se sustituye con una lista valida, y de forma atomica: una respuesta rota no borra el respaldo.
+    """
+    caido = None
     if refrescar or not CATALOGO_CACHE.exists():
-        r = requests.get(LISTA, headers={"Accept": "application/json;odata=nometadata"}, timeout=120)
-        r.raise_for_status()
-        CRUDO.mkdir(parents=True, exist_ok=True)
-        CATALOGO_CACHE.write_text(json.dumps(r.json()["value"]), encoding="utf-8")
+        try:
+            v = lista_portal()
+        except Exception as e:                   # noqa: BLE001  red, 5xx, JSON roto o lista vacia
+            if not CATALOGO_CACHE.exists():
+                raise RuntimeError(f"la lista Microdatos del portal del INS no responde ({e!r:.200}) "
+                                   f"y no hay catalogo guardado en {CATALOGO_CACHE}") from e
+            caido = f"{e!r:.200}"
+            guardado = time.strftime("%Y-%m-%d", time.localtime(CATALOGO_CACHE.stat().st_mtime))
+            print(f"AVISO: la lista Microdatos del portal del INS no responde ({caido}); "
+                  f"se usa el catalogo guardado el {guardado}", flush=True)
+        else:
+            CRUDO.mkdir(parents=True, exist_ok=True)
+            tmp = CATALOGO_CACHE.with_name(CATALOGO_CACHE.name + ".tmp")
+            tmp.write_text(json.dumps(v), encoding="utf-8")
+            tmp.replace(CATALOGO_CACHE)
     v = json.loads(CATALOGO_CACHE.read_text(encoding="utf-8"))
     return pd.DataFrame({
         "evento": [int(x["CodigoEvento"]) for x in v],
@@ -94,21 +129,33 @@ def catalogo(refrescar=True):
         "archivo": [x["FileLeafRef"] for x in v],
         "bytes": [int(x["File"]["Length"]) for x in v],
         "modificado": [x["Modified"] for x in v],
-    }).sort_values(["evento", "anio"]).reset_index(drop=True)
+    }).sort_values(["evento", "anio"]).reset_index(drop=True), caido
 
 
-def descargar_plan(plan):
-    """Baja, de uno en uno, los archivos del plan (evento, anio). Reanudable: ver S.descargar."""
+def descargar_plan(plan, tolerar=False):
+    """Baja, de uno en uno, los archivos del plan (evento, anio). Reanudable: ver S.descargar.
+
+    Devuelve (bajados, fallidos). Con tolerar=True (catalogo de respaldo: el portal ya fallo) un archivo que
+    no baja se anota y se sigue; sin el, la excepcion sube como siempre."""
     total = plan["bytes"].sum()
     hecho = 0
+    bajados, fallidos = [], []
     for fila in plan.itertuples():
         destino = CRUDO / fila.archivo
         if not (destino.exists() and destino.stat().st_size == fila.bytes):
             t = time.time()
-            S.descargar(fila.evento, fila.anio)
+            try:
+                if S.descargar(fila.evento, fila.anio) is not None:
+                    bajados.append(fila.archivo)
+            except Exception as e:               # noqa: BLE001
+                if not tolerar:
+                    raise
+                fallidos.append(fila.archivo)
+                print(f"    {fila.archivo}: no se pudo bajar con el portal caido ({e!r:.150})", flush=True)
             print(f"    ({time.time() - t:.0f} s)", flush=True)
         hecho += fila.bytes
         print(f"[{hecho / 1e6:.0f}/{total / 1e6:.0f} MB] {fila.archivo}", flush=True)
+    return bajados, fallidos
 
 
 # ==========================================================
@@ -591,7 +638,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[1])
     ap.add_argument("--eventos", nargs="+", type=int, help="por defecto, todo el catalogo individual")
     ap.add_argument("--desde", type=int, default=2007)
-    ap.add_argument("--hasta", type=int, default=2025)
+    ap.add_argument("--hasta", type=int, default=time.localtime().tm_year)   # lo no publicado no esta en el catalogo
+    ap.add_argument("--forzar", action="store_true", help="escribe aunque cambien o falten filas del pasado")
     ap.add_argument("--descargar", action="store_true", help="solo descarga, de menor a mayor")
     ap.add_argument("--seleccionados", action="store_true",
                     help="con --descargar: solo los eventos que el censo integra o marca")
@@ -600,7 +648,7 @@ def main():
     ap.add_argument("--sin-red", action="store_true", help="usa el catalogo guardado en crudo/")
     args = ap.parse_args()
 
-    cat = catalogo(refrescar=not args.sin_red)
+    cat, caido = catalogo(refrescar=not args.sin_red)
     cat = cat[~cat["evento"].isin(COLECTIVOS) & cat["anio"].between(args.desde, args.hasta)]
     if args.eventos:
         cat = cat[cat["evento"].isin(args.eventos)]
@@ -610,17 +658,33 @@ def main():
             plan = plan[plan["evento"].isin(seleccionados(pd.read_csv(CENSO)))]
         if args.ultimos:
             plan = plan[plan.groupby("evento")["anio"].rank(ascending=False) <= args.ultimos]
-        descargar_plan(plan.sort_values("bytes"))
+        bajados, fallidos = descargar_plan(plan.sort_values("bytes"), tolerar=caido is not None)
+        if caido is not None:
+            # Los microdatos anuales llegan ~8 meses tarde: un dia sin portal no es un fallo de frescura.
+            aviso = (AVISO_CAIDO if not bajados else
+                     f"portal del INS caido; con el catalogo guardado se bajaron {len(bajados)} archivos")
+            if fallidos:
+                aviso += f" ({len(fallidos)} no bajaron: {', '.join(fallidos[:5])})"
+            print(f"AVISO: {aviso}", flush=True)
         return
 
     hechos = procesar_todo(cat)
     c = censo(cat, hechos)
-    c.to_csv(CENSO, index=False)
     largo = series(c, hechos, cat)
-    largo.to_csv(SALIDA, index=False)
+    sys.path.insert(0, str(AQUI.parents[1]))
+    from calendarios.actualizacion import cambios_largo, escribir_si_cambia
+    previo = pd.read_csv(SALIDA) if SALIDA.exists() else None
+    perdidas, cambiadas = cambios_largo(previo, largo, ["evento", "anio", "semana_epi", "ambito", "variable"])
+    print(f"{SALIDA.name}: frente al archivo previo, {perdidas} filas desaparecerian y {cambiadas} valores cambiarian")
+    if (perdidas or cambiadas) and not args.forzar:
+        sys.exit(f"{SALIDA.name}: no se escribe para no mover el pasado (--forzar para aceptarlo)")
+    # Sin cambios, no se tocan: un .gz reescrito cambia de bytes (la cabecera lleva la hora) y git lo ve.
+    escritos = [r.name for t, r in ((c, CENSO), (largo, SALIDA)) if escribir_si_cambia(t, r, index=False)]
     print(f"\n{SALIDA.name}: {len(largo)} filas; eventos {sorted(largo['evento'].unique())}")
     print(f"{CENSO.name}: {len(c)} eventos")
     auditar(largo, c, hechos)
+    final = f"escritos: {', '.join(escritos)}" if escritos else "sin cambios, no se toca ningun archivo"
+    print(f"\n{final}" + (f" | AVISO: {AVISO_CAIDO}" if caido is not None else ""), flush=True)
 
 
 if __name__ == "__main__":

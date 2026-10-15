@@ -136,8 +136,14 @@ def resoluciones_nueva_eps():
     return sorted({pd.Timestamp(int(a), MES[mes], int(d)) for d, mes, a in re.findall(r"(\d{1,2}) de (\w+) del? (\d{4})", r) if mes in MES})
 
 
-def red_diaria(fin="2026-09-20"):
+# Ultimo dia de triage que leen las variables de red. Los cuadernos quedan cortados en el 20-sep a proposito; la
+# operacion y el orquestador de contexto lo mueven al ultimo dia completo (docs/CONTEXTO.md, 2026-10-15).
+FIN_RED = "2026-09-20"
+
+
+def red_diaria(fin=None):
     """Las 6 variables de red del cuaderno 18, por dia, conocidas ese dia (usan el triage hasta ese dia)."""
+    fin = fin or FIN_RED
     te = pd.read_parquet(RAIZ / "salidas/triage_entidad.parquet", columns=["dia", "entidad", "n"]); te["dia"] = pd.to_datetime(te.dia)
     te["grupo"] = te.entidad.map({e: grupo_asegurador(e) for e in te.entidad.dropna().unique()}).fillna("Otras")
     D = te.pivot_table(index="dia", columns="grupo", values="n", aggfunc="sum").reindex(pd.date_range("2020-01-01", fin)).fillna(0)
@@ -227,7 +233,7 @@ def regimenes_diarios(fin="2026-09-30"):
     for _, r in de.dropna(subset=["fecha_inicio"]).iterrows():
         a = pd.Timestamp(r.fecha_inicio); b = pd.Timestamp(r.fecha_fin) if pd.notna(r.fecha_fin) else a
         R.loc[a:b, "desastre_activo"] = 1.0
-    red = red_diaria(min(fin, "2026-09-20")).reindex(dias)
+    red = red_diaria(min(fin, FIN_RED)).reindex(dias)
     p10 = red.peso_nueva_eps_28d.loc["2022-01-01":REF_FIN].quantile(.10)
     R["crisis_red"] = (red.peso_nueva_eps_28d < p10).astype(float).where(red.peso_nueva_eps_28d.notna(), 0.0)
     return R

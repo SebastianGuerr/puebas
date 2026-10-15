@@ -5,6 +5,7 @@ Las consultas. Todas agregadas, todas sobre columnas no sensibles.
     python -m extraccion --cobertura    que esta lleno y desde cuando
     python -m extraccion --series       escribe salidas/*.parquet
     python -m extraccion --ingresos     solo salidas/ingresos_entidad.parquet (estado medido del convenio)
+    python -m extraccion --turnos       solo salidas/turnos_triage.parquet (digiturno: solicitudes atendidas y no)
 
 CADA CONSULTA VA CON SU GROUP BY. NO HAY NINGUNA QUE DEVUELVA FILAS DE PACIENTE.
     Es lo que hace que esto se pueda correr sin revisar nada: el agregado mas fino
@@ -173,6 +174,35 @@ def ingresos(eng, destino):
                  CASE WHEN i.HCENTRIAGE IS NOT NULL AND i.HCENTRIAGE <> 0 THEN 1 ELSE 0 END, i.GEENENTADM""", eng)
     tabla["dia"] = pd.to_datetime(tabla["dia"])
     tabla.to_parquet(destino / "ingresos_entidad.parquet", index=False)
+    print(f"{len(tabla):,} filas")
+
+
+def turnos(eng, destino):
+    """
+    Turnos del digiturno en las colas de triage, por dia x hora x cola x estado x si llegaron a triage.
+
+    DIM_HCNCONTRDT es el control de turnos (el digiturno); HCNCONCOTRI_DW, el catalogo de colas (HCAREA = 1 son
+    las de triage). Un turno de triage sin triage es una SOLICITUD NO ATENDIDA: ~5 % en 2025-2026, la mayoria con
+    estado 2 y cerrada a los ~24 minutos (CONTEXTO, 2026-10-14 (7)). La base no trae el significado de HCCESTADO:
+    se baja tal cual. Columnas: HCCFECTUR, HCCFECSAL, HCCESTADO, HCNCONCOTRI y, del triage unido, HCTFECTRI y
+    HCNCLAURGTR. GENUSUARIO no se toca. Salen conteos y sumas de minutos, nunca un turno.
+    """
+    destino.mkdir(parents=True, exist_ok=True)
+    print("  turnos de triage por dia x hora x cola x estado...", end=" ", flush=True)
+    tabla = pd.read_sql("""
+        SELECT CAST(d.HCCFECTUR AS DATE) AS dia, DATEPART(HOUR, d.HCCFECTUR) AS hora, c.HCDESCRIP AS cola,
+               d.HCCESTADO AS estado, CASE WHEN t.OID IS NULL THEN 0 ELSE 1 END AS con_triage,
+               t.HCNCLAURGTR AS nivel, COUNT(*) AS n,
+               SUM(CASE WHEN t.HCTFECTRI >= d.HCCFECTUR THEN DATEDIFF(minute, d.HCCFECTUR, t.HCTFECTRI) END) AS min_hasta_triage,
+               SUM(CASE WHEN t.OID IS NULL AND d.HCCFECSAL >= d.HCCFECTUR THEN DATEDIFF(minute, d.HCCFECTUR, d.HCCFECSAL) END) AS min_hasta_cierre
+        FROM dbo.DIM_HCNCONTRDT d
+        JOIN dbo.HCNCONCOTRI_DW c ON c.OID = d.HCNCONCOTRI
+        LEFT JOIN dbo.DIM_TRIAGE t ON t.HCNCONTRDT = d.OID
+        WHERE c.HCAREA = 1 AND d.HCCFECTUR IS NOT NULL
+        GROUP BY CAST(d.HCCFECTUR AS DATE), DATEPART(HOUR, d.HCCFECTUR), c.HCDESCRIP, d.HCCESTADO,
+                 CASE WHEN t.OID IS NULL THEN 0 ELSE 1 END, t.HCNCLAURGTR""", eng)
+    tabla["dia"] = pd.to_datetime(tabla["dia"])
+    tabla.to_parquet(destino / "turnos_triage.parquet", index=False)
     print(f"{len(tabla):,} filas")
 
 
@@ -351,11 +381,13 @@ def main(argv=None):
                         help="solo la serie por entidad administradora (EPS, SOAT, ARL)")
     parser.add_argument("--ingresos", action="store_true",
                         help="ingresos por dia x tipo x entidad: el estado medido del convenio con cada EPS")
+    parser.add_argument("--turnos", action="store_true",
+                        help="digiturno: turnos de triage por dia x hora x cola x estado (atendidos y no atendidos)")
     parser.add_argument("--perfil", action="store_true",
                         help="perfil del hospital: ingreso, area, causa, CIE-10, remisiones (solo agregados)")
     args = parser.parse_args(argv)
 
-    if not (args.esquema or args.cobertura or args.series or args.entidad or args.ingresos or args.perfil):
+    if not (args.esquema or args.cobertura or args.series or args.entidad or args.ingresos or args.turnos or args.perfil):
         parser.print_help()
         return 1
 
@@ -371,6 +403,8 @@ def main(argv=None):
         entidad(eng, salidas)
     if args.series or args.ingresos:
         ingresos(eng, salidas)
+    if args.series or args.turnos:
+        turnos(eng, salidas)
     if args.perfil:
         perfil(eng, salidas)
     return 0

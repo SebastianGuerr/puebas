@@ -1,12 +1,15 @@
 """
 Delitos y lesiones de Manizales por dia, desde datos.gov.co (Ministerio de Defensa).
 
-    python calendarios/seguridad/mindefensa.py        escribe calendarios/seguridad_mindefensa.csv.gz
+    python calendarios/seguridad/mindefensa.py             incremental: solo cambian los ultimos 90 dias escritos
+    python calendarios/seguridad/mindefensa.py --rehacer   acepta tambien las revisiones antiguas
 
 Solo se piden SUMAS por dia (`$select=fecha_hecho, sum(cantidad) ... $group=fecha_hecho`):
 la fuente ya viene agregada y sin datos de persona, y ademas nunca se baja una fila suelta.
 El porque y los limites estan en calendarios/docs/INVENTARIO.md y FUENTES_EXTERNAS.md.
 """
+import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -27,6 +30,10 @@ DATASETS = {
     "violencia_intrafamiliar": "gepp-dxcs",
 }
 SALIDA = Path(__file__).resolve().parents[1] / "seguridad_mindefensa.csv.gz"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from calendarios.actualizacion import escribir_si_cambia, fusionar, proteger, resumen  # noqa: E402
+# La Policia completa los ultimos meses con denuncias tardias: se reabren 90 dias; lo anterior no cambia.
+REABRIR_DIAS = 90
 
 
 def por_dia(id_, desde="2015-01-01"):
@@ -43,7 +50,7 @@ def por_dia(id_, desde="2015-01-01"):
     return d.groupby("fecha")["n"].sum().astype(float)
 
 
-def main():
+def main(rehacer=False):
     columnas = {}
     for nombre, id_ in DATASETS.items():
         s = por_dia(id_)
@@ -53,10 +60,20 @@ def main():
     t = pd.DataFrame(columnas)
     t = t.reindex(pd.date_range(t.index.min(), t.index.max())).fillna(0)   # dia sin casos = 0
     t.index.name = "fecha"
-    t.to_csv(SALIDA, float_format="%.0f")
-    print(f"\n{SALIDA.name}: {len(t)} dias")
+    t = t.reset_index()
+    viejo = pd.read_csv(SALIDA) if SALIDA.exists() else None
+    proteger(viejo, t, "fecha", SALIDA.name)
+    revisiones = 0
+    if viejo is not None and not rehacer:
+        t, revisiones = fusionar(viejo, t, "fecha", REABRIR_DIAS)
+    t["fecha"] = pd.to_datetime(t["fecha"]).dt.date
+    escrito = escribir_si_cambia(t, SALIDA, index=False, float_format="%.0f")
+    resumen(SALIDA.name, viejo, t, "fecha", revisiones, escrito)
+    t = t.set_index(pd.to_datetime(t["fecha"])).drop(columns="fecha")
     print(t.groupby(t.index.year).sum().astype(int).to_string())
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description="Delitos y lesiones de Manizales por dia (MinDefensa)")
+    ap.add_argument("--rehacer", action="store_true", help="acepta las revisiones de todo el pasado")
+    main(ap.parse_args().rehacer)

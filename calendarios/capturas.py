@@ -16,6 +16,8 @@ Fuentes (calendarios/docs/CAPTURAS.md tiene el porque de cada una):
 Cada fuente se guarda solo si cambio respecto de la ultima captura (huella sha256), en
 calendarios/capturas/<fuente>/. Todo queda en calendarios/capturas/registro.csv. Solo agregados: ninguna
 fuente trae dato de persona.
+
+Sale con codigo 1 si alguna fuente anoto "error" en esta corrida (para que la tarea programada lo vea).
 """
 import argparse, hashlib, html, io, re, subprocess, sys, zipfile
 from datetime import datetime, date
@@ -42,7 +44,12 @@ def huella(b):
     return hashlib.sha256(b).hexdigest()
 
 
+ERRORES = []
+
+
 def anotar(fuente, accion, archivo="", filas="", sha="", detalle=""):
+    if accion == "error":
+        ERRORES.append(fuente)
     REGISTRO.parent.mkdir(parents=True, exist_ok=True)
     fila = pd.DataFrame([{"fecha_hora": datetime.now().isoformat(timespec="seconds"), "fuente": fuente, "accion": accion,
                           "archivo": Path(archivo).resolve().relative_to(RAIZ).as_posix() if archivo else "", "filas": filas,
@@ -59,7 +66,8 @@ def ya_visto(fuente, sha):
 
 # ---------------------------------------------------------------- fuentes
 def powerbi():
-    carpetas = sorted(p.name for p in (RAIZ / "calendarios/vigilancia/powerbi").iterdir() if p.is_dir())
+    carpetas = sorted(p.name for p in (RAIZ / "calendarios/vigilancia/powerbi").iterdir()
+                      if p.is_dir() and re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.name))   # no _parciales ni _tmp_
     if carpetas and (date.today() - date.fromisoformat(carpetas[-1])).days < 6:
         return anotar("powerbi", "sin_cambios", detalle=f"ultima foto {carpetas[-1]} (< 6 dias)")
     r = subprocess.run([sys.executable, str(RAIZ / "calendarios/vigilancia/powerbi.py")], cwd=RAIZ,
@@ -159,8 +167,15 @@ def medidas():
         try:
             b = requests.get(l, headers=H, timeout=300).content; sha = huella(b)
             if ya_visto("medidas", sha): anotar("medidas", "sin_cambios", detalle=nombre[:80]); continue
-            crudo = CRUDO / "medidas" / HOY / nombre; crudo.parent.mkdir(parents=True, exist_ok=True); crudo.write_bytes(b)
             t = limpiar_medidas(b)
+            if t is not None:
+                # La Supersalud regenera el Excel aunque la tabla no cambie (2026-10-15: 9 Excel con huella nueva,
+                # varios con la tabla limpia identica). Se compara la tabla limpia con la ultima guardada.
+                previas = sorted(p for p in (CAP / "medidas").glob(f"*/{Path(nombre).stem}.csv") if p.parent.name < HOY)
+                if previas and previas[-1].read_bytes().replace(b"\r\n", b"\n") == \
+                        t.to_csv(index=False, lineterminator="\n").encode("utf-8"):
+                    anotar("medidas", "sin_cambios", detalle=f"tabla limpia igual a {previas[-1].parent.name}: {nombre[:60]}"); continue
+            crudo = CRUDO / "medidas" / HOY / nombre; crudo.parent.mkdir(parents=True, exist_ok=True); crudo.write_bytes(b)
             if t is None: anotar("medidas", "descargado_sin_limpiar", crudo, sha=sha, detalle=nombre[:80]); continue
             f = CAP / "medidas" / HOY / (Path(nombre).stem + ".csv"); f.parent.mkdir(parents=True, exist_ok=True)
             t.to_csv(f, index=False, encoding="utf-8")
@@ -173,8 +188,11 @@ def oni():
     b = requests.get("https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt", headers=H, timeout=120).content; sha = huella(b)
     if ya_visto("oni", sha): return anotar("oni", "sin_cambios")
     f = CAP / "oni" / f"oni_{HOY}.txt"; f.parent.mkdir(parents=True, exist_ok=True); f.write_bytes(b)
-    r = subprocess.run([sys.executable, str(RAIZ / "calendarios/clima/enso.py")], cwd=RAIZ, capture_output=True, text=True)
-    anotar("oni", "nuevo", f, sha=sha, detalle="enso_oni.csv rehecho" if r.returncode == 0 else "enso.py fallo")
+    r = subprocess.run([sys.executable, str(RAIZ / "calendarios/clima/enso.py")], cwd=RAIZ, capture_output=True,
+                       text=True, encoding="utf-8", errors="replace")
+    anotar("oni", "nuevo" if r.returncode == 0 else "error", f, sha=sha,
+           detalle="enso_oni.csv actualizado" if r.returncode == 0 else
+           "enso.py fallo: " + (r.stderr.strip().splitlines() or [""])[-1][:150])
 
 
 FUENTES = {"powerbi": powerbi, "bdua": bdua, "afiliacion": afiliacion, "medidas": medidas, "oni": oni}
@@ -190,3 +208,5 @@ if __name__ == "__main__":
     for nombre in a.solo or FUENTES:
         try: FUENTES[nombre]()
         except Exception as e: anotar(nombre, "error", detalle=repr(e)[:200])
+    print(f"fin {datetime.now():%Y-%m-%d %H:%M}; errores: {', '.join(ERRORES) or 'ninguno'}", flush=True)
+    sys.exit(1 if ERRORES else 0)

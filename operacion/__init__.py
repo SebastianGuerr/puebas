@@ -23,6 +23,8 @@ import reparto as rp             # noqa: E402
 import aseguradoras as ag        # noqa: E402
 import madurez as md             # noqa: E402
 import red as rd                 # noqa: E402
+import resiliencia as rs         # noqa: E402
+import indices as ix             # noqa: E402
 
 CARPETA = RAIZ / "salidas" / "operacion"
 CORRIDAS = CARPETA / "corridas"
@@ -33,7 +35,14 @@ HORIZONTE_MAX = 120                  # tope: hasta el 31 de diciembre del año e
 def horizonte(o):
     """Días a predecir desde el origen: hasta el 31 de diciembre, entre VALIDADO y HORIZONTE_MAX."""
     return int(min(HORIZONTE_MAX, max(VALIDADO, (pd.Timestamp(f"{o.year}-12-31") - o).days)))
-MODELO = "C0r"                       # receta fija: calendario, estación, nivel y memoria. Por qué: OPERACION.md
+# Principal y comparación (fila operacion_m3s_contexto_automatico, 2026-10-15). M3s = C0r + los mecanismos externos de
+# notebooks/mecanismos.py, con el contexto que mantiene `python -m contexto`; C0r corre cada semana al lado como vara.
+# Regla de vuelta atrás: si a los 84 días comunes (y cada 84 más) M3s tiene más error del día que C0r, MODELO = "C0r".
+MODELO = "M3s"
+COMPARACION = "C0r"
+CRITERIO_ADELANTO = (15, 21)                 # el adelanto real de uso: la base se actualiza una vez por semana
+REGLA_DIAS = 84                              # N = 12 semanas de días comunes (por qué: la fila del preregistro)
+FRESCURA = RAIZ / "salidas" / "contexto" / "frescura.csv"     # la escribe `python -m contexto`
 VENTANA_ASEG = "T4"                  # elegido en reparto_por_aseguradora
 PERFIL = "P52"                       # elegido en reparto_del_dia
 # Correlación entre días consecutivos del error, medida en la validación semanal de 2025 (semana.resumen_validacion,
@@ -46,6 +55,7 @@ RANGO_VERDE, RANGO_ROJO = 65., 50.           # % de días dentro del rango del 8
 NE_CAMBIO = .20                              # Nueva EPS: cambio de las 2 últimas semanas frente a las 8 anteriores
 MIN_VERIFICADOS = 14
 USAR_RED = True                              # ajuste por la red (fila red_de_urgencias_v2: pasó su regla el 2026-10-14; la v1 no)
+RANGO_QUIEBRE = True                         # rango del total más ancho tras un quiebre (fila resiliencia, W: entró; R no)
 
 
 def _commit():
@@ -67,6 +77,7 @@ def extraer():
 
 def _preparar(o, n):
     pr.FIN = str(o.date()); pr.H = n
+    ix.FIN_RED = str(o.date())       # la red de M3s lee el triage hasta el origen y no más (antes: fija en el 20-09)
     rp.MALOS = rp.MALOS.union([o + pd.Timedelta(days=1)])          # el día a medias no entra a los perfiles
 
 
@@ -106,17 +117,30 @@ def _dias(o, fechas, Q, tau, usar_red=None):
             f |= {f"pico_{b}": s, f"pico_{b}_por_hora": esp[s:s + 3].mean()}
         filas.append(f)
     D = pd.DataFrame(filas)
+    quiebre = bool(RANGO_QUIEBRE and rs.Quiebre(dias_g, X_g).total(o))
+    if quiebre:                                          # fila resiliencia, W: q' = q50 (q / q50)^1,5
+        D["quiebre_total"] = True; D = rs.ensanchar(D)
     b = ef.estimar(o, tau)[0] if ef else np.zeros(len(rd.EfectoV2.coeficientes))
     info = {"usada": bool(ef), "version": "red_de_urgencias_v2", "episodios": 0 if R_red is None else len(R_red),
             "conocido_al": str(pd.Timestamp(tau).date()),
             "efectos": {v: round(float(x), 4) for v, x in zip(rd.EfectoV2.coeficientes, b)},
-            "ses_atiende_nueva_eps": None if ef is None else ef.abierto(o)}
+            "ses_atiende_nueva_eps": None if ef is None else ef.abierto(o), "quiebre_total": quiebre}
     return D, info
+
+
+def carpeta_corrida(o, modelo):
+    return CORRIDAS / f"{pd.Timestamp(o).date()}_{modelo}"
+
+
+def existe(o, modelo):
+    """¿Ya hay una corrida guardada con este origen y este modelo? Si la hay no se reentrena: no se rehace."""
+    return (carpeta_corrida(o, modelo) / "resumen.json").exists()
 
 
 def predecir(modelo=MODELO, avisar=print):
     """Reentrena con todo lo conocido y predice hasta diciembre (horizonte). Devuelve (días, semanas, resumen)."""
     warnings.filterwarnings("ignore")
+    t0 = datetime.now()
     o = ultimo_dia_completo(); n = horizonte(o); _preparar(o, n)
     y, cal, F = sm.datos()
     y = y.loc[:o].reindex(pd.date_range(y.index[0], o + pd.Timedelta(days=n)))
@@ -128,10 +152,28 @@ def predecir(modelo=MODELO, avisar=print):
     D, info = _dias(o, fechas, Q, hoy)
     D = _completar(D, y, o, normal)
     W = semanas(D, modelo)
-    R = {"origen": str(o.date()), "modelo": modelo, "horizonte": n, "validado_hasta": VALIDADO, "creado": datetime.now().isoformat(timespec="seconds"),
+    R = {"origen": str(o.date()), "modelo": modelo, "papel": "principal" if modelo == MODELO else "comparación",
+         "horizonte": n, "validado_hasta": VALIDADO, "creado": datetime.now().isoformat(timespec="seconds"),
+         "segundos": round((datetime.now() - t0).total_seconds()),
          "commit": _commit(), "perfil": PERFIL, "ventana_aseguradoras": VENTANA_ASEG,
          "ultimo_dato": str(o.date()), "antiguedad_dias": (hoy - o).days, "red": info}
     return D, W, R
+
+
+def correr(modelos=None, avisar=print):
+    """El principal y la comparación, uno detrás de otro (una sola cosa pesada a la vez). Una corrida que ya existe
+    con el mismo origen no se reentrena. Devuelve [(modelo, carpeta, nueva)]."""
+    hechas = []
+    for m in modelos or (MODELO, COMPARACION):
+        o = ultimo_dia_completo()
+        if existe(o, m):
+            avisar(f"{m}: ya existía la corrida con origen {o.date()} (no se rehace)")
+            hechas.append((m, carpeta_corrida(o, m), False)); continue
+        D, W, R = predecir(m, avisar)
+        c, nueva = guardar(D, W, R)
+        avisar(f"{m}: {'guardada' if nueva else 'ya existía (no se rehace)'} en {c} ({R['segundos']} s)")
+        hechas.append((m, c, nueva))
+    return hechas
 
 
 def _completar(D, y, o, normal=None):
@@ -230,16 +272,102 @@ def alerta_nueva_eps():
     return float(rec), float(ant), float(rec / ant - 1) if ant else np.nan
 
 
+def comparacion(V=None):
+    """Fila operacion_m3s_contexto_automatico: días comunes (principal y comparación desde el mismo origen, adelanto
+    15-21, guardados antes de que empezara el día, con dato real) y la regla de vuelta atrás. Devuelve (C, resumen):
+    C = un día por fila con q10/q50/q90 de cada modelo; resumen = n, error y rango de cada uno y las evaluaciones."""
+    V = verificar() if V is None else V
+    vacio = {"n": 0, "evaluaciones": [], "vuelve": False}
+    if V is None or V.empty: return pd.DataFrame(), vacio
+    a, b = CRITERIO_ADELANTO
+    S = V[V.prospectiva & V.adelanto.between(a, b) & V.real.notna()]
+    S = S.sort_values("adelanto").drop_duplicates(["fecha", "modelo"], keep="first")   # varias: la de menor adelanto
+    k = ["fecha", "origen", "adelanto", "real", "q10", "q50", "q90"]
+    P, Cm = S[S.modelo == MODELO][k], S[S.modelo == COMPARACION][k]
+    C = P.merge(Cm.drop(columns=["adelanto", "real"]), on=["fecha", "origen"], suffixes=(f"_{MODELO}", f"_{COMPARACION}"))
+    if C.empty: return C, vacio
+    C = C.sort_values("fecha").reset_index(drop=True)
+    for m in (MODELO, COMPARACION):
+        C[f"error_{m}"] = 100 * (C[f"q50_{m}"] - C.real).abs() / C.real
+        C[f"en_rango_{m}"] = C.real.between(C[f"q10_{m}"], C[f"q90_{m}"])
+    mide = lambda G: {f"{q}_{m}": float(G[f"{q}_{m}"].mean() * (100 if q == "en_rango" else 1))
+                      for m in (MODELO, COMPARACION) for q in ("error", "en_rango")}
+    ev = []
+    for corte in range(REGLA_DIAS, len(C) + 1, REGLA_DIAS):        # acumulado: 84, 168, ... días comunes
+        G = C.iloc[:corte]; x = mide(G)
+        ev.append({"dias": corte, "hasta": str(G.fecha.max().date()), **x,
+                   "vuelve": x[f"error_{MODELO}"] > x[f"error_{COMPARACION}"]})
+    return C, {"n": len(C), **mide(C), "evaluaciones": ev, "vuelve": bool(ev and ev[-1]["vuelve"])}
+
+
+def _si(x):
+    return str(x).strip().lower() in {"si", "sí", "true", "1", "yes", "verdadero"}
+
+
+def contexto_externo(archivo=None):
+    """Señal «Contexto externo»: la frescura de las fuentes que deja `python -m contexto` (salidas/contexto/frescura.csv,
+    columnas fuente, archivo, ultimo_dato, ultima_corrida, resultado, dias_atraso, atraso_tolerado, nivel, usa_m3s,
+    detalle). Rojo si alguna fuente que usa M3s está en rojo; amarillo si alguna está en amarillo o si una que M3s no
+    usa está en rojo; gris sin el archivo."""
+    f = Path(archivo) if archivo else FRESCURA
+    s = {"que": "Contexto externo", "en_general": True}
+    if not f.exists():
+        return s | {"nivel": "gris", "detalle": "sin orquestador de contexto (no existe salidas/contexto/frescura.csv)"}
+    try:
+        F = pd.read_csv(f, dtype=str, encoding="utf-8").fillna("")
+        F["nivel"] = F.nivel.str.strip().str.lower(); F["m3s"] = F.usa_m3s.map(_si)
+    except Exception as e:                   # un archivo roto no tumba la operación: se dice
+        return s | {"nivel": "amarillo", "detalle": f"no se pudo leer {f.name}: {e}"}
+    rojo_m3s = F[F.m3s & (F.nivel == "rojo")]; amarillas = F[F.nivel == "amarillo"]; rojo_otras = F[~F.m3s & (F.nivel == "rojo")]
+    nivel = "rojo" if len(rojo_m3s) else "amarillo" if len(amarillas) or len(rojo_otras) else "verde" if len(F) else "gris"
+    def lista(G):
+        return ", ".join(f"{r.fuente} ({r.dias_atraso} días de atraso)" if str(r.dias_atraso).strip() else str(r.fuente)
+                         for r in G.itertuples())
+    partes = []
+    if len(rojo_m3s): partes.append(f"en rojo y las usa M3s: {lista(rojo_m3s)}")
+    if len(rojo_otras): partes.append(f"en rojo, no las usa M3s: {lista(rojo_otras)}")
+    if len(amarillas): partes.append(f"en amarillo: {lista(amarillas)}")
+    ultima = F.ultima_corrida[F.ultima_corrida.str.strip() != ""].max() if "ultima_corrida" in F else ""
+    detalle = "; ".join(partes) if partes else f"las {len(F)} fuentes al día"
+    return s | {"nivel": nivel, "detalle": detalle + (f" (última actualización: {ultima})" if ultima else ""),
+                "fuentes_con_problema": [str(x) for x in pd.concat([rojo_m3s, rojo_otras, amarillas]).fuente]}
+
+
+def señal_comparacion(V):
+    """Señal «Comparación»: principal frente a la vara en los días comunes. No entra en el estado general que ve
+    urgencias (es para quien mantiene el sistema), ni siquiera en rojo, que es cuando la regla manda volver a C0r."""
+    C, r = comparacion(V)
+    s = {"que": "Comparación", "en_general": False}
+    if r["n"] < MIN_VERIFICADOS:
+        return s | {"nivel": "gris", "detalle": f"{r['n']} días comunes de {MODELO} y {COMPARACION} a {CRITERIO_ADELANTO[0]}-"
+                                                f"{CRITERIO_ADELANTO[1]} días (hacen falta {MIN_VERIFICADOS})"}
+    em, ec = r[f"error_{MODELO}"], r[f"error_{COMPARACION}"]
+    rm, rc = r[f"en_rango_{MODELO}"], r[f"en_rango_{COMPARACION}"]
+    txt = (f"{r['n']} días comunes: error del día {em:.1f} % ({MODELO}) frente a {ec:.1f} % ({COMPARACION}); "
+           f"en rango {rm:.0f} % frente a {rc:.0f} %")
+    if r["vuelve"]:
+        e = r["evaluaciones"][-1]
+        return s | {"nivel": "rojo",
+                    "detalle": txt + f". La regla preregistrada, evaluada con {e['dias']} días, manda volver a "
+                                     f"{COMPARACION}: poner MODELO = \"{COMPARACION}\" y COMPARACION = \"{MODELO}\" en "
+                                     "operacion/__init__.py y anotarlo en docs/CONTEXTO.md"}
+    falta = REGLA_DIAS - r["n"] % REGLA_DIAS
+    nivel = "verde" if em <= ec else "amarillo"
+    return s | {"nivel": nivel, "detalle": txt + f"; la regla se evalúa dentro de {falta} días comunes"}
+
+
 def semaforo(V=None):
-    """Verde, amarillo o rojo, con el motivo de cada cosa. Se guarda en salidas/operacion/estado.json."""
+    """Verde, amarillo o rojo, con el motivo de cada cosa. Se guarda en salidas/operacion/estado.json. El error y el
+    rango son los del modelo principal; la comparación y el contexto externo van como señales aparte."""
     o = ultimo_dia_completo(); edad = (pd.Timestamp(date.today()) - o).days
     señales = []
     nivel = "verde" if edad <= DATOS_VERDE else "amarillo" if edad <= DATOS_ROJO else "rojo"
     señales.append({"que": "Datos", "nivel": nivel, "detalle": f"último día completo: {o.date()} (hace {edad} días)"})
-    if V is None or V.empty:
-        señales.append({"que": "Acierto reciente", "nivel": "gris", "detalle": "todavía no hay días predichos con dato real"})
+    Vp = None if V is None or V.empty else V[V.modelo == MODELO]
+    if Vp is None or Vp.empty:
+        señales.append({"que": "Acierto reciente", "nivel": "gris", "detalle": f"todavía no hay días predichos por {MODELO} con dato real"})
     else:
-        u = V[V.prospectiva].sort_values("origen").drop_duplicates("fecha", keep="first")   # la más antigua de cada día
+        u = Vp[Vp.prospectiva].sort_values("origen").drop_duplicates("fecha", keep="first")   # la más antigua de cada día
         u = u[u.fecha > u.fecha.max() - pd.Timedelta(days=28)]
         if len(u) < MIN_VERIFICADOS:
             señales.append({"que": "Acierto reciente", "nivel": "gris", "detalle": f"solo {len(u)} días verificados"})
@@ -254,9 +382,12 @@ def semaforo(V=None):
     señales.append({"que": "Nueva EPS", "nivel": nn,
                     "detalle": f"{rec:.0f} por día en las 2 últimas semanas frente a {ant:.0f} en las 8 anteriores ({100 * cambio:+.0f} %)"
                                + ("; cambió de nivel: el total y el reparto por aseguradora pueden fallar" if nn != "verde" else "")})
+    señales.append(contexto_externo())
+    señales.append(señal_comparacion(V))
     orden = {"gris": 0, "verde": 1, "amarillo": 2, "rojo": 3}
-    general = max((s["nivel"] for s in señales), key=orden.get)
-    E = {"general": general, "señales": señales, "calculado": datetime.now().isoformat(timespec="seconds")}
+    general = max((s["nivel"] for s in señales if s.get("en_general", True)), key=orden.get)
+    E = {"general": general, "principal": MODELO, "comparacion": COMPARACION, "señales": señales,
+         "calculado": datetime.now().isoformat(timespec="seconds")}
     CARPETA.mkdir(parents=True, exist_ok=True)
     (CARPETA / "estado.json").write_text(json.dumps(E, ensure_ascii=False, indent=1), encoding="utf-8")
     return E
@@ -271,37 +402,45 @@ def ultima_corrida(modelo=MODELO):
 
 
 def historial():
-    """Cómo ha predicho, día por día: lo que el modelo habría dicho 15-21 días antes (el adelanto real de uso) frente a
-    lo ocurrido, con jornadas y aseguradoras. Hasta la primera corrida sale de la validación semanal reconstruida
-    (C0r, reajuste cada 4 domingos; notebooks/reparto.py y aseguradoras.py); después, de las corridas guardadas
-    (la más antigua de cada día). Escribe salidas/operacion/historial.parquet."""
+    """Cómo ha predicho, día por día: lo que cada modelo habría dicho 15-21 días antes (el adelanto real de uso) frente
+    a lo ocurrido, con jornadas y aseguradoras. Una fila por día y modelo (columna combo): el principal y la
+    comparación. Hasta la primera corrida guardada de cada modelo sale de la validación semanal reconstruida (reajuste
+    cada 4 domingos; notebooks/reparto.py y aseguradoras.py), si existe para ese modelo a adelanto 15; si no existe no
+    se inventa: ese modelo solo tiene las corridas guardadas. Las columnas _red (la red v2 y el rango W,
+    resiliencia/conteos_v2AW.parquet) solo existen para los modelos con los que se reconstruyó. Después, las corridas
+    guardadas (la más antigua de cada día). Escribe salidas/operacion/historial.parquet."""
     llaves = ["fecha", "origen", "adelanto", "combo"]
     partes = []
     fr, fa = rp.CARPETA / "conteos.parquet", ag.CARPETA / "conteos.parquet"
+    fe = rs.CARPETA / "conteos_v2AW.parquet"             # la misma predicción con la red (v2A) y el rango W
     if fr.exists() and fa.exists():
-        R = pd.read_parquet(fr); A = pd.read_parquet(fa)
-        R = R[(R.combo == MODELO) & (R.adelanto == 15)]; A = A[(A.combo == MODELO) & (A.adelanto == 15)]
-        cr = [c for c in R.columns if c.split("_")[0] in rp.FRANJAS and c.endswith(("_q10", "_q50", "_q90", "_real"))]
-        ca = [c for c in A.columns if c.startswith(tuple(f"{g}_" for g in ag.GRUPOS))]
-        B = R[llaves + pr.QCOL + ["real"] + cr].merge(A[llaves + ca], on=llaves, how="left")
-        B["fuente"] = "reconstruida"; B["h"] = (B.fecha - pd.to_datetime(B.origen)).dt.days
-        fe = rd.CARPETA / "conteos_v2.parquet"               # la misma predicción corregida por la red (v2A)
-        if fe.exists():
-            E = pd.read_parquet(fe); E = E[(E.variante == "v2A") & (E.adelanto == 15) & (E.combo == MODELO)]
-            cols = (pr.QCOL + [f"{g}_{s}" for g in ag.GRUPOS for s in ("q10", "q50", "q90")]
-                    + [f"{j}_{s}" for j in rp.FRANJAS for s in ("q10", "q50", "q90")] + ["log_f"])
-            B = B.merge(E[llaves + cols].rename(columns={c: f"{c}_red" for c in cols}), on=llaves, how="left")
-        partes.append(B)
+        R0 = pd.read_parquet(fr); A0 = pd.read_parquet(fa); E0 = pd.read_parquet(fe) if fe.exists() else None
+        for combo in (MODELO, COMPARACION):
+            R = R0[(R0.combo == combo) & (R0.adelanto == 15)]; A = A0[(A0.combo == combo) & (A0.adelanto == 15)]
+            if R.empty: continue
+            cr = [c for c in R.columns if c.split("_")[0] in rp.FRANJAS and c.endswith(("_q10", "_q50", "_q90", "_real"))]
+            ca = [c for c in A.columns if c.startswith(tuple(f"{g}_" for g in ag.GRUPOS))]
+            B = R[llaves + pr.QCOL + ["real"] + cr].merge(A[llaves + ca], on=llaves, how="left")
+            B["fuente"] = "reconstruida"; B["h"] = (B.fecha - pd.to_datetime(B.origen)).dt.days
+            if E0 is not None:
+                E = E0[(E0.variante == "v2AW") & (E0.adelanto == 15) & (E0.combo == combo)]
+                if len(E):
+                    cols = (pr.QCOL + [f"{g}_{s}" for g in ag.GRUPOS for s in ("q10", "q50", "q90")]
+                            + [f"{j}_{s}" for j in rp.FRANJAS for s in ("q10", "q50", "q90")] + ["log_f"])
+                    B = B.merge(E[llaves + cols].rename(columns={c: f"{c}_red" for c in cols}), on=llaves, how="left")
+            partes.append(B)
     V = verificar()
     if not V.empty:
-        u = V.sort_values("origen").drop_duplicates("fecha", keep="first").copy()
+        u = V.sort_values("origen").drop_duplicates(["fecha", "modelo"], keep="first").copy()
         u["fuente"] = np.where(u.prospectiva, "prospectiva", "corrida (sin ver esos días)")
         u["h"] = u.adelanto; u["combo"] = u.modelo
-        if partes: u = u[u.fecha > partes[0].fecha.max()]
+        fin = {p.combo.iloc[0]: p.fecha.max() for p in partes}
+        u = u[u.fecha > u.combo.map(fin).fillna(pd.Timestamp.min)]
         partes.append(u)
     if not partes: return pd.DataFrame()
-    Hs = pd.concat(partes, ignore_index=True, sort=False).sort_values("fecha")
+    Hs = pd.concat(partes, ignore_index=True, sort=False).sort_values(["fecha", "combo"]).copy()
     Hs["origen"] = pd.to_datetime(Hs.origen)
+    Hs["papel"] = np.where(Hs.combo == MODELO, "principal", np.where(Hs.combo == COMPARACION, "comparación", "anterior"))
     Hs["en_rango"] = Hs.real.between(Hs.q10, Hs.q90); Hs["error_pct"] = 100 * (Hs.q50 - Hs.real).abs() / Hs.real
     if "q50_red" in Hs:
         Hs = Hs.copy()

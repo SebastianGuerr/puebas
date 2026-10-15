@@ -1,7 +1,8 @@
 """
 Clima completo de Manizales para el cuaderno 17 (fila clima_completo de patrones/datos/variables.csv).
 
-    python calendarios/clima/clima_completo.py      escribe calendarios/clima_completo.csv.gz
+    python calendarios/clima/clima_completo.py             incremental: baja desde 10 dias antes del ultimo dato
+    python calendarios/clima/clima_completo.py --rehacer   baja todo desde 2010 (mueve el pasado: CAPTURAS.md)
 
 Open-Meteo Archive (reanalisis ERA5, el mismo punto que clima_manizales.py: La Nubia) desde 2010, con las
 variables que no tenia el clima unificado: horas de sol, nubosidad, punto de rocio, deficit de presion de
@@ -18,6 +19,8 @@ hace falta el pronostico archivado (Previous Runs API, desde 2024), que va apart
 
 Las anomalias se calculan contra la climatologia del mes de 2010-2024: 2025 y 2026 no entran en la referencia.
 """
+import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -34,15 +37,21 @@ LAT, LON = 5.0299, -75.4630
 INICIO = "2010-01-01"
 REF = ("2010-01-01", "2024-12-31")
 SALIDA = Path(__file__).resolve().parents[1] / "clima_completo.csv.gz"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from calendarios.actualizacion import escribir_si_cambia, fusionar, proteger, resumen  # noqa: E402
+# Incremental: se rebajan los ultimos REABRIR_DIAS (el ERA5 de los ultimos dias es provisional: el 2026-09-29
+# traia minimas de 3,0 y 5,9 C que el ERA5 corrigio a ~15). Lo anterior no se toca: las anomalias son contra
+# 2010-2024 fija, asi que con el crudo congelado el pasado derivado sale identico.
+REABRIR_DIAS = 10
 DIARIAS = ["temperature_2m_mean", "temperature_2m_max", "temperature_2m_min",
            "sunshine_duration", "daylight_duration", "cloud_cover_mean", "dew_point_2m_mean",
            "relative_humidity_2m_mean", "relative_humidity_2m_max", "relative_humidity_2m_min",
            "vapour_pressure_deficit_max", "shortwave_radiation_sum", "wind_speed_10m_max", "et0_fao_evapotranspiration"]
 
 
-def bajar(fin):
+def bajar(fin, inicio=INICIO):
     r = requests.get("https://archive-api.open-meteo.com/v1/archive", timeout=300, params={
-        "latitude": LAT, "longitude": LON, "start_date": INICIO, "end_date": fin, "daily": ",".join(DIARIAS),
+        "latitude": LAT, "longitude": LON, "start_date": inicio, "end_date": fin, "daily": ",".join(DIARIAS),
         "timezone": "America/Bogota", "models": "era5"})
     r.raise_for_status(); d = r.json()["daily"]
     t = pd.DataFrame(d).rename(columns={"time": "fecha"}); t["fecha"] = pd.to_datetime(t.fecha)
@@ -50,7 +59,7 @@ def bajar(fin):
     t = t.set_index("fecha")
     n = requests.get("https://power.larc.nasa.gov/api/temporal/daily/point", timeout=300, params={
         "parameters": "PRECTOTCORR", "community": "AG", "latitude": LAT, "longitude": LON,
-        "start": INICIO.replace("-", ""), "end": fin.replace("-", ""), "format": "JSON"}).json()
+        "start": inicio.replace("-", ""), "end": fin.replace("-", ""), "format": "JSON"}).json()
     p = pd.Series(n["properties"]["parameter"]["PRECTOTCORR"]); p.index = pd.to_datetime(p.index, format="%Y%m%d")
     t["lluvia_nasa"] = p.where(p >= 0).reindex(t.index)
     return t
@@ -99,7 +108,25 @@ def construir(t):
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description="Clima completo de Manizales (ERA5 + lluvia de NASA POWER)")
+    ap.add_argument("--rehacer", action="store_true", help="baja todo desde 2010 y reescribe el pasado")
+    rehacer = ap.parse_args().rehacer
     fin = (pd.Timestamp.today() - pd.Timedelta(days=6)).date().isoformat()
-    t = construir(bajar(fin))
-    t.to_csv(SALIDA, compression="gzip")
+    viejo = pd.read_csv(SALIDA, index_col=0, parse_dates=True, float_precision="round_trip") if SALIDA.exists() else None
+    if viejo is None or rehacer:
+        crudo = bajar(fin)
+        revisiones = 0
+    else:
+        inicio = (viejo.index.max() - pd.Timedelta(days=REABRIR_DIAS)).date().isoformat()
+        nuevo = bajar(fin, inicio)
+        crudas = list(nuevo.columns)                       # las columnas de la fuente, sin lo derivado
+        v = viejo[crudas].reset_index(); n = nuevo.reset_index()
+        proteger(v[v.fecha >= inicio], n, "fecha", SALIDA.name)
+        crudo, revisiones = fusionar(v, n, "fecha", REABRIR_DIAS)
+        crudo = crudo.set_index("fecha")
+    t = construir(crudo)
+    if viejo is not None:
+        proteger(viejo.reset_index(), t.reset_index(), "fecha", SALIDA.name)
+    escrito = escribir_si_cambia(t, SALIDA)
+    resumen(SALIDA.name, None if viejo is None else viejo.reset_index(), t.reset_index(), "fecha", revisiones, escrito)
     print(f"{SALIDA.name}: {len(t)} dias, {t.index[0].date()} a {t.index[-1].date()}, {t.shape[1]} columnas")

@@ -28,3 +28,13 @@ anio_lectivo,tipo,fecha_inicio,fecha_fin,resolucion,fuente_url,nota
 2026,mitad_de_anio,2026-06-15,2026-07-05,Res. 0992 del 29-10-2025,https://www.mineducacion.gov.co/1780/articles-426215_recurso_29.pdf,receso oficial desde el 22-jun; sin clase efectiva desde el 15-jun (desarrollo institucional)
 2026,octubre,2026-10-05,2026-10-11,Res. 0992 del 29-10-2025,https://www.mineducacion.gov.co/1780/articles-426215_recurso_29.pdf,
 2026,fin_de_anio,2026-11-30,2026-12-20,Res. 0992 del 29-10-2025,https://www.mineducacion.gov.co/1780/articles-426215_recurso_29.pdf,
+2027,fin_de_anio,2026-12-21,2027-01-24,estimada_auto,,regla: desde el dia siguiente al cierre del ano anterior hasta la vispera del inicio de clases; inicio de clases = primer lunes desde el 19-ene
+2027,semana_santa,2027-03-22,2027-03-28,estimada_auto,,regla: lunes santo a domingo de Pascua (computo de Pascua)
+2027,mitad_de_anio,2027-06-14,2027-07-04,estimada_auto,,"regla: primer lunes desde el 14-jun, 3 semanas (la duracion mas frecuente); sin el ano 2021 la regla daria 2027-06-21 a 2027-07-11"
+2027,octubre,2027-10-11,2027-10-17,estimada_auto,,regla: primer lunes desde el 5-oct: la semana anterior al festivo del 12 de octubre
+2027,fin_de_anio,2027-12-06,2027-12-26,estimada_auto,,regla: inicio = inicio de clases + 40 semanas de clase + las semanas de receso intermedias (Decreto 1075 de 2015); fin = primer domingo desde el 20-dic
+2028,fin_de_anio,2027-12-27,2028-01-23,estimada_auto,,regla: desde el dia siguiente al cierre del ano anterior hasta la vispera del inicio de clases; inicio de clases = primer lunes desde el 19-ene
+2028,semana_santa,2028-04-10,2028-04-16,estimada_auto,,regla: lunes santo a domingo de Pascua (computo de Pascua)
+2028,mitad_de_anio,2028-06-19,2028-07-09,estimada_auto,,"regla: primer lunes desde el 14-jun, 3 semanas (la duracion mas frecuente)"
+2028,octubre,2028-10-09,2028-10-15,estimada_auto,,regla: primer lunes desde el 5-oct: la semana anterior al festivo del 12 de octubre
+2028,fin_de_anio,2028-12-04,2028-12-24,estimada_auto,,regla: inicio = inicio de clases + 40 semanas de clase + las semanas de receso intermedias (Decreto 1075 de 2015); fin = primer domingo desde el 20-dic

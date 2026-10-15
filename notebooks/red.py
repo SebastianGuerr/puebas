@@ -229,17 +229,22 @@ def por_hora(dias, X, o, Pj):
     return (C + SUAVE * J) / (C.sum(1, keepdims=True) + SUAVE)
 
 
-def cadena(q, p24, a24, pg, a_g, Ph, logf, rng, n=NSIM):
-    """Total del día -> 24 horas -> grupos por hora, con el factor de red de Nueva EPS por simulación.
-    Devuelve (total n, horas n x 24, grupos n x 24 x G)."""
+def cadena(q, p24, a24, pg, a_g, Ph, logf, rng, n=NSIM, r=None):
+    """Total del día -> 24 horas -> grupos por hora, con el factor de red de Nueva EPS por simulación y, si se da,
+    un factor fijo por grupo r (reanclaje tras un quiebre, fila resiliencia). Devuelve (total n, horas n x 24,
+    grupos n x 24 x G)."""
     ne = ag.GRUPOS.index(EPS)
     f = np.exp(np.broadcast_to(logf, (n,)))
     mult = 1 + pg[ne] * (f - 1)
+    if r is not None:
+        F = np.tile(np.asarray(r, dtype=float), (n, 1)); F[:, ne] *= f
+        mult = (pg[None] * F).sum(1); f = F[:, ne]
     T0 = np.interp(rng.uniform(pr.QL[0], pr.QL[-1], n), pr.QL, q)
     T = np.round(T0 * mult).astype(int).clip(0)
     Xh = rng.multinomial(T, rng.dirichlet(a24 * p24 + 1e-6, size=n))
     M = rng.dirichlet(a_g * pg + 1e-6, size=n) / np.maximum(pg, 1e-9)              # variación del día por grupo
-    M[:, ne] *= f
+    if r is not None: M *= F
+    else: M[:, ne] *= f
     W = Ph[None] * M[:, None, :]; W /= W.sum(2, keepdims=True)
     return T, Xh, rng.multinomial(Xh, W)
 
@@ -280,13 +285,17 @@ def evaluar(P, dias, X, R, avisar=print, variantes=None):
         real = X[pos[t]]; q = r[pr.QCOL].values.astype(float)
         for v, spec in variantes.items():
             rng = np.random.default_rng(k)                       # misma semilla para todas las variantes
+            rq = None
             if spec is None: lf, extra = np.zeros(NSIM), {}
             else:
-                ef, modo = spec
+                ef, modo = spec[:2]
                 tau = t - pd.Timedelta(days=1) if modo == "dia_anterior" else o
                 lf, dx = ef.log_factor(o, t, tau, rng); b = ef.estimar(o, tau)[0]
                 extra = {**{f"dx_{n}": x for n, x in zip(ef.nombres, dx)}, **{f"b_{n}": x for n, x in zip(ef.coeficientes, b)}}
-            T, Xh, Gh = cadena(q, p24, a24, pg, a_g, Ph, lf, rng)
+                if len(spec) > 2:                                # reanclaje tras un quiebre (fila resiliencia)
+                    rq = spec[2].factores(o, ventana_ne=abs(dx[-1]) > 1e-9)
+                    extra |= {f"r_{g}": x for g, x in zip(ag.GRUPOS, rq)} | {"quiebre_total": spec[2].total(o)}
+            T, Xh, Gh = cadena(q, p24, a24, pg, a_g, Ph, lf, rng, r=rq)
             fila = {"i": i, "variante": v, "log_f": float(np.median(lf)), **extra, **resumen_dia(T, Xh, Gh)}
             for g, gn in enumerate(ag.GRUPOS): fila[f"{gn}_real"] = real[:, g].sum()
             for gn in ag.GRANDES:

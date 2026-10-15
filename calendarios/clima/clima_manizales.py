@@ -10,17 +10,27 @@ Fuentes (todas sin API key):
   3. Iowa Mesonet (IEM)  -> METAR observado del Aeropuerto La Nubia (SKMZ)
   4. IDEAM / datos.gov.co (opcional, IDEAM_ON=True) -> estaciones PLANALTO y CENICAFE
 
-Salidas:
+Salidas (junto a este script, en calendarios/clima/, se corra desde donde se corra):
   raw_openmeteo.csv, raw_nasapower.csv, raw_iem_skmz.csv, raw_ideam.csv
   clima_manizales_2020_hoy.csv   <- consolidado diario
+
+    python calendarios/clima/clima_manizales.py            incremental: baja desde 10 dias antes del ultimo dato
+    python calendarios/clima/clima_manizales.py --rehacer  todo desde 2020 (reescribe el pasado: ver CLIMA.md)
+
+Incremental: el pasado escrito no cambia salvo los ultimos REABRIR_DIAS (dias parciales o provisionales) y
+las celdas vacias. Si una fuente devuelve menos de lo que ya habia, se aborta sin escribir (codigo 1).
+Por que: calendarios/docs/CAPTURAS.md, "Actualizacion incremental".
 
 pip install requests pandas numpy
 """
 
+import argparse
 import io
+import sys
 import time
 import logging
 from datetime import date
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -28,6 +38,12 @@ import requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("clima")
+
+AQUI = Path(__file__).resolve().parent
+sys.path.insert(0, str(AQUI.parents[1]))
+from calendarios.actualizacion import escribir_si_cambia, fusionar, proteger, resumen  # noqa: E402
+
+REABRIR_DIAS = 10                    # cola que se vuelve a bajar: dias parciales y reanalisis provisional
 
 # --------------------------------------------------------------------------
 # CONFIG
@@ -95,7 +111,6 @@ def bajar_openmeteo():
     for c in ["om_temperature_2m_mean", "om_temperature_2m_max", "om_temperature_2m_min"]:
         df[c + "_corr"] = df[c] + delta
 
-    df.to_csv("raw_openmeteo.csv", index=False)
     log.info(f"Open-Meteo: {len(df)} días (elev celda {elev_celda} m, ajuste {delta:+.2f} °C)")
     return df
 
@@ -116,7 +131,6 @@ def bajar_nasapower():
     df.index.name = "fecha"
     df = df.reset_index().replace(-999.0, np.nan)
     df = df.rename(columns={c: "np_" + c for c in df.columns if c != "fecha"})
-    df.to_csv("raw_nasapower.csv", index=False)
     log.info(f"NASA POWER: {len(df)} días")
     return df
 
@@ -128,7 +142,7 @@ def bajar_nasapower():
 def bajar_iem():
     url = "https://mesonet.agron.iastate.edu/api/1/daily.txt"
     partes, hoy = [], date.today()
-    y, m = 2020, 1
+    y, m = int(INICIO[:4]), int(INICIO[5:7])
     while (y, m) <= (hoy.year, hoy.month):
         try:
             r = get(url, params={"network": IEM_NETWORK, "station": IEM_STATION,
@@ -153,15 +167,14 @@ def bajar_iem():
     # descarta valores no plausibles para Manizales (2.100 m): outliers del METAR
     df.loc[~df["iem_tmax_c"].between(8, 35), "iem_tmax_c"] = np.nan
     df.loc[~df["iem_tmin_c"].between(2, 25), "iem_tmin_c"] = np.nan
+    # el IEM devuelve una fila vacia con la fecha de manana: no se guarda nada posterior a hoy
+    df = df[(df["fecha"] >= date.fromisoformat(INICIO)) & (df["fecha"] <= date.fromisoformat(FIN))]
     df["iem_hr_min"] = pd.to_numeric(df["min_rh"], errors="coerce")
     df["iem_hr_max"] = pd.to_numeric(df["max_rh"], errors="coerce")
     df["iem_viento_ms"] = pd.to_numeric(df["avg_sknt"], errors="coerce") * 0.514444
     df["iem_dewp_max_c"] = (pd.to_numeric(df["max_dwpf"], errors="coerce") - 32) * 5 / 9
-    df.to_csv("raw_iem_skmz.csv", index=False)
-    cols = ["fecha", "iem_tmax_c", "iem_tmin_c", "iem_hr_min", "iem_hr_max",
-            "iem_viento_ms", "iem_dewp_max_c"]
     log.info(f"IEM SKMZ: {len(df)} días")
-    return df[cols]
+    return df
 
 
 # --------------------------------------------------------------------------
@@ -197,7 +210,7 @@ def bajar_ideam():
         return pd.DataFrame(columns=["fecha"])
 
     crudo = pd.concat(salida, ignore_index=True)
-    crudo.to_csv("raw_ideam.csv", index=False)
+    crudo.to_csv(AQUI / "raw_ideam.csv", index=False)
 
     tmp = (crudo[crudo.variable == "temperatura"]
            .groupby("fecha")["valorobservado"].mean().rename("ideam_tmedia"))
@@ -209,15 +222,42 @@ def bajar_ideam():
 # --------------------------------------------------------------------------
 # CONSOLIDADO
 # --------------------------------------------------------------------------
-def main():
-    cal = pd.DataFrame({"fecha": pd.date_range(INICIO, FIN, freq="D").date})
+def actualizar(nombre, bajar, rehacer):
+    """Baja una fuente y la une a su raw_*.csv: incremental salvo con --rehacer. Aborta si trae menos."""
+    ruta = AQUI / nombre
+    viejo = pd.read_csv(ruta, float_precision="round_trip") if ruta.exists() else None
+    nuevo = bajar()
+    nuevo["fecha"] = pd.to_datetime(nuevo["fecha"])
+    if rehacer or viejo is None:
+        proteger(viejo, nuevo, "fecha", nombre)
+        tabla, revisiones = nuevo, 0
+    else:
+        proteger(viejo[pd.to_datetime(viejo["fecha"]) >= INICIO], nuevo, "fecha", nombre)
+        tabla, revisiones = fusionar(viejo, nuevo, "fecha", REABRIR_DIAS)
+    tabla["fecha"] = tabla["fecha"].dt.date
+    escrito = escribir_si_cambia(tabla, ruta, index=False)
+    resumen(nombre, viejo, tabla, "fecha", revisiones, escrito)
+    return tabla
 
-    cal = cal.merge(bajar_openmeteo(), on="fecha", how="left")
-    cal = cal.merge(bajar_nasapower(), on="fecha", how="left")
 
-    iem = bajar_iem()
-    if not iem.empty:
-        cal = cal.merge(iem, on="fecha", how="left")
+def main(rehacer=False):
+    global INICIO
+    if not rehacer:
+        ultimos = [pd.read_csv(AQUI / f, usecols=["fecha"])["fecha"].max()
+                   for f in ("raw_openmeteo.csv", "raw_nasapower.csv", "raw_iem_skmz.csv") if (AQUI / f).exists()]
+        if len(ultimos) == 3:
+            INICIO = (pd.Timestamp(min(ultimos)) - pd.Timedelta(days=REABRIR_DIAS)).date().isoformat()
+    log.info(f"bajando desde {INICIO} ({'todo' if rehacer else 'incremental'})")
+    om = actualizar("raw_openmeteo.csv", bajar_openmeteo, rehacer)
+    nasa = actualizar("raw_nasapower.csv", bajar_nasapower, rehacer)
+    iem = actualizar("raw_iem_skmz.csv", bajar_iem, rehacer)
+
+    inicio = min(t["fecha"].min() for t in (om, nasa, iem))
+    cal = pd.DataFrame({"fecha": pd.date_range(inicio, FIN, freq="D").date})
+    cal = cal.merge(om, on="fecha", how="left")
+    cal = cal.merge(nasa, on="fecha", how="left")
+    cal = cal.merge(iem[["fecha", "iem_tmax_c", "iem_tmin_c", "iem_hr_min", "iem_hr_max",
+                         "iem_viento_ms", "iem_dewp_max_c"]], on="fecha", how="left")
 
     if IDEAM_ON:
         ide = bajar_ideam()
@@ -243,12 +283,14 @@ def main():
     cal["radiacion_mj_m2"] = coalesce("om_shortwave_radiation_sum", "np_ALLSKY_SFC_SW_DWN")
 
     cal = cal.sort_values("fecha").reset_index(drop=True)
-    cal.to_csv("clima_manizales_2020_hoy.csv", index=False)
+    escribir_si_cambia(cal, AQUI / "clima_manizales_2020_hoy.csv", index=False)
     log.info(f"CSV final: {len(cal)} días, {cal.fecha.min()} -> {cal.fecha.max()}")
     return cal
 
 
 if __name__ == "__main__":
-    df = main()
+    ap = argparse.ArgumentParser(description="Clima de Manizales: Open-Meteo, NASA POWER y METAR de La Nubia")
+    ap.add_argument("--rehacer", action="store_true", help="baja todo desde 2020 y reescribe el pasado")
+    df = main(ap.parse_args().rehacer)
     print(df[["fecha", "temp_media_c", "temp_max_c", "temp_min_c",
               "precip_mm", "humedad_rel", "viento_ms", "radiacion_mj_m2"]].tail(10))

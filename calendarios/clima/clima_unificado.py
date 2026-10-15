@@ -1,7 +1,8 @@
 """
 Une las cuatro fuentes de clima de Manizales en UNA fila por dia.
 
-    python calendarios/clima/clima_unificado.py
+    python calendarios/clima/clima_unificado.py             incremental: el pasado ya escrito no cambia
+    python calendarios/clima/clima_unificado.py --rehacer   recalcula todo (mueve el pasado: ver CAPTURAS.md)
 
 Entra:  calendarios/clima/clima_ideam.csv, raw_openmeteo.csv, raw_nasapower.csv,
         raw_iem_skmz.csv
@@ -25,12 +26,22 @@ EL METODO, EN TRES PASOS
 Por que se hizo asi y con que evidencia: calendarios/docs/CLIMA.md.
 """
 
+import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 AQUI = Path(__file__).resolve().parent
+sys.path.insert(0, str(AQUI.parents[1]))
+from calendarios.actualizacion import escribir_si_cambia, fusionar, proteger, resumen  # noqa: E402
+
+# Los factores de escala por mes y los percentiles de las banderas se calculan sobre TODA la serie: cada dia
+# nuevo los mueve un poco y, con ellos, el pasado. Incremental = el pasado escrito se conserva salvo los
+# ultimos REABRIR_DIAS (medido el 2026-10-15 en CAPTURAS.md).
+REABRIR_DIAS = 10
+LLEGADA_TARDIA_MAX = 120          # dias: hasta donde un dato tardio reabre el dia entero
 ARCHIVO_IDEAM = AQUI / "clima_ideam.csv"
 ARCHIVO_OPENMETEO = AQUI / "raw_openmeteo.csv"
 ARCHIVO_NASA = AQUI / "raw_nasapower.csv"
@@ -275,7 +286,29 @@ def auditar(clima):
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser(description="Clima unificado de Manizales")
+    ap.add_argument("--rehacer", action="store_true", help="recalcula y reescribe tambien el pasado")
+    rehacer = ap.parse_args().rehacer
     clima = unir()
-    clima.to_csv(SALIDA, index=False, encoding="utf-8-sig")
-    print(f"Escrito: {SALIDA}")
+    viejo = pd.read_csv(SALIDA, float_precision="round_trip") if SALIDA.exists() else None
+    proteger(viejo, clima, "fecha", SALIDA.name)
+    revisiones = 0
+    if viejo is not None and not rehacer:
+        # Un dato que llega tarde (p. ej. el pluviometro IDEAM, que estuvo sin script del 25-ago al 15-oct de 2026) a
+        # un dia ya escrito: ese dia se recalcula ENTERO, como la cola, y no solo se rellena la columna cruda. Rellenar
+        # sin recalcular dejaba filas incoherentes (pluviometro 41,4 mm con consenso 4,1). Solo hasta LLEGADA_TARDIA_MAX
+        # dias atras; mas atras, nada se toca (docs: CLIMA.md, «El pluviometro IDEAM al dia»).
+        v = viejo.assign(fecha=pd.to_datetime(viejo.fecha)).set_index("fecha")
+        n = clima.assign(fecha=pd.to_datetime(clima.fecha)).set_index("fecha").reindex(v.index)
+        comunes = [c for c in v.columns if c in n.columns]
+        tarde = (v[comunes].isna() & n[comunes].notna()).any(axis=1)
+        tarde = tarde[tarde & (tarde.index >= v.index.max() - pd.Timedelta(days=LLEGADA_TARDIA_MAX))]
+        reabrir = max(REABRIR_DIAS, (v.index.max() - tarde.index.min()).days + 1) if tarde.any() else REABRIR_DIAS
+        if reabrir > REABRIR_DIAS:
+            print(f"datos llegados tarde desde el {tarde.index.min().date()}: se recalculan {reabrir} dias")
+        clima, revisiones = fusionar(viejo, clima, "fecha", reabrir, rellenar=False)
+        clima["fecha"] = clima["fecha"].dt.date
+    escrito = escribir_si_cambia(clima, SALIDA, index=False, encoding="utf-8-sig")
+    resumen(SALIDA.name, viejo, clima, "fecha", revisiones, escrito)
+    clima["fecha"] = pd.to_datetime(clima["fecha"])
     auditar(clima)

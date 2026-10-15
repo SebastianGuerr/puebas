@@ -17,11 +17,15 @@ Sale:   calendarios/vigilancia/powerbi/AAAA-MM-DD/   una carpeta por dia de desc
             metadatos.json            clave, tabla, refresco del INS y consulta de cada archivo
         Las carpetas NO se sobrescriben entre dias: las 2-3 ultimas semanas se
         revisan con la notificacion tardia, y lo que se sabia en cada fecha vale.
+        Una carpeta AAAA-MM-DD solo aparece si TODOS los archivos bajaron y ninguno
+        trae menos filas que la descarga anterior. Si no, lo bajado va a
+        powerbi/_parciales/AAAA-MM-DD/ y el proceso sale con codigo 1 (CAPTURAS.md).
 
 API: la interna de 'Publish to web' (no documentada). Sin token: solo la clave
 publica del tablero, que se lee en cada corrida de la lista SharePoint
-'MenuReporteNivel2' del portal SIVIGILA. El nombre de la tabla lleva el ano y se
-descubre con conceptualschema.
+'MenuReporteNivel2' del portal SIVIGILA (si el portal no responde, se usan las
+claves de la ultima descarga, guardadas en su metadatos.json). El nombre de la
+tabla lleva el ano y se descubre con conceptualschema.
 
 PRIVACIDAD, NO NEGOCIABLE
     Los modelos de los tableros POR EVENTO exponen en su esquema columnas de
@@ -36,6 +40,7 @@ import argparse
 import base64
 import json
 import re
+import shutil
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -83,6 +88,18 @@ def tableros():
             continue
         salida[x["Title"].strip()] = k
     return salida
+
+
+def tableros_guardados():
+    """{titulo: clave} de la ultima descarga completa: plan B cuando la lista del portal no responde."""
+    for carpeta in sorted(CARPETA.glob("????-??-??"), reverse=True):
+        meta = carpeta / "metadatos.json"
+        if meta.exists():
+            m = json.loads(meta.read_text(encoding="utf-8"))
+            tabs = {a["tablero"]: a["clave"] for a in m["archivos"].values() if "clave" in a and "tablero" in a}
+            if tabs:
+                return tabs
+    raise FileNotFoundError(f"ninguna descarga en {CARPETA} trae claves en metadatos.json")
 
 
 def clave(tabs, prefijo):
@@ -301,32 +318,70 @@ def por_evento(tabs, evento):
 EVENTOS_TABLERO = [356, 300, 831, 875]
 
 
+# Archivos de un solo ano (la tabla del 006 lleva el ano en el nombre): en enero vuelven a empezar y es normal
+# que traigan menos filas que la descarga anterior. Los demas cubren todos los anos y no deben encoger.
+DE_UN_ANO = {"rutinaria_manizales", "ira_995_rutinaria"}
+
+
+def encogio(nombre, d, anterior):
+    """Motivo si `d` trae menos filas que el mismo archivo de la descarga anterior; '' si no."""
+    if anterior is None or not (anterior / f"{nombre}.csv").exists():
+        return ""
+    a = pd.read_csv(anterior / f"{nombre}.csv")
+    if nombre in DE_UN_ANO and pd.to_numeric(d["anio"]).max() != a["anio"].max():
+        return ""
+    return f"{len(d)} filas contra {len(a)} de {anterior.name}" if len(d) < len(a) else ""
+
+
 def congelar(rehacer=False):
     hoy = date.today().isoformat()
     destino = CARPETA / hoy
     if destino.exists() and not rehacer:
         sys.exit(f"{destino} ya existe: una descarga por dia (--rehacer para sustituirla).")
-    tabs = tableros()
+    anteriores = [c for c in sorted(CARPETA.glob("????-??-??")) if c.name < hoy]
+    anterior = anteriores[-1] if anteriores else None
+    try:
+        tabs, origen = tableros(), "MenuReporteNivel2"
+    except Exception as e:                         # el portal SIVIGILA se cae; el Power BI no
+        print(f"  la lista de tableros del portal no responde ({e!r:.150}); se usan las claves guardadas")
+        tabs, origen = tableros_guardados(), "claves de la ultima descarga"
     trabajos = [("rutinaria_manizales", lambda: rutinaria(tabs)),
                 ("ira_995_rutinaria", lambda: ira_rutinaria(tabs)),
                 ("ira_995_tablero", lambda: ira_tablero(tabs))]
     trabajos += [(f"evento_{e}", lambda e=e: por_evento(tabs, e)) for e in EVENTOS_TABLERO]
-    destino.mkdir(parents=True, exist_ok=True)
-    meta = {"descargado": pd.Timestamp.now().isoformat(timespec="seconds"), "archivos": {}}
+    tmp = CARPETA / f"_tmp_{hoy}"                  # se escribe aparte y solo se publica completo
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    meta = {"descargado": pd.Timestamp.now().isoformat(timespec="seconds"), "claves": origen, "archivos": {}}
+    fallos = []
     for nombre, f in trabajos:
         try:
             d, m = f()
         except Exception as e:                     # un tablero caido no tumba los demas
             print(f"  {nombre}: FALLO {e!r}"[:300])
             meta["archivos"][f"{nombre}.csv"] = {"error": repr(e)[:500]}
+            fallos.append(nombre)
             continue
         d = d.sort_values(list(d.columns[:2]) if nombre != "rutinaria_manizales" else ["cod_eve", "semana"])
-        d.to_csv(destino / f"{nombre}.csv", index=False)
+        d.to_csv(tmp / f"{nombre}.csv", index=False)
         m.update(filas=len(d))
         meta["archivos"][f"{nombre}.csv"] = m
         anios = sorted(pd.to_numeric(d["anio"]).unique().tolist())
         print(f"  {nombre}: {len(d)} filas, anos {anios[0]}-{anios[-1]}, refresco del INS {m['refresco_ins']}")
-    (destino / "metadatos.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+        if motivo := encogio(nombre, d, anterior):
+            print(f"  {nombre}: MENOS DATOS que la descarga anterior: {motivo}")
+            meta["archivos"][f"{nombre}.csv"]["menos_datos"] = motivo
+            fallos.append(nombre)
+    (tmp / "metadatos.json").write_text(json.dumps(meta, ensure_ascii=False, indent=1), encoding="utf-8")
+    if fallos:
+        parcial = CARPETA / "_parciales" / hoy
+        shutil.rmtree(parcial, ignore_errors=True)
+        parcial.parent.mkdir(parents=True, exist_ok=True)
+        tmp.replace(parcial)
+        sys.exit(f"descarga incompleta ({', '.join(fallos)}): guardada en {parcial}, no en {destino}")
+    if destino.exists():                           # solo con --rehacer
+        shutil.rmtree(destino)
+    tmp.replace(destino)
     print(f"congelado en {destino}")
     return destino
 
@@ -378,8 +433,8 @@ def main():
         import empalme
         empalme.main(ultima())
         return
-    tabs = tableros()
     if args.esquema:
+        tabs = tableros()
         titulo, k = clave(tabs, args.esquema)
         s = sesion(k)
         print(titulo, "| refresco del INS:", s["refresco_ins"])

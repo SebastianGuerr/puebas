@@ -13,7 +13,7 @@ distintos, todos medidos.
 
 | Fuente | Qué es | Dónde | Cobertura |
 |---|---|---|---|
-| `clima_ideam.csv` | Estaciones IDEAM, empalmadas por cercanía | 3 estaciones, ver abajo | 1.776 días |
+| `clima_ideam.csv` | Estaciones IDEAM, empalmadas por cercanía | 3 estaciones, ver abajo | 1.776 días hasta el 2026-08-25; lo actualiza `clima_ideam.py` desde el 2026-10-15 |
 | `raw_iem_skmz.csv` | METAR del aeropuerto La Nubia | En la ciudad, ~2.090 m | 2.432 días (temp. 83 %) |
 | `raw_openmeteo.csv` | Reanálisis ERA5-Land (temp.) y ERA5 (lluvia) | Celda de 2.100 m | 2.431 días |
 | `raw_nasapower.csv` | Reanálisis MERRA-2 / satélite | Celda de ~55 km | 2.431 días |
@@ -240,3 +240,167 @@ transición de seco a lluvioso.
 - temperatura mínima, 0,52;
 - horas de sol frente a la radiación, 0,54;
 - nubosidad frente a la radiación, −0,43.
+
+## Actualización incremental (2026-10-15)
+
+Los tres scripts de clima pasaron a ser **incrementales**: lo ya escrito no cambia salvo los últimos 10 días y las
+celdas vacías; `--rehacer` vuelve al comportamiento anterior. Por qué, y la tabla de cuánto movía el pasado
+rehacerlo todo, en `CAPTURAS.md`, «Actualización incremental». Lo que toca a este documento:
+
+- **Las correcciones de arriba siguen intactas.** `pluviometro_fallido()`, la exclusión de Planalto, el escalado
+  mes a mes y la lluvia del ERA5 fuera del consenso no se tocaron; solo cambió qué filas se escriben.
+- **NASA POWER es provisional en sus últimos ~3 meses.** Al rehacer el 2026-10-15, los días 2026-05-31 a
+  2026-08-27 cambiaron (precipitación hasta 14,8 mm en un día, humedad hasta 6,5 puntos). Con el modo incremental
+  esos días quedan como se bajaron; el cambio se cuenta y no se aplica.
+- **Open-Meteo cambió su máxima y mínima diarias en toda la serie** (+0,05 y −0,06 °C de media; la media diaria no
+  cambió). Con el modo incremental no entra en el pasado.
+- **El ERA5 de los últimos días trae valores imposibles** (mínimas de 3,0 y 5,9 °C el 24-25 de septiembre de 2026,
+  corregidas después a ~15 °C). Por eso se reabren siempre los últimos 10 días.
+- **Los factores y percentiles de `clima_unificado.py` dependen de toda la serie.** Solo añadir 49 días movía
+  188-569 celdas del pasado por variable. El modo incremental conserva las filas viejas y calcula las nuevas con
+  los factores del día; el desfase entre ambas es del orden de 0,01-0,02 °C de media.
+- **Desde el 2026-08-25 no hay pluviómetro en el consenso**: `clima_ideam.csv` no tiene script que lo regenere.
+  La lluvia posterior es NASA escalada (sirve para acumulados, no para el día exacto).
+  **Resuelto el mismo día** con `clima_ideam.py`: ver «El pluviómetro IDEAM al día».
+
+## El pluviómetro IDEAM al día (2026-10-15)
+
+`calendarios/clima/clima_ideam.py` regenera `clima_ideam.csv`. El CSV llegó hecho en el commit 3d68117, sin el
+script que lo produjo, y se había quedado en el 2026-08-25. Desde entonces la lluvia del consenso era solo NASA
+escalada.
+
+```
+.venv\Scripts\python.exe calendarios/clima/clima_ideam.py             # diario, sin argumentos; después clima_unificado.py
+.venv\Scripts\python.exe calendarios/clima/clima_ideam.py --rehacer   # rehace La Nubia entera (mueve el pasado)
+```
+
+### La fuente
+
+API Socrata de datos.gov.co, sin token. Estación **AEROPUERTO LA NUBIA - AUT** (`0026155110`).
+
+| Conjunto | Qué es | Sensor que se usa | Lecturas por día |
+|---|---|---|---|
+| `s54a-sgyg` | «Precipitación», mm | `0240` | 144 (cada 10 minutos) |
+| `sbwg-7ju4` | «Temperatura Ambiente del Aire», °C | `0068` | 24 (horaria) |
+
+- Columnas de la fuente: `codigoestacion`, `codigosensor`, `fechaobservacion` (hora local, sin zona),
+  `valorobservado`, `nombreestacion`, `departamento`, `municipio`, `zonahidrografica`, `latitud`, `longitud`,
+  `descripcionsensor` y `unidadmedida`. Se usan las cuatro primeras.
+- **Desde el 2026-08-12 hay un segundo sensor GPRS de cada variable**, con una lectura cada 2 minutos: `0257` para
+  la lluvia y `0071` para la temperatura. Miden lo mismo:
+  - entre el 12-ago y el 14-oct la lluvia total es idéntica, 331,2 mm en los dos;
+  - la temperatura media difiere 0,00 ± 0,06 °C por día.
+  
+  **No se usan**, para que la serie siga siendo la misma desde 2022.
+- Retraso: consultado el 15-oct a mediodía, el día 14 ya estaba completo (144/144 y 24/24).
+
+### La reconstrucción, y su acierto
+
+No había script, ni en el repositorio ni en el historial de git. El método se reconstruyó a partir de los datos.
+
+| Columna | Regla |
+|---|---|
+| `precipitacion_mm` | suma de las lecturas del día, a 2 decimales |
+| `completitud_precip` | mín(1, lecturas / 144), a 3 decimales. **144 fijo para todas las estaciones** |
+| `temp_media` | media decimal exacta de las lecturas, redondeada a 2 decimales con numpy |
+| `temp_min`, `temp_max` | extremos de las lecturas |
+| `n_registros_temp` | número de lecturas de temperatura |
+| fila | hay fila si ese día hay lluvia o temperatura; lo que falte va vacío |
+
+Antes de agregar se quitan las lecturas repetidas. La fuente publica **cada lectura dos veces** de octubre de 2024 a
+febrero de 2025, y **diecinueve veces** el 2026-07-24. Si no se quitan, la lluvia de esos días sale doble.
+
+**Acierto** sobre los 977 días de La Nubia del CSV (2022-03-21 a 2026-08-25), comparados con lo que publica hoy la
+fuente:
+
+| Columna | Días idénticos |
+|---|---|
+| `temp_media`, `temp_min`, `temp_max`, `n_registros_temp` | **977 de 977** |
+| `completitud_precip` | 976 de 977 |
+| `precipitacion_mm` | 973 de 977 |
+| Días con fila | los mismos 977: en 50 días la fuente no rellenó ningún hueco |
+
+- **El redondeo de la media importa.**
+  - Con la media en coma flotante fallaban 2 días por 0,01 °C: 420,6 / 24 da 17,525000000000002 y sube a 17,53,
+    mientras que el CSV dice 17,52.
+  - Con redondeo al par sobre el decimal exacto fallaban 11.
+  - Lo que da el CSV en los 977 días es la media decimal exacta seguida del redondeo de numpy. Es lo mismo que da
+    el `avg()` de Socrata.
+- **Los 5 días que no coinciden son un defecto del CSV anterior, no del método.**
+  - El 16, 17, 22 y 23 de agosto de 2026 el CSV trae 14,0 / 62,97 / 1,67 / 7,0 mm. El pluviómetro marca
+    8,4 / 37,8 / 1,0 / 4,2.
+  - Es **×5/3** en los cuatro días: el CSV anterior mezcló el sensor de 10 minutos con el nuevo de 2 minutos.
+  - Por la misma mezcla, el 13-ago trae una completitud de 1,0 en vez de 0,993.
+  - No se logró reproducir la cifra exacta de la mezcla (62,97): la carga del sensor nuevo cambió desde entonces.
+  - Ningún otro día del CSV es posterior al 12-ago, así que el defecto no llega más atrás.
+- **Las estaciones cerradas también coinciden en sus valores.**
+  - Tesorito Finca (`0026155170`): 163 de 163 días idénticos en lluvia, completitud, media, máxima y número de
+    lecturas.
+  - Planalto (`0026155503`): lluvia idéntica en 632 de 632 días.
+  - La completitud de Planalto confirma el 144 fijo: con su frecuencia real (288 lecturas) solo coincidirían 429
+    días.
+- **Lo que no se reconstruye es qué filas eligió el empalme.**
+  - La Nubia manda todos los días en que tiene dato. Pero hay 114 días de 2020 y 2022-2023 en que Planalto tiene
+    lluvia publicada y el CSV no tiene fila.
+  - Por eso las filas de Tesorito y Planalto **se conservan tal como están**, también con `--rehacer`, y el script
+    solo baja La Nubia.
+  - Planalto está excluido del consenso de todos modos.
+
+### Cómo se actualiza
+
+Igual que los demás actualizadores incrementales (`CAPTURAS.md`), con `calendarios/actualizacion.py`:
+
+- **Cola de 10 días.** Lo medido no pide más:
+  - el día anterior llega completo;
+  - en 50 días la fuente no cambió ningún valor ni rellenó ningún hueco de los 977 días;
+  - y 10 es lo que reabre `clima_unificado.py`, así que un día que el IDEAM complete tarde sigue dentro de la cola
+    de los dos archivos.
+- Se bajan 120 días para **contar**, sin aplicarlo, lo que la fuente cambiaría del pasado («revisiones del pasado
+  no aplicadas»). Si antes de la cola trae días que el archivo no tiene, avisa y no los añade.
+- Hoy no se baja, porque está a medias. Si se corre de madrugada, ayer puede estar incompleto; la cola lo completa
+  al día siguiente.
+- `proteger()` aborta sin escribir si la fuente acaba antes que el archivo o si trae menos del 98 % de los días de
+  La Nubia del tramo bajado.
+- `escribir_si_cambia()`: si no hay cambios, el archivo no se toca.
+- Cualquier fallo de la API (tras tres intentos) o de `proteger` sale con **código 1**. Comprobado con la red
+  cortada y con una fuente truncada al 30-sep: código 1 y el archivo intacto.
+- Tarda de 20 s a 1 minuto según cómo responda datos.gov.co. Una segunda corrida dice «sin cambios, no se toca».
+- `--rehacer` baja La Nubia entera por tramos de un mes: tardó 20 minutos el 2026-10-15 por la tarde, con el
+  servidor lento (por la mañana la misma descarga tomó 3 minutos). Probado sobre una copia: solo cambia la
+  completitud del 13-ago, la revisión que el modo incremental cuenta y no aplica.
+
+### La primera corrida (2026-10-15)
+
+- `clima_ideam.csv`: último dato **2026-08-25 → 2026-10-14**. Son 50 días nuevos, sin ningún faltante del 26-ago al
+  14-oct. Lluvia de septiembre: 121,4 mm (30 días); del 1 al 14 de octubre: 158,0 mm.
+- Los cuatro días inflados de agosto entraron en la cola, y por tanto se corrigieron. La completitud del 13-ago
+  queda como estaba: es la «1 revisión no aplicada».
+- **`pluviometro_fallido` no se dispara en ningún día nuevo.**
+  - Del 26-ago al 14-oct el pluviómetro suma 279,8 mm y NASA 386,9.
+  - Es una razón de 0,72, dentro del rango de los meses sanos (0,27 a 1,42).
+  - La falla de 2025-2026 terminó.
+
+**Lo que pasa en `clima_unificado.csv.gz` en modo incremental**, medido contra una copia previa:
+
+| Días | `precipitacion_mm` (pluviómetro) | Entra al consenso (`precip_con_estacion`) |
+|---|---|---|
+| 26-ago a 04-oct (40) | rellenada | **no**: el consenso sigue siendo NASA escalada |
+| 05-oct a 14-oct (10, la cola) | rellenada | **sí** |
+
+- `fusionar()` rellena las celdas vacías del pasado (`precipitacion_mm`, `completitud_precip`, `temp_media`…) pero
+  no recalcula las columnas derivadas.
+  - En esos 40 días, la columna del pluviómetro y el consenso dicen cosas distintas.
+  - El caso más claro es el 13-sep: el pluviómetro marca 41,4 mm y el consenso 4,1.
+- **Para analizar, `precip_con_estacion` sigue siendo la llave correcta**, porque es coherente con el consenso.
+- La corrección de los cuatro días de agosto tampoco llega al unificado: sus filas son anteriores a la cola.
+- **Corregido el mismo día en `clima_unificado.py`** (ya no hace falta `--rehacer`). Ahora, si un dato llega tarde a
+  un día ya escrito (una celda vacía que la fuente trae llena), ese día se **recalcula entero**, igual que la cola, y
+  no solo se rellena la columna cruda (`fusionar(..., rellenar=False)`).
+  - El alcance llega hasta `LLEGADA_TARDIA_MAX = 120` días atrás; más atrás no se toca nada.
+  - Medido, partiendo de la copia anterior a la llegada del IDEAM: se recalcularon 51 días, y solo cambiaron filas
+    del 25-ago al 04-oct.
+  - Los 50 días del 26-ago al 14-oct entran al consenso con pluviómetro (`precip_con_estacion = True`), ninguno con
+    `pluviometro_fallido` y **0 filas incoherentes**. El 13-sep pasa a un consenso de 22,9 mm.
+  - Una segunda corrida: «sin cambios, no se toca».
+- Lo que sigue pendiente del propietario: los cuatro días de agosto inflados ×5/3 (16, 17, 22 y 23) siguen así en el
+  unificado. No son celdas vacías sino revisiones del pasado, y esas solo se aplican con `--rehacer`.

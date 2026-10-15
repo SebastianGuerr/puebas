@@ -1,21 +1,40 @@
 {
- "general": "verde",
+ "general": "amarillo",
+ "principal": "M3s",
+ "comparacion": "C0r",
  "señales": [
   {
    "que": "Datos",
    "nivel": "verde",
-   "detalle": "último día completo: 2026-10-12 (hace 2 días)"
+   "detalle": "último día completo: 2026-10-14 (hace 1 días)"
   },
   {
    "que": "Acierto reciente",
    "nivel": "gris",
-   "detalle": "solo 0 días verificados"
+   "detalle": "todavía no hay días predichos por M3s con dato real"
   },
   {
    "que": "Nueva EPS",
    "nivel": "verde",
-   "detalle": "68 por día en las 2 últimas semanas frente a 60 en las 8 anteriores (+13 %)"
+   "detalle": "68 por día en las 2 últimas semanas frente a 61 en las 8 anteriores (+12 %)"
+  },
+  {
+   "que": "Contexto externo",
+   "en_general": true,
+   "nivel": "amarillo",
+   "detalle": "en amarillo: clima_ideam (1 días de atraso), mindefensa (45 días de atraso), por_confirmar (-11 días de atraso) (última actualización: 2026-10-15T12:06:32)",
+   "fuentes_con_problema": [
+    "clima_ideam",
+    "mindefensa",
+    "por_confirmar"
+   ]
+  },
+  {
+   "que": "Comparación",
+   "en_general": false,
+   "nivel": "gris",
+   "detalle": "0 días comunes de M3s y C0r a 15-21 días (hacen falta 14)"
   }
  ],
- "calculado": "2026-10-14T15:02:30"
+ "calculado": "2026-10-15T12:12:16"
 }

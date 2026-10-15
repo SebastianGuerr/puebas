@@ -1,0 +1,26 @@
+{
+ "origen": "2026-10-14",
+ "modelo": "M3s",
+ "papel": "principal",
+ "horizonte": 78,
+ "validado_hasta": 28,
+ "creado": "2026-10-15T12:05:24",
+ "segundos": 373,
+ "commit": "7d1b434",
+ "perfil": "P52",
+ "ventana_aseguradoras": "T4",
+ "ultimo_dato": "2026-10-14",
+ "antiguedad_dias": 1,
+ "red": {
+  "usada": true,
+  "version": "red_de_urgencias_v2",
+  "episodios": 30,
+  "conocido_al": "2026-10-15",
+  "efectos": {
+   "acceso": 0.1443,
+   "externos": -0.0102
+  },
+  "ses_atiende_nueva_eps": true,
+  "quiebre_total": false
+ }
+}

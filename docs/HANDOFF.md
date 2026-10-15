@@ -6,7 +6,56 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-10-14.**
+**Última actualización: 2026-10-15.**
+
+---
+
+## HECHO (2026-10-15): el contexto externo se actualiza solo y la operación usa M3s — SIN COMMIT
+
+**Decisión del propietario.** Entradas del 2026-10-15 de `CONTEXTO.md`, empezando por la de abajo. Power BI queda
+para después.
+
+**Qué hay ahora:**
+- **`python -m contexto`** (manual en `contexto/docs/CONTEXTO_EXTERNO.md`):
+  - 16 pasos, cada uno con su frecuencia, que actualizan todas las fuentes externas y el hospital;
+  - deja `salidas/contexto/contexto_diario.csv` (2020-2028, 45 columnas: lo mismo que ve M3s) y `frescura.csv`;
+  - `--todo` tarda unos 130 s sin el hospital; la extracción, unos 16 s.
+- **Todos los scripts de `calendarios/` son incrementales** (`calendarios/actualizacion.py`): no reescriben el
+  pasado. Las revisiones del pasado solo se aplican con `--rehacer`, y eso lo decide el propietario.
+- **Actualizadores nuevos** (reglas y acierto en `calendarios/docs/ACTUALIZADORES.md`):
+  - eventos y Feria, fiestas y calendario escolar. Proyectan 2027-2028 como `estimada_auto`; nunca tocan filas
+    existentes;
+  - desastres: terremoto desde el USGS, con criterio preregistrado;
+  - pluviómetro IDEAM (`clima/clima_ideam.py`).
+- **La operación usa M3s** como principal y C0r como vara (preregistro `operacion_m3s_contexto_automatico`).
+  - Regla de vuelta atrás a los 84 días comunes; la primera evaluación, hacia mediados de enero de 2027.
+  - Corridas `2026-10-14_M3s` y `2026-10-14_C0r`. Semáforo con «Contexto externo» y «Comparación».
+- **Arreglado al integrar** (entrada «(cierre)»): la red de M3s congelada en el 20-sep (`indices.FIN_RED`) y las filas
+  incoherentes del clima unificado.
+
+**Esperando al propietario:**
+1. **Registrar las tareas de Windows.** Los comandos están en `contexto/docs/CONTEXTO_EXTERNO.md`: los XML de
+   `contexto/`, `triage_contexto_diario` (06:30 diaria) y `triage_operacion_semanal` (lunes 07:00), y deshabilitar
+   `triage_capturas_semanales`. **Hasta entonces nada corre solo.**
+2. **8 filas de fiestas escritas a mano tienen el estado vacío y el modelo las ignora.** Entre ellas, Belalcázar
+   (26-oct a 2-nov) y la Noche del Fuego de Salamina (7-8 dic 2026). Ponerles `programado` es una decisión del
+   propietario.
+3. **Lista por confirmar** (`salidas/contexto/por_confirmar_*.csv`): 7 fechas en los próximos 60 días. El calendario
+   escolar oficial de 2027 sale a finales de octubre.
+4. **Revisiones del pasado sin aplicar:**
+   - NASA, de mayo a agosto de 2026;
+   - el desplazamiento de Open-Meteo y ERA5;
+   - la magnitud del sismo del 29-sep;
+   - los 4 días de agosto inflados ×5/3 en el clima unificado.
+
+   Se aplican con `--rehacer`, que mueve el pasado.
+5. **Autorizar el commit**, y decidir qué hacer con `NLP/modelo.py`, que trae un cambio ajeno.
+
+**Límites:**
+- El umbral del terremoto se fijó conociendo el único caso real.
+- La red v2 y el rango W están validados sobre C0r, no sobre M3s.
+- MinDefensa publica más tarde de lo que M3s lee: la columna social queda vacía en el origen.
+- El SARIMAX de M3s avisa de que no converge.
 
 ---
 
@@ -40,12 +89,24 @@ en el tablero, por aseguradora y por hora. Revierte la exclusión del convenio d
 - una reapertura sin anuncio solo se ve con el rezago de los datos;
 - diciembre de 2025 sigue en ~20 %.
 
-**Todo SIN COMMIT.**
+**Versionado en el commit 7d1b434 (rama modelos-afinados).** Pendiente: la revisión del tablero con el propietario.
 
 **Esperando al propietario:**
-- commit de todo lo de hoy;
+- revisar el tablero (http://localhost:8502 o `operacion\tablero.cmd`);
 - digiturno: nombre de la base y permiso (no está en `DWSES`; las otras 15 bases dan «sin acceso»);
 - mantener `datos/eventos_red.csv` al día (guía en `operacion/docs/OPERACION.md`).
+
+**Resiliencia (14-10, `CONTEXTO.md` (8)).** Se mide en semanas de recuperación tras cada golpe: 32 sin red, 28 con
+la v2. Julio pasa de 3 semanas a 0.
+- El reanclaje tras un quiebre **no entró**: el sismo lo engañó.
+- El rango más ancho tras un quiebre **sí entró** (`operacion.RANGO_QUIEBRE`).
+- Último ajuste guardado: `ajustes/2026-10-14_1639`.
+
+**Digiturno = `DIM_HCNCONTRDT` (14-10, `CONTEXTO.md` (7)).** Hay 5-7 % de solicitudes de triage no atendidas.
+- Extracción: `python -m extraccion --turnos` → `salidas/turnos_triage.parquet`.
+- Patrones descriptivos: la espera duplica el abandono; pico a las 13 h; madrugada alta con espera corta.
+- **Pendiente:** el análisis formal de por qué se van, la predicción de no atendidos por hora y que urgencias o
+  sistemas confirme el significado de `HCCESTADO`.
 
 **Foco fijado por el propietario (14-10):** solo la precisión del total del día y del reparto por aseguradora del SES.
 Las indicaciones son:
@@ -79,7 +140,7 @@ Las indicaciones son:
 6. **Operación** (`operacion/`, guía en `operacion/docs/OPERACION.md`):
    - `python -m operacion [--extraer] [--estado] [--modelo M3s]`: C0r con receta fija, 28 días, corrida guardada y
      versionada, verificación y semáforo;
-   - tablero: `streamlit run operacion/tablero.py` (o `operacion	ablero.cmd`);
+   - tablero: `streamlit run operacion/tablero.py` (o `operacion\tablero.cmd`);
    - primera corrida guardada: `salidas/operacion/corridas/2026-09-20_C0r/`; semáforo rojo porque los datos tienen 23
      días.
 7. En `.venv` se instalaron streamlit 1.65.0, altair 6.3.0 y vl-convert 1.9.0. Están en `requirements.txt`, con
@@ -98,7 +159,7 @@ Las indicaciones son:
 Precisión: 10-11 % de error a 15-21 días en 2025-2026. En el 21-sep a 12-oct, 5,9 % con el 95 % de los días dentro
 del rango.
 
-**Cómo verlo:** `operacion	ablero.cmd` (o `.venv\Scripts\python.exe -m streamlit run operacion	ablero.py`).
+**Cómo verlo:** `operacion\tablero.cmd` (o `.venv\Scripts\python.exe -m streamlit run operacion	ablero.py`).
 
 **Decidido por el propietario:**
 - **no** programar la ejecución automática todavía;

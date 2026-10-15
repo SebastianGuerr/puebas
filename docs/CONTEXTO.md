@@ -14,6 +14,341 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-15 (cierre) — Dos correcciones del orquestador al integrar, y verificación de punta a punta
+
+**(1) La red de M3s estaba congelada en el 20-sep.** `notebooks/indices.red_diaria` tenía `fin="2026-09-20"` fijo, y
+`regimenes_diarios` lo acotaba igual. Las columnas `ext_g_m_red_*` y `crisis_red` no avanzaban con la extracción y
+valían 0 desde el 21-oct (fin del `ffill` de 30 días).
+- **Arreglo:** `indices.FIN_RED`, que vale el 2026-09-20 por defecto para que los cuadernos publicados no cambien.
+  `operacion._preparar` lo fija en el origen, lo que además evita la fuga, y `contexto/diario.py` en el último día
+  completo.
+- **Medido:** el contexto diario ya mueve la red hasta el 14-oct (cambio de Nueva EPS 0,289 → 0,044; `crisis_red`
+  pasa a 0 el 15-oct).
+- La corrida M3s hecha antes del arreglo se descartó y se rehízo.
+
+**(2) Un dato tardío dejaba filas incoherentes en el clima unificado.** El modo incremental (`fusionar`, que rellena
+celdas vacías) metía el pluviómetro IDEAM que llegó tarde en la columna cruda sin recalcular el consenso. Por ejemplo,
+el 13-sep: pluviómetro 41,4 mm y consenso 4,1.
+- **Arreglo:** un día del pasado al que le llega un dato tardío se recalcula entero, como la cola, hasta 120 días
+  atrás (`LLEGADA_TARDIA_MAX`). Más atrás no se toca nada.
+- **Medido:**
+  - cambian solo las filas del 25-ago al 04-oct;
+  - los 50 días nuevos entran al consenso con pluviómetro, sin ninguna falla;
+  - 0 filas incoherentes;
+  - una segunda corrida no toca el archivo.
+
+**Verificación de punta a punta (15-oct):**
+- `python -m contexto --todo --sin-hospital`: código 0 en 131 s. Todas las fuentes en verde salvo `mindefensa`
+  (amarillo: la fuente publica tarde) y `por_confirmar` (amarillo: 7 fechas para confirmar a mano).
+- `python -m operacion` no reentrena si ya existe la corrida de ese origen.
+- AppTest del tablero: 0 excepciones.
+- **Las tareas de Windows no se registraron.** El clasificador de permisos bloqueó al agente por persistencia. Las
+  registra el propietario, con los comandos de `contexto/docs/CONTEXTO_EXTERNO.md`.
+
+---
+
+## 2026-10-15 (operación M3s) — M3s pasa a principal con C0r al lado como vara; regla de vuelta atrás a 12 semanas
+
+**Qué se decidió.** Cumple la decisión de la entrada «El contexto externo se actualiza solo» de este mismo día y
+**revierte el punto 2 de la entrada 2026-10-13 (5)** («C0r en producción; M3s como opción»).
+- `operacion.MODELO = "M3s"` y `operacion.COMPARACION = "C0r"`. `python -m operacion` entrena los dos en secuencia
+  (una sola cosa pesada a la vez), desde el mismo origen, y guarda `<origen>_M3s` y `<origen>_C0r`. Con `--modelo` se
+  fuerza uno solo. Si ya existe la corrida de ese origen y modelo, no se reentrena.
+- `--ajustar` aplica la red v2 a la última corrida de los dos.
+- El semáforo calcula el error y el rango sobre el principal y suma dos señales:
+  - **Contexto externo** (lee `salidas/contexto/frescura.csv`): rojo si una fuente que usa M3s está en rojo; amarillo
+    si alguna está en amarillo o si está en rojo una que M3s no usa; gris sin el archivo. Entra en el estado general;
+  - **Comparación**: M3s frente a C0r en los días comunes. No entra en el estado general que ve urgencias.
+- El tablero muestra M3s y, en gris, C0r: una línea discontinua en el mes, el valor de C0r en el detalle del día, una
+  columna en las semanas y las filas de los dos en «Qué tan confiable es». La cifra grande del calendario pasa a ser el
+  **rango del 80 %**, y el valor central va debajo: urgencias tiene que leer un rango, no una cifra.
+
+**Preregistro, escrito antes de correr M3s:** fila `operacion_m3s_contexto_automatico`.
+- **Criterio:** error del día y % en rango con 15-21 días de adelanto, en corridas guardadas antes de que empiece el
+  día, sobre los días comunes (mismo origen y dato real).
+- **Regla de vuelta atrás:** se evalúa a los 84 días comunes y cada 84 más, sobre todo lo acumulado. Si M3s tiene
+  más error del día que C0r, vuelve C0r. Volver a M3s exige una fila nueva.
+- **Por qué N = 12 semanas y no 8:**
+  - M3s solo difiere de C0r en los días con mecanismo. 8 semanas desde el primer día común (hacia el 27 de octubre)
+    acabarían antes de las noches de diciembre y de la Feria de enero;
+  - con correlación 0,47 entre días, 84 días equivalen a unos 30 independientes.
+
+  La regla es una salvaguarda, no una prueba de superioridad.
+
+**Corrección del orquestador durante la sesión.** `indices.red_diaria` tenía el fin fijo en el 2026-09-20: las
+variables de red de M3s quedaban congeladas en esa fecha. Ahora `operacion._preparar` fija `indices.FIN_RED` en el
+origen. La primera corrida `2026-10-12_M3s`, hecha antes del arreglo, **se borró** en la misma sesión (no se había
+usado ni versionado) y se rehízo. Como los datos ya llegaban al 14-10, salió el origen 2026-10-14 para los dos.
+
+**Evidencia medida.**
+- **Corridas guardadas:** `2026-10-14_M3s` (373 s) y `2026-10-14_C0r` (229 s), horizonte de 78 días. El ciclo completo
+  tarda 607 s. Reentrenar C0r con el origen del 12-10 reprodujo la corrida guardada exactamente (diferencia 0).
+- **M3s a más de 28 días funciona y no tiene fuga.**
+  - `pronostico.EXPERIMENTOS["m3s"]` lleva `semanal=True`, así que `mecanismos.contexto` no exige `H <= 7` y quita el
+    clima de rezago corto.
+  - Quedan 4 columnas que se leen del día predicho, todas de calendario (Feria, fiesta lejana, noche festiva, día
+    siguiente) y 16 que se toman en el origen.
+  - Para h = 1, 7, 15, 21, 28, 29, 45, 60 y 78, la fila que se predice no cambia si se altera todo lo posterior al
+    origen.
+  - Hay 0 NaN y los cuantiles están ordenados en los 78 días.
+- **M3s frente a C0r con el mismo origen (14-10).**
+  - En los 28 días validados, la diferencia media del valor central es del −0,5 % (media absoluta 1,2 %, máxima 2,9 %).
+    Ningún día difiere más de un 10 %. En los 11 días de fiesta lejana (Pensilvania, 27-oct a 5-nov), +0,9 %.
+  - Con todo el horizonte, 3 días pasan del 10 %, y los 3 son noches festivas: 7-dic (−16,6 %), 24-dic (−20,1 %) y
+    31-dic (−17,9 %). El 26-dic, día siguiente, va un +8,1 %.
+  - El rango de M3s es algo más estrecho: 49,7 frente a 53,6 pacientes.
+- **Historia reconstruida a 15 días, sin red:** M3s 10,1 % (2025) y 11,3 % (2026); C0r 10,3 % y 11,5 %. Existen los
+  conteos de reparto y de aseguradoras de M3s, pero **no los de la red v2 con el rango W**, que solo se reconstruyeron
+  con C0r. No se inventaron: el historial de M3s es el del modelo solo, y el tablero lo dice.
+- **Tablero:** probado con `AppTest`, 0 excepciones. Se probaron el cambio de mes, el día 24-dic, el año 2025 y el
+  cambio de aseguradora.
+- **Semáforo al cerrar:** amarillo por «Contexto externo» (clima_ideam, mindefensa y por_confirmar en amarillo).
+  «Comparación» está en gris: 0 días comunes. La primera evaluación de la regla cae hacia mediados de enero de 2027.
+
+**Límites.**
+- La red v2 y el rango W se validaron solo encima de C0r. Sobre M3s se aplican igual porque los coeficientes no
+  dependen del modelo base (se comprobó: los mismos `acceso` 0,1443 y `externos` −0,0102 en los dos), pero no hay una
+  validación de M3s con la red.
+- Lo reconstruido de M3s en 2025 es el año con el que se eligió.
+- La prueba de fuga mira la fila que se predice, no si los índices de salud y de red se normalizan con datos
+  posteriores al origen.
+- El SARIMAX de M3s avisa de que no converge (`ConvergenceWarning`), igual que en la validación.
+
+---
+
+## 2026-10-15 (orquestador) — `python -m contexto`: frecuencias, umbrales de frescura y una tarea sin ventana y con sesión iniciada
+
+Fase 2 de la entrada «El contexto externo se actualiza solo». Detalle en `contexto/docs/CONTEXTO_EXTERNO.md`.
+
+**Qué se decidió.**
+- **16 pasos con frecuencia propia** (diaria, semanal o mensual) según cómo publica cada fuente. Un paso toca si su
+  última corrida exitosa tiene al menos esa edad; un fallo no la actualiza, así que **el reintento es la corrida del
+  día siguiente**. Si un paso falla, solo se saltan sus dependientes (clima → unificado; sismos → desastres).
+- **`ok` o `sin_cambios` se decide por el contenido** de las salidas (sha256 del CSV descomprimido y con las filas
+  ordenadas), no por la fecha del archivo. Por qué ordenadas: `actualizar_eventos.py` y `actualizar_fiestas.py`
+  reescriben cada uno su parte de `por_confirmar_eventos.csv` y el orden de las filas alterna en cada corrida
+  (medido: la huella va A → B → A) sin que cambie nada.
+- **Umbrales de frescura por cómo publica cada fuente**, no uno general. Los que no son obvios:
+  - `mindefensa`: tolerado 75 días, **aviso 42**, porque M3s lee el dato de hace 42 días (`PUBLICACION_MINDEFENSA`);
+  - `enso`: 95, porque la fecha del ONI es el mes central del trimestre;
+  - `sismos`: 260, el hueco más largo entre sismos de 2010-2026 (258 días); `desastres` sin umbral, porque en un
+    catálogo de eventos raros el atraso no mide frescura;
+  - `sivigila`: 640, porque el año Y sale ~8 meses después de cerrarlo;
+  - en los calendarios, el umbral es negativo: cobertura mínima hacia adelante (180 días; festivos, 365).
+- **La tarea, con la cuenta del usuario y solo con sesión iniciada (`InteractiveToken`), no S4U.** Revierte la
+  propuesta de `CAPTURAS.md` (entrada (3)). Por qué: la extracción del hospital usa la autenticación de Windows contra
+  SQL Server en red, y S4U no tiene credenciales de red. La ventana, que fue lo que mató la tarea vieja, se quita de
+  otra forma: `wscript` con `oculto.vbs` (estilo 0) y cada subproceso con `CREATE_NO_WINDOW`.
+- **La tarea semanal de la operación espera a la corrida del día** (`python -m contexto --esperar 90`) para no leer
+  los parquet mientras la extracción los escribe; las dos arrancan a la vez cuando el equipo estuvo apagado.
+- **Las tareas no se registran desde código.** Quedan los XML y los comandos; las registra el propietario.
+
+**Evidencia (2026-10-15).**
+- `--todo --sin-hospital`: **143 s**. 13 pasos `sin_cambios`, 2 `ok`, `clima_ideam` omitido (no instalado) y
+  `sivigila_eventos` en **fallo**: la lista SharePoint `Microdatos` del portal del INS respondió 500 (el mismo fallo de
+  memoria del servidor que `CAPTURAS.md` describe para el Power BI). Código de salida 1.
+- La segunda corrida (`--sin-hospital`) se saltó los 13 pasos al día y reintentó solo los que no tenían corrida
+  exitosa: 17 s.
+- Por `wscript` + `oculto.vbs` + `contexto.cmd`, fuera de la consola: el código llega intacto (1, 0 y 2) y la salida
+  queda en `registro/tarea.log`. Una segunda corrida simultánea sale con 3 sin correr nada.
+- `--solo hospital`: la extracción corrió en 16 s y el triage llega al 2026-10-15 (a medias).
+- `contexto_diario.csv`: 3.288 días (2020-01-01 a 2028-12-31) y 45 columnas. Las 35 columnas de mecanismo coinciden
+  **exactamente** con `mecanismos.columnas` en todo el rango; `fut_m_feria_d0_4` y `fut_m_fiesta_lejana`, también en
+  ene-sep 2026 calculado aparte. 2027: Feria del 2 al 6 de enero y 66 días de fiesta lejana.
+
+**Lo que se encontró y no se arregló aquí** (son de `notebooks/` o de la fase 1):
+- `indices.red_diaria(fin="2026-09-20")` y `regimenes_diarios` (`red_diaria(min(fin, "2026-09-20"))`) tienen la fecha
+  fija: las columnas de red de M3s se quedan en el 2026-09-20 aunque la extracción traiga datos nuevos, y pasados 30
+  días de `ffill` valen 0. Medido: el contexto diario no cambió después de bajar el hospital, y la última fila con red
+  distinta de 0 es el 2026-10-20.
+- `sivigila.py` reescribe sus `.gz` aunque el contenido no cambie (cambia la cabecera gzip): ensucia git una vez al
+  mes. Se restauraron los dos archivos tras la prueba (contenido idéntico a HEAD).
+- `eventos.py` no tiene el respaldo de `powerbi.py` cuando la lista del portal del INS da 500.
+
+## 2026-10-15 (3) — Los actualizadores existentes no reescriben el pasado; la tarea murió porque se cerró su ventana
+
+**Decisión.** Los scripts de fuentes que ya existían (clima ×3, ENSO, sismos, MinDefensa, festivos, Power BI,
+microdatos SIVIGILA, capturas) pasan a ser incrementales: lo ya escrito se conserva salvo una cola reciente
+(10 días en clima, 30 en sismos, 90 en MinDefensa, 6 meses en ONI); si la fuente trae menos de lo que hay, se
+aborta sin escribir; y salen con código distinto de cero al fallar. `--rehacer` (o `--forzar` en vigilancia)
+acepta las revisiones del pasado y queda como decisión del propietario.
+
+**Por qué.** Rehacerlo todo movía en silencio datos sobre los que se publicaron experimentos: NASA POWER sustituye
+sus ~3 últimos meses provisionales (88 días cambiaron, r de 0,17 a 0,60 en esos días del clima unificado),
+Open-Meteo cambió su máxima y mínima diarias en toda la serie (±0,05 °C), el ERA5 de los últimos días traía
+mínimas de 3 °C, un sismo M4,5 pasó a 4,4, y los factores de `clima_unificado.py` movían el pasado solo con añadir
+días. Y `sivigila.py --desde 2024` borraba 174.162 de 203.772 filas.
+
+**Tarea del 2026-10-13.** Murió a los 27 s con `0xC000013A`: está como «Solo interactivo», abre una consola
+visible tras el inicio de sesión y esa ventana se cerró. Se propone S4U o lanzarla oculta, con red requerida y
+reintentos; la configura el orquestador.
+
+**Evidencia:** `calendarios/docs/CAPTURAS.md`, secciones «Actualización incremental» y «Por qué falló la tarea».
+
+## 2026-10-15 (2) — Actualizadores de desastres (terremotos del USGS) y del calendario escolar
+
+Fase 1 de la entrada de abajo. Detalle y tablas en `calendarios/docs/ACTUALIZADORES.md`.
+
+**Desastres.**
+- **Qué se decidió.** `calendarios/fenomenos/actualizar_desastres.py` detecta terremotos con probable afectación en
+  Manizales. El criterio se preregistró antes de bajar el catálogo: fila `desastre_terremoto_automatico` de
+  `variables.csv`.
+  - Intensidad estimada en Manizales por Bakun y Wentworth (1997), a partir de la magnitud y la distancia
+    hipocentral: tiene que ser **≥ 5,0**.
+  - Además, la compuerta de impacto del USGS: PAGER amarilla o más, o MMI ≥ 6, o `felt` ≥ 100.
+- **Evidencia.** En 2020-2026 hay 130 eventos (M ≥ 4,5, a ≤ 300 km). El criterio detecta 1 de 1 fila real: el
+  2026-08-10, con I = 5,44. Da **0 falsos positivos**. El siguiente evento, Cartago el 2024-01-19, queda en I = 4,10.
+- **Consecuencia.** Por la regla preregistrada, lo que detecte después del 2026-10-15 entra solo como `terremoto_auto`.
+- **Límites.**
+  - Hay una sola fila real.
+  - El umbral 5,0 se eligió sabiendo de qué evento se trataba; con 5,5 se habría perdido.
+- **Lo que se cambió respecto al encargo, y por qué.** Los candidatos no confirmados **no se escriben en el CSV**,
+  aunque lleven un subtipo distinto de `terremoto*`. Van solo a `salidas/contexto/por_confirmar_desastres.csv`.
+  - `indices.py` (`desastre_activo`) y `pronostico.py` (`ext_cat_desastre`) marcan todas las filas, sin filtrar.
+  - Si los candidatos estuvieran en el CSV, entrarían igual al modelo por esa vía.
+- **Lo anterior al corte no se toca.** Las detecciones anteriores al 2026-10-15 nunca se añaden, porque ese tramo del
+  catálogo lo revisó una persona. `catastrofes()` sigue igual: `[2026-08-10]`.
+
+**Calendario escolar.**
+- **Qué se decidió.** `calendarios/actualizar_escolar.py` deduce reglas tipo «primer lunes desde el día D» del
+  histórico oficial y añade los años lectivos 2027 y 2028. Son 10 filas con `resolucion = estimada_auto` y la regla
+  en `nota`.
+- **Evidencia, con origen rodante (n = 4).**
+  - Semana Santa (cómputo de Pascua): 4/4.
+  - Octubre: 3/4.
+  - Mitad de año: 3/4.
+  - Arranque: 2/4.
+  - Todos los fallos son de una semana justa.
+- **Decisión tomada después de ver el origen rodante.** El cierre de fin de año se calcula con la **ley de las 40
+  semanas de clase** (Decreto 1075 de 2015), no con un ancla fija.
+  - Por qué: la ley se cumple 6 de 6 con los recesos reales, y el ancla fija (2/4 contra 1/4 en origen rodante) daría
+    un 2027 de 39 semanas.
+  - Qué cambia: el cierre de 2027 queda el 6-dic y no el 29-nov.
+- **Pendiente.** La resolución de 2027 sale hacia finales de octubre. Cuando salga, se escribe a mano y se borran a
+  mano las estimadas.
+
+---
+
+## 2026-10-15 — El contexto externo se actualiza solo y vuelve a la operación; revierte «C0r por mantenimiento»
+
+**Qué se decidió (propietario).**
+- Cada fuente externa del modelo tiene su script de actualización.
+- Un orquestador las corre todas y deja un CSV de contexto diario (día × variable).
+- Una tarea programada lo corre cada cierto tiempo.
+- La predicción usa ese contexto **sin reentrenar**: los coeficientes aprendidos se aplican al estado actual del
+  entorno.
+- Power BI queda para después de tener esta base.
+
+**Por qué.** El 13-10 (entrada (5)) se puso C0r en la operación y no M3s. El motivo fue de mantenimiento, no de
+acierto: los calendarios de M3s se mantienen a mano, se acaban en 2026 y, sin nadie que los actualice, M3s se degrada
+sin avisar. Ese motivo es justo lo que la automatización elimina. Además, C0r sin el contexto externo se acerca a la
+proyección que `CLAUDE.md` descarta como producto. Con esta decisión se revierte esa parte de la entrada (5) y de
+OPERACION.md, una vez que el contexto se mantenga solo.
+
+**Evidencia de partida (no es una promesa de mejora):**
+- M3s gana a C0r en 2025 (criterio 5,98 contra 4,46), empata en 2026 y no se separa en SPA (cuaderno 26);
+- en la semana prospectiva del 5 al 11 de octubre, M3s tuvo un error del 6,8 % y C0r del 7,3 %.
+
+Si el contexto automático reduce el error, se medirá de forma prospectiva y con los datos tal como lleguen el día de
+la predicción.
+
+**Estado de las fuentes al decidir:**
+- la tarea `triage_capturas_semanales` se cortó el 13-10 (0xC000013A) y no captura nada desde el 05-10;
+- `eventos_manizales`, `fiestas_caldas`, `desastres_manizales` y `calendario_escolar` se acaban entre noviembre y
+  diciembre de 2026.
+
+---
+
+## 2026-10-14 (8) — Resiliencia: medida, reanclaje (no entra) y rango tras quiebre (entra)
+
+**Pedido del propietario:** no se trata de que no falle. Se trata de saber por cuánto falla, cuánto tarda en
+recuperarse después de un golpe y que se reajuste a lo que está pasando. Preregistro en la fila `resiliencia`, escrito
+antes de calcular y declarado como tercera mirada. Código en `notebooks/resiliencia.py` y salida en
+`salidas/pronostico/resiliencia/`.
+
+**(1) Medida.** «Normal» es la mediana del error semanal de la base en ene-oct 2025, a 15 días: **7,9 %**. Semanas
+hasta volver a 1,5 × lo normal dos semanas seguidas (tope 12), con el exceso de error entre paréntesis en
+puntos-semana:
+
+| Golpe | Sin red | v2A (en operación) |
+|---|---|---|
+| Cierre del SES, nov-2025 | 11 (139) | 11 (119) |
+| Reapertura, mar-2026 | 5 (37) | 4 (30) |
+| **Cierre del SES, jul-2026** | 3 (32) | **0 (1)** |
+| Sismo, ago-2026 | 1 (30) | 1 (28) |
+| Reapertura sin anuncio, ago-2026 | 12 (14) | 12 (14) |
+| **Suma** | **32** | **28** |
+
+Lectura:
+- **Un golpe anunciado ya no cuesta semanas** (julio).
+- Un golpe nuevo (nov-2025) o sin anuncio (ago-2026) sigue costando hasta 3 meses de error elevado. Ese es el límite
+  medido.
+- El sismo cuesta una semana y se recupera solo.
+
+**(2) Reanclaje tras un quiebre (R): NO ENTRA.**
+- A 15 días mejora 2025 (puntaje de 2,51 a 2,41; Nueva EPS de 16,6 % a 15,5 %) y Nueva EPS en 2026 (20,3 % → 19,1 %).
+- Pero el puntaje de 2026 empeora (2,51 → 2,59) y Sura también (14,5 % → 15,2 %).
+- Causa visible: la semana del sismo reancló a Sura hacia abajo, justo antes del rebote. El exceso de la reapertura de
+  agosto pasa de 14 a 25.
+- Reaccionar a la última semana confunde un golpe pasajero con un cambio de nivel.
+
+**(3) Rango tras un quiebre (W): ENTRA.** Se aplica sobre la v2A, porque R quedó fuera. El preregistro lo definía
+sobre v2AR; se declara la diferencia. Se activa en 7 de 90 orígenes. A 15 días:
+
+| | v2A | v2A + W |
+|---|---|---|
+| Puntaje 2025 | 2,505 | 2,467 |
+| Puntaje 2026 | 2,511 | 2,517 (+0,2 %) |
+| Total en rango, 2025 | 83,5 % | 84,6 % |
+| Total en rango, 2026 | 77,0 % | 79,4 % |
+| Total en rango, semanas de recuperación | 53,7 % | 60,5 % |
+
+**Decisión:** `operacion.RANGO_QUIEBRE = True`, que ensancha solo el rango del total de la corrida cuando el detector
+dispara. El reanclaje no se usa. En el tablero, 2026 con red y W da 9,9 % de error y 81 % de días en rango.
+
+---
+
+## 2026-10-14 (7) — El digiturno está en la base: `DIM_HCNCONTRDT`; las solicitudes no atendidas son ~5-7 %
+
+**Pedido del propietario** (tema de la reunión con urgencias): hay personas que piden triage y se van. Hay que entender
+por qué y predecirlas. Si se predicen 10 en una hora pico y se ponen 3 personas, pero varias se fueron, se desperdicia
+personal.
+
+**Encontrado** (solo esquema y agregados).
+- `DIM_HCNCONTRDT` es el control de turnos, es decir, el digiturno: 1.024.588 turnos desde 2020.
+- Su catálogo de colas es `HCNCONCOTRI_DW`. Las colas con `HCAREA` = 1 son las de triage: general, preferencial, SOAT,
+  adulto mayor, obstétrico, preferencial obstétrico, respiratorio, consulta inducida y pretriage. Las demás son
+  laboratorio, citas, facturación y FOMAG.
+- La entrada del 14-10 que decía que el digiturno no estaba en la base **queda corregida**: no aparecía con ese nombre.
+- **Un turno de triage sin triage unido es una solicitud no atendida.**
+  - 2025-2026: 6.317 de 116.869 turnos de las colas de triage (5,4 %). 4.963 tienen estado 2 y se cierran a los ~24
+    minutos; 1.277, estado 1, a los ~18.
+  - Por año: 8,3 % (2020), 8,8 %, 5,8 %, 5,6 %, 6,9 % (2024), 5,3 % y 5,6 % (2026).
+  - **La base no trae el significado de `HCCESTADO`.** Lo confirma urgencias o sistemas.
+- 11.962 triages de 2025-2026 no tienen turno: entran sin digiturno, probablemente por ambulancia o remisión.
+- **Lo que hoy predecimos son triages realizados.** Las solicitudes son los realizados más los no atendidos.
+
+**Extracción nueva:** `python -m extraccion --turnos` → `salidas/turnos_triage.parquet`. Trae día × hora × cola ×
+estado × si llegó a triage × nivel, con sumas de minutos hasta el triage o hasta el cierre: 254.447 filas desde 2020.
+También corre dentro de `--series`.
+
+**Patrones descriptivos (2024-2026, sin modelo todavía):**
+
+| Factor | Patrón |
+|---|---|
+| Espera de los atendidos en esa hora (quintiles) | < 6 min → 4,3 % no atendidos; 9 → 4,5 %; 12 → 4,7 %; 18 → 5,3 %; **35 min → 8,9 %** |
+| Carga (turnos en la hora, quintiles) | 2 por hora → 5,1 %; **17 por hora → 6,7 %** |
+| Hora | Mínimo a las 6 h (3,7 %); **máximo a las 13 h (7,2 %)**, con la espera más alta del día (30 min) aunque llegan menos que en la mañana; 0-1 h: 6,8 % con espera corta (12 min) |
+| Cola | Preferencial 10,7 %, SOAT 8,2 %, general 5,8 %, adulto mayor 6,2 %, obstétrico 4,9 % |
+| Día | Lunes 6,9 % → sábado 5,3 % |
+| Tiempo hasta irse | 28 minutos de media |
+
+Lectura provisional: **la espera duplica el abandono**, y eso apoya la teoría del propietario. Pero el patrón de la
+madrugada (abandono alto con espera corta) dice que hay otra causa. La hora y la espera van juntas: separarlas pide el
+análisis formal, que todavía no se ha hecho.
+
+---
+
 ## 2026-10-14 (6) — Foco en el producto mínimo viable: nada de otros hospitales ni fuentes nuevas
 
 **Decidido por el propietario.** El trabajo se ciñe a predecir bien el triage del SES y su reparto por aseguradora,

@@ -1,13 +1,16 @@
 """
 Indice ENSO (ONI, Oceanic Nino Index) de la NOAA, por trimestre movil desde 1950.
 
-    python calendarios/clima/enso.py      escribe calendarios/enso_oni.csv
+    python calendarios/clima/enso.py             incremental: solo cambian los ultimos 6 meses ya escritos
+    python calendarios/clima/enso.py --rehacer   acepta tambien las revisiones antiguas de la NOAA
 
 ONI > +0,5 durante 5 trimestres seguidos = El Nino; < -0,5 = La Nina (definicion NOAA).
 Se guarda tal cual (anomalia de la temperatura del mar en la region Nino 3.4) y con la
 fase. Reemplaza los periodos escritos a mano en vigilancia_salud_manizales_caldas.csv.
 Fuente: https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt
 """
+import argparse
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -21,6 +24,11 @@ except ImportError:
 
 URL = "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt"
 SALIDA = Path(__file__).resolve().parents[1] / "enso_oni.csv"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from calendarios.actualizacion import escribir_si_cambia, fusionar, proteger, resumen  # noqa: E402
+# La NOAA revisa los ultimos trimestres cada mes (y toda la serie cuando cambia su periodo base de 30 anos):
+# se reabren 6 meses; lo anterior queda como estaba, y las revisiones no aplicadas se cuentan.
+REABRIR_DIAS = 186
 # Mes central de cada trimestre movil: DJF -> enero, JFM -> febrero...
 MES_CENTRAL = {"DJF": 1, "JFM": 2, "FMA": 3, "MAM": 4, "AMJ": 5, "MJJ": 6,
                "JJA": 7, "JAS": 8, "ASO": 9, "SON": 10, "OND": 11, "NDJ": 12}
@@ -41,8 +49,8 @@ def fase(oni):
     return salida
 
 
-def main():
-    texto = requests.get(URL, timeout=60).text
+def main(rehacer=False):
+    r = requests.get(URL, timeout=60); r.raise_for_status(); texto = r.text
     filas = [l.split() for l in texto.strip().splitlines()[1:] if l.strip()]
     t = pd.DataFrame(filas, columns=["trimestre", "anio", "total", "oni"])
     t["anio"] = t["anio"].astype(int)
@@ -50,7 +58,16 @@ def main():
     t["mes"] = t["trimestre"].map(MES_CENTRAL)
     t["fecha"] = pd.to_datetime(dict(year=t["anio"], month=t["mes"], day=15))
     t["fase"] = fase(t["oni"])
-    t[["fecha", "trimestre", "anio", "oni", "fase"]].to_csv(SALIDA, index=False)
+    t = t[["fecha", "trimestre", "anio", "oni", "fase"]]
+    viejo = pd.read_csv(SALIDA, float_precision="round_trip") if SALIDA.exists() else None
+    proteger(viejo, t, "fecha", SALIDA.name)
+    revisiones = 0
+    if viejo is not None and not rehacer:
+        t, revisiones = fusionar(viejo, t, "fecha", REABRIR_DIAS)
+    t["fecha"] = pd.to_datetime(t["fecha"]).dt.date
+    escrito = escribir_si_cambia(t, SALIDA, index=False)
+    resumen(SALIDA.name, viejo, t, "fecha", revisiones, escrito)
+    t = t.assign(fecha=pd.to_datetime(t["fecha"]))
     ult = t.iloc[-1]
     print(f"{SALIDA.name}: {len(t)} trimestres, {t.fecha.min():%Y-%m} a {t.fecha.max():%Y-%m}; "
           f"ultimo {ult.trimestre} {ult.anio}: ONI {ult.oni:+.2f} ({ult.fase})")
@@ -58,4 +75,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    ap = argparse.ArgumentParser(description="Indice ONI de la NOAA")
+    ap.add_argument("--rehacer", action="store_true", help="acepta las revisiones de todo el pasado")
+    main(ap.parse_args().rehacer)
