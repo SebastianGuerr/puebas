@@ -14,6 +14,329 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-16 (correcciones) — Ni M3s-r ni M3s-rs mejoran a M3s en 2025: la operación no cambia
+
+**Preregistro:** fila `m3s_correcciones_red_salud`, escrita antes de calcular ningún modelo y después de medir el
+rezago (entrada «(rezago)», debajo). Código en `notebooks/validacion_anual.py`; resultados en
+`salidas/pronostico/correcciones_red_salud/` (`tabla_principal.csv`, `regla.json`, `diebold_mariano.csv`,
+`por_mes.csv`, `por_estado.csv`, `rho_2025.json`).
+
+**Qué se probó.**
+- **M3s-r:** M3s sin las cinco columnas de red que se calculan con el triage del SES (`ext_g_m_red_peso_*`,
+  `cambio_*`, `herfindahl`). La resolución de la Supersalud se queda sin compuerta, como `ext_m_red_resolucion_nueva_eps_30d`.
+- **M3s-rs:** M3s-r con la salud pública, y su compuerta, leídas 1 semana más tarde.
+- Las dos son experimentos nuevos (`m3s_r`, `m3s_rs`) y combos nuevos (`M3s-r`, `M3s-rs`, en `semana.DIAGNOSTICO`).
+  Su SARIMAX es el de M3s: se comprobó que sus exógenas son idénticas. El rezago entra como parámetro del experimento
+  (`rezago_salud`, por `indices.salud_con_rezago`); el valor por defecto sigue en 0.
+
+**Comprobaciones antes de lanzar.**
+- **Reproducción:** con el código ya cambiado, M3s y C0r reproducen **exactamente** (diferencia 0,0) los 21 primeros
+  días `q*_sin_red` de las corridas `2026-10-14_M3s` y `2026-10-14_C0r`.
+- **Inyección** (LightGBM entrenado una vez en el origen 14-10 y el contexto cambiado después, como en «(reacción)»):
+
+  | Escenario | M3s | M3s-r | M3s-rs |
+  |---|---|---|---|
+  | control sin cambio | 0 | 0 | 0 |
+  | compuerta de red encendida en el origen | 21 de 21 días cambian (Δq50 de −5,0 a +6,5 %) | **0 exacto** | **0 exacto** |
+  | red con los valores de julio + compuerta | −2,5 % de media | **0 exacto** | **0 exacto** |
+  | red extrema desde el 01-09 + compuerta | 21 días cambian | **0 exacto** | **0 exacto** |
+  | resolución encendida (compuerta apagada) | 0 (la compuerta la anula) | **−0,43 %** (de −1,3 a +0,2) | −0,54 % |
+
+  M3s-r ya no responde a la red calculada con el triage y sí a la resolución.
+- **Rezago:** con `rezago_salud = 1`, las columnas de salud y su compuerta son exactamente las de M3s desplazadas
+  7 días (diferencia 0); el resto del contexto no cambia.
+
+**Resultado, versión b (como se entrega), MAPE y rango del 80 %:**
+
+| Año | Adelanto | C0r | M3s | M3s-r | M3s-rs |
+|---|---|---|---|---|---|
+| 2025 | 1-7 | 8,49 % · 82,1 % | **8,08 % · 79,9 %** | 8,09 % · 79,7 % | 8,16 % · 80,8 % |
+| 2025 | 15-21 | 10,29 % · 85,4 % | 10,06 % · 82,1 % | 10,01 % · 81,3 % | 9,95 % · 81,6 % |
+| 2026 | 1-7 | 8,51 % · 82,5 % | 8,57 % · 80,4 % | 8,57 % · 80,0 % | 8,58 % · 80,0 % |
+| 2026 | 15-21 | 10,53 % · 79,7 % | 10,45 % · 78,2 % | 10,45 % · 76,7 % | 10,49 % · 76,7 % |
+
+La tabla entera, con las versiones a y b, mediana, sesgo, error semanal y acierto, está en `tabla_principal.csv`.
+
+**Regla.**
+- **Elección con 2025 (1-7, b):** M3s-r +0,015 puntos de MAPE y −0,27 de cobertura; M3s-rs +0,087 y +0,82. Hacía falta
+  bajar más de 0,1 puntos. **Ninguna mejora a M3s, así que no se elige ninguna.**
+- **2026, solo informativo:** ninguna empeora. Frente a M3s: −0,002 y +0,008 puntos. Frente a C0r: +0,06 y +0,07 puntos,
+  con −2,5 puntos de cobertura.
+- **Veredicto: no pasa ninguna. La operación no cambia** (M3s principal, C0r de vara) y `operacion/` no se tocó.
+
+**Diebold-Mariano (HLN, pérdida APE, versión b):**
+- 2025, 1-7: M3s-r − M3s p = 0,75; M3s-rs − M3s p = 0,20; M3s-rs − M3s-r p = 0,11. **M3s − C0r: −0,41 puntos, p = 0,012.**
+- 2025, 15-21: M3s-r − M3s p = 0,40; M3s-rs − M3s p = 0,14.
+- 2026: ningún par baja de p = 0,45 (1-7) ni de p = 0,08 (15-21; M3s-rs − M3s-r).
+
+**Dónde (1-7, b; diferencia de MAPE de M3s-r frente a M3s por estado del día, partición exclusiva):**
+- **2025:** todo cerca de cero. Calendario +0,07 (89 días), red −0,01 (91), normal 0,00 (177), salud −0,12 (7).
+- **2026:**
+  - red −0,10 (131 días), con julio de 8,82 a 8,40 %. Ahí la red de dentro sí restaba, como se esperaba;
+  - calendario −0,11 (31);
+  - normal +0,08 (96);
+  - **sismo +0,41** (22): sin la red, M3s pierde un apoyo para los días del terremoto, y se come la ganancia de julio.
+- **La salud con rezago** cuesta en 2025 a 1-7: +0,07 frente a M3s-r, sobre todo en el calendario (+0,08) y en los días de
+  red (+0,16). A 15-21 gana un poco (−0,06, p = 0,15). La compuerta de salud se encendió 7 días en 2025 y 0 en 2026.
+
+**Lectura.**
+- **Sacar la red de dentro de M3s es neutro en el total.** El daño de julio de 2026 era real, y M3s-r lo corrige, pero
+  esas mismas columnas ayudaban en otros tramos. Los +0,13 puntos que la validación de 2026 atribuía a «las columnas de
+  estado» no eran de la red sola.
+- **El rezago de la salud no se puede juzgar con esta validación.** Aquí la salud se lee de semanas ya completas (los
+  microdatos de 2025 y la foto del 15-10 para 2026), así que la prueba solo mide el coste de leer información una
+  semana más vieja, y es pequeño. El beneficio esperado, no leer una semana a medias en la operación real, no aparece
+  porque en estos datos esa semana ya está completa. **El hallazgo operativo del 16-10 sigue sin corregir:** el lunes,
+  M3s lee una semana que en la foto llega a medias.
+- **Hallazgo lateral:** con reajuste semanal, M3s gana a C0r en 2025 a 1-7 (8,08 % frente a 8,49 %, p = 0,012). En 2026
+  empatan (p = 0,61). 2025 es el año con el que se eligió M3s, así que no es prueba de superioridad.
+
+**Rho de la cópula medido en 2025** (`semana.resumen_validacion`, versión a, reajuste 1 y 4):
+- M3s 0,302 (1) y 0,474 (15); C0r 0,321 y 0,489. Los de `operacion.RHO` son 0,318, 0,473, 0,337 y 0,487.
+- M3s-r 0,305 y 0,467; M3s-rs 0,302 y 0,467.
+- No se usan: ninguna variante pasa.
+
+**Tiempos:**
+- reproducción: 4 min; inyección: 3 min;
+- un origen a 1-7: 101-137 s en 2025 (4 combos) y 60-84 s en 2026 (2 combos);
+- 2025: 1-7 en 1 h 42 min, 15-21 en 30 min; 2026: 1-7 en 44 min, 15-21 en 12 min;
+- total: 3 h 9 min (de 10:22 a 13:31). No hizo falta recortar 15-21.
+
+**Decisión: no se cambia nada en la operación.** `M3s-r` y `M3s-rs` quedan como experimentos de diagnóstico. Lo que
+queda abierto, para el propietario:
+1. corregir la lectura de la semana a medias **sin cambiar el modelo**: es un problema de datos de la operación, no de
+   lo que aprende M3s. Por ejemplo, no usar en el origen una semana con menos del 90 % de su valor esperado. Exige una
+   fila propia;
+2. la catástrofe por fecha del evento (propuesta 1 de «(reacción)»), que es donde M3s-r pierde.
+
+---
+
+## 2026-10-16 (rezago) — La salud pública del Power BI se lee con 1 semana de rezago: la semana que acaba la víspera trae el 0-17 % de la IRA
+
+Primera parte del encargo de la entrada siguiente («Dos correcciones de M3s»). Se mide **antes** de escribir el
+preregistro `m3s_correcciones_red_salud`, que usa este número.
+
+**Método.** Con las tres fotos del Power BI del INS (28-09, 05-10 y 15-10) se toma, para cada familia operativa
+(`indices.FAMILIAS_OPERATIVAS`), la suma de los conteos crudos de sus series (la respiratoria: IRA total, 0-4 y 60+;
+violencias: 875 y 300; salud mental: 356 y 365; materno: 549; inmunoprevenibles: 831). La fracción es el valor de cada
+semana en la foto del 28-09 o del 05-10 dividido por su valor en la del 15-10. **Edad** = semanas completas entre el
+sábado en que acaba la semana y la foto (0 = acabó en los 7 días previos). Script en el scratchpad de la sesión
+(`correcciones/rezago.py`).
+
+**Resultado** (fracción mínima de las dos fotos):
+
+| Familia | edad 0 | edad 1 | edad 2 | edad 3 | edad 4 |
+|---|---|---|---|---|---|
+| respiratoria | **0,00** (28-09: la SE38 no estaba) y 0,14 | **1,00** | 1,00 | 1,00 | 1,00 |
+| violencias y agresiones | 0,62 | 1,00 | 0,99 | 1,00 | 1,00 |
+| materno-perinatal | 0,00 | 1,00 | 1,00 | 1,00 | 1,00 |
+| inmunoprevenibles | 0,13 | 1,00 | 1,00 | 1,00 | 1,00 |
+| salud mental e intoxicaciones | 0,09 | 0,875 | 0,875 | 0,889 | 1,00 (y 1,06) |
+
+**Rezago = 1 semana.** Es la menor edad con al menos el 90 % en la respiratoria, violencias, materno-perinatal e
+inmunoprevenibles. **La salud mental se declara ruidosa y no decide:** son unos 20 casos por semana, la diferencia es
+de 2 o 3 casos y las revisiones van en los dos sentidos hasta la edad 4 (1,06 y 1,10 en la serie 356). No es un retraso
+que se cierre con la edad.
+
+**Lectura.** `indices.contexto_holistico` lee, para cada día, la semana que acabó el sábado anterior: en el origen de
+la operación (domingo) es una semana de edad 0, que en la respiratoria trae del 0 al 17 % de lo que acabará teniendo.
+Con 1 semana de rezago se lee la de edad 1, que ya está completa en todas las familias que deciden.
+
+**Límites.**
+- Son dos mediciones por edad, y la foto de referencia es solo 10 días más reciente. La SE39 tiene edad 1 en la foto
+  del 15-10, así que su fracción a edad 0 se mide contra una referencia que podría crecer algo más.
+- El tablero de IRA de la foto del 28-09 no traía la SE38 (fracción 0). Es decir, la semana de edad 0 puede faltar
+  entera.
+
+---
+
+## 2026-10-16 — Dos correcciones de M3s, razonadas antes de calcular: la red sale del modelo y la salud lee la última semana completa
+
+**Pedido del propietario:** avanzar con lo que señalan la prueba de reacción y la validación de 2026, sin ensayo y
+error. Por eso el porqué de cada cambio se escribe aquí antes de cualquier cálculo.
+
+**(1) Las columnas de red salen de dentro de M3s.**
+- **Mecanismo.** Cuando el SES cierra el convenio con Nueva EPS, sus afiliados consultan en otro sitio y el triage del
+  SES baja. La causa externa es el **estado del convenio**.
+- **El problema de las columnas actuales.** `ext_g_m_red_*` (peso y cambio de Nueva EPS y de SURA a 28 días,
+  Herfindahl) no miden ese estado: se calculan **con el propio triage del SES**. Son una función rezagada del
+  desenlace, no una causa externa. Al predecir, una caída reciente de Nueva EPS en la mezcla se parece a lo que
+  sigue a cualquier bache, que es volver al nivel (reversión a la media). Eso explica el signo invertido medido en la
+  prueba de reacción (+2 % con los valores de julio, cuando el total cayó un 19 %).
+- **Lo que sí mide el mecanismo** es la corrección v2, que va fuera del modelo. Usa el estado del convenio medido con
+  los ingresos no urgentes y los anuncios, y pasó su regla el 14-10. Tener las dos cosas cuenta la red dos veces, una
+  de ellas al revés.
+- **Evidencia que lo respalda:**
+  - prueba de reacción: +2,1 % con los valores de julio;
+  - validación de 2026: las columnas de estado cuestan +0,13 puntos, sobre todo en los días con la red encendida y en
+    julio.
+- **Se queda** la resolución de la Supersalud sobre Nueva EPS (`ext_g_m_red_resolucion_nueva_eps_30d`), que sí es
+  externa. Va sin compuerta de red, porque esa compuerta también se calcula con el triage.
+
+**(2) La salud pública lee la última semana epidemiológica completa.**
+- `indices.contexto_holistico` toma la semana que terminó la víspera. En la foto del Power BI esa semana está a
+  medias, por la notificación tardía: la SE39 de la foto del 05-10 traía 154 consultas de IRA frente a 935 completas,
+  y el índice cae unas 5 desviaciones.
+- En la operación real eso ocultaría justo una ola en curso.
+- El retraso de notificación al SIVIGILA es un rasgo conocido de la vigilancia en salud pública. El rezago correcto
+  se **mide** con las tres fotos (28-09, 05-10 y 15-10): es la menor edad a la que una semana alcanza el 90 % de su
+  valor en la foto más reciente.
+- Se aplica igual al entrenar y al predecir, para que el modelo aprenda con el mismo rezago con el que opera.
+
+**Diseño de la prueba** (preregistro `m3s_correcciones_red_salud`):
+- variantes: M3s-r (sin red) y M3s-rs (sin red y con la salud con el rezago medido);
+- se elige con **2025** y se confirma con **2026**;
+- solo entra en la operación si en 2025 mejora a M3s por la regla y en 2026 no empeora frente a C0r ni frente a M3s.
+
+---
+
+## 2026-10-16 — Validación de 2026 de la operación semanal: M3s se mantiene frente a C0r; lo que le resta es la red y el sismo
+
+**Pregunta del propietario:** con datos reales de 2026, ¿la operación con M3s, que reentrena cada semana con el contexto
+del momento, mejora, se mantiene o empeora frente a C0r? Si empeora, ¿qué factor lo causa?
+
+**Preregistro:** fila `validacion_2026_operacion_semanal`, escrita el 2026-10-15 antes de calcular. Código en
+`notebooks/validacion_2026.py`; resultados en `salidas/pronostico/validacion_2026/`.
+
+**Diseño:**
+- **Orígenes:** todos los domingos de 2026. Datos hasta el 14-10 (`pr.FIN = indices.FIN_RED = 2026-10-14`).
+  - Adelanto 1-7: 40 orígenes, se reentrena cada domingo, igual que la operación.
+  - Adelanto 15-21: 38 orígenes, se reentrena cada 4 domingos, por coste.
+- **SARIMAX** arranca de cero en cada reentreno, como la operación.
+- **Foto del Power BI** fija en la del 15-10, para que la tarea diaria no la cambiara a mitad del cálculo.
+- **Dos versiones:**
+  - (a) el modelo solo;
+  - (b) como se entrega: red v2 con `tau = origen` y rango W tras quiebre.
+- **M3cal**, solo diagnóstico: M3s con los 4 mecanismos de calendario y sin columnas de estado. Experimento `m3cal`
+  y combo `M3cal`, fuera del valor por defecto de `semana.validar`.
+
+**Reproducción:** el código de la validación reproduce **exactamente** (diferencia 0,0) los 21 primeros días
+`q*_sin_red` de las corridas guardadas `2026-10-14_M3s` y `2026-10-14_C0r`.
+
+**Resultado (versión b, la que se entrega):**
+
+| | MAPE 1-7 | rango 80 % 1-7 | sesgo 1-7 | error semanal 1-7 | MAPE 15-21 | rango 80 % 15-21 |
+|---|---|---|---|---|---|---|
+| C0r | 8,51 % | 82,5 % | +0,9 % | 5,07 % | 10,53 % | 79,7 % |
+| M3s | 8,57 % | 80,4 % | +1,1 % | 5,24 % | 10,45 % | 78,2 % |
+| M3cal (diagnóstico) | 8,44 % | 80,4 % | +1,0 % | 5,17 % | 10,40 % | 78,2 % |
+
+- **Regla, a 1-7 días: SE MANTIENE.** La diferencia de MAPE de M3s frente a C0r es de +0,06 puntos y la cobertura cae
+  2,1 puntos; los umbrales eran ±0,5 y −5. A 15-21 días, que no decide: −0,08 puntos y −1,5 puntos de cobertura.
+- **Diebold-Mariano con la corrección HLN:** ninguna diferencia se distingue del ruido.
+  - M3s frente a C0r: p = 0,60 (1-7) y p = 0,78 (15-21);
+  - M3cal frente a C0r: p = 0,47 (1-7);
+  - M3s frente a M3cal: p = 0,11 (1-7; con varianza de Bartlett, p = 0,21).
+- **La versión b mejora a todos:** C0r pasa de 8,85 a 8,51 % (1-7) y de 11,07 a 10,53 % (15-21), y la cobertura sube de
+  81,1 a 82,5 % y de 75,6 a 79,7 %. Hay 124 días con factor de red y 3 orígenes con quiebre.
+
+**Dónde gana y dónde pierde M3s (1-7, versión b).** La contribución de cada estado suma la diferencia total. La parte
+de «estado» es M3s − M3cal; la de «calendario y entrenamiento» es M3cal − C0r.
+
+| Estado del día (partición exclusiva) | días | M3s − C0r | por las columnas de estado | por el calendario y el entrenamiento |
+|---|---|---|---|---|
+| sismo (0-21 días después del 10-08) | 22 | **+0,064** | +0,046 | +0,017 |
+| compuerta de red encendida en el origen | 131 | **+0,042** | +0,047 | −0,006 |
+| calendario (fiesta lejana, Feria) | 31 | −0,020 | +0,001 | −0,022 |
+| normal | 96 | −0,022 | +0,036 | −0,058 |
+| **total** | 280 | **+0,062** | **+0,130** | **−0,068** |
+
+- **El calendario ayuda poco pero en la buena dirección:** en sus días, 8,97 % frente a 9,16 %. En 2026 casi no hubo
+  noches festivas ni Feria (31 días, 28 de ellos de fiesta lejana).
+- **Las columnas de estado restan 0,13 puntos.**
+  - Casi todo sale de **julio**, con el cierre del SES a Nueva EPS: M3s 8,82 %, C0r 7,79 %, M3cal 8,09 %.
+  - También de **agosto**, con el sismo y la reapertura: M3s 14,13 %, C0r 13,63 %.
+  - Coincide con lo visto en la prueba de reacción: la red de dentro de M3s tiene el signo invertido, y la catástrofe
+    se congela en el origen.
+- **La compuerta de salud y la social no se encendieron ningún día de 2026.** No pueden ser culpables por la predicción;
+  como mucho, por el entrenamiento.
+- **El rango de M3s es más estrecho** (27,1 % frente a 28,7 % del q50) y cubre menos: −2,1 puntos.
+- **A 15-21 días** M3s gana en los días normales (−0,25) y pierde en los de red (+0,18). Esa pérdida no viene de sus
+  columnas de red (M3s − M3cal = −0,03), sino del entrenamiento sin la COVID fuerte (M3cal − C0r = +0,20).
+
+**Vintage** (el contexto se leyó de los archivos de hoy):
+- **Power BI del INS:**
+  - Las revisiones entre fotos son mínimas: en las semanas comunes, |Δ| medio de 0 a 0,03 desviaciones, salvo salud
+    mental (hasta 0,33 en semanas sueltas).
+  - La latencia es de 1-2 semanas: el 28-09 la última semana completa de IRA era la SE37, que acabó el 12-09.
+  - Con las 3 fotos y con una semana más de retraso, la compuerta de salud queda apagada todo 2026: 0 cambios de estado.
+  - M3s_vint (salud una semana más tarde) frente a M3s: −0,03 puntos (p = 0,37). **Optimismo por esta vía: nulo.**
+- **Calendario de fiestas:** el archivo es del 29-09, a posteriori. Antes del sismo estaban programadas Aguadas (14-16
+  ago), Samaná (14-17) y Anserma (14-18), que luego se aplazaron o cancelaron.
+  - Con el +3,4 % de la fiesta lejana en esos días (3 a 1-7 y 8 a 15-21), M3s − C0r pasa de +0,06 a **+0,11** (1-7) y
+    de −0,08 a +0,02 (15-21).
+  - Es el único optimismo medible, y no cambia el veredicto.
+- **Registro de la red** (`datos/eventos_red.csv`): filtra por `fecha_anuncio <= tau`, pero se escribió a posteriori.
+  Afecta igual a los tres modelos de la versión b.
+
+**Hallazgo operativo, no corregido.** La corrida del lunes lee la semana epidemiológica que acaba la víspera. En la foto
+del 05-10 esa semana (SE39) estaba **a medias**: 154 consultas de IRA frente a 935 completas, un índice 5 desviaciones
+más bajo. Hoy no cambia nada, porque la compuerta sigue apagada, pero en una ola real la ocultaría. Lo correcto sería leer
+la última semana **completa**.
+
+**Decisión: no se cambia la operación.** M3s sigue de principal y C0r de vara, con su regla de vuelta atrás a 84 días.
+M3cal no se promueve: es diagnóstico sobre el año de prueba, y elegirlo con 2026 sería selección. Su ventaja frente a M3s
+(−0,13) no se separa del ruido. Queda para el propietario la propuesta 2 de la entrada «(reacción)»: sacar la red de
+dentro de M3s y dejarla solo en la corrección v2. Es la que estos números señalan, y exige una fila nueva y validación
+sobre 2025.
+
+**Tiempos:**
+- reproducción: 4 min;
+- un origen a 1-7 días con 4 modelos: 145-175 s;
+- bloque 1-7: ~1,9 h; bloque 15-21: ~26 min;
+- total de la corrida: 2 h 14 min (15-10, de 14:26 a 16:40).
+
+---
+
+## 2026-10-15 (reacción) — M3s reacciona bien al calendario; salud, red y catástrofe no se comportan como mecanismos
+
+**Pregunta del propietario:** ¿se verificó que el modelo toma los datos externos actuales y los usa con lo aprendido?
+Las columnas y la ausencia de fuga ya estaban probadas; faltaba probar que la predicción **reacciona**.
+
+**Método.**
+- Se entrena M3s una vez (origen 2026-10-14). Coincide exactamente con la corrida guardada en `*_sin_red`.
+- Para cada escenario se modifica la salida real de `mecanismos.columnas`, se reconstruyen los modelos con el código
+  real y se les trasplantan los parámetros entrenados. Así el modelo queda idéntico y solo cambia el contexto que ve.
+- El control sin cambios da 0 exacto.
+- Scripts en el scratchpad de la sesión (`reaccion/`); los números quedan aquí.
+
+**Resultado** (Δ del valor central frente a la base):
+
+| Escenario | Efecto | ¿Solo en sus días? |
+|---|---|---|
+| Quitar las fiestas lejanas del 27-oct al 5-nov | −2,6 % | sí: 10 de 10 días, el resto en 0 exacto |
+| Añadir la Feria del 2 al 6 de noviembre | +2,7 % | sí: 5 de 5 días |
+| Encender la compuerta de salud | +2,2 % en todo el horizonte, **igual con una ola de +2 que con −2** | no hay dosis |
+| Red con los valores de julio de 2026 | **+2,1 %**, cuando el total real cayó un 19 % | dirección contraria |
+| Terremoto el día antes del origen | −11 % el día 1, pero +3 a +5 % en los días 22-45 | no se propaga como dice su definición |
+| Social (MinDefensa) | 0: NaN en el origen; con el máximo real, +0,06 % | factor muerto |
+
+**Coeficientes aprendidos (SARIMAX):**
+- noche festiva −22 % (IC −26 a −18);
+- día siguiente +10 % (+5 a +15);
+- fiesta lejana +3,4 % (+1,5 a +5,3);
+- Feria +2,2 % (−2,5 a +7,2);
+- catástrofe en la semana 1, −8 % (−18 a +3).
+
+En el LightGBM, las columnas de mecanismo suman el 9,6 % de la importancia.
+
+**Lectura.**
+- **El calendario funciona como mecanismo:** dirección, tamaño y días correctos.
+- **Las variables de estado no:** salud (sin dosis: actúa como marcador de época), red (signo invertido),
+  catástrofe (congelada en el origen; con n = 1 evento, el coeficiente mide el rebote) y social (sin dato).
+- Todo lo que no es calendario se congela en el valor del origen y se aplica igual a los 78 días.
+- La predicción guardada no se entera de un cambio externo hasta la corrida siguiente, que hoy es semanal.
+
+**Decisión: no se cambia nada todavía.** Cualquier corrección es un cambio de modelo que exige preregistro y
+validación de origen rodante. Las propuestas, para el propietario:
+1. la catástrofe por fecha del evento (los días desde el sismo se conocen en el origen), no como estado congelado;
+2. quitar la red de dentro de M3s y dejarla solo en la corrección v2 externa, que sí pasó su regla;
+3. la salud con dosis y sin compuerta, o fuera del modelo;
+4. lo social, fuera;
+5. predecir a diario, para que el estado del entorno se refresque cada día.
+
+---
+
 ## 2026-10-15 (cierre) — Dos correcciones del orquestador al integrar, y verificación de punta a punta
 
 **(1) La red de M3s estaba congelada en el 20-sep.** `notebooks/indices.red_diaria` tenía `fin="2026-09-20"` fijo, y

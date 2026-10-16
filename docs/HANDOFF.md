@@ -6,7 +6,62 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-10-15.**
+**Última actualización: 2026-10-16.**
+
+---
+
+## HECHO (2026-10-16): dos correcciones de M3s (red fuera, salud con rezago) — NO PASAN — versionado en `main`
+
+**Encargo:** entrada «Dos correcciones de M3s» de `CONTEXTO.md` (16-10). Resultado en «(correcciones)» y «(rezago)».
+- **Rezago de la salud medido: 1 semana.**
+- **Preregistro** `m3s_correcciones_red_salud`, escrito antes de calcular.
+- **Veredicto: ninguna variante mejora a M3s en 2025** (M3s-r +0,015 puntos, M3s-rs +0,087; hacía falta −0,1). En 2026
+  ninguna empeora. **No se cambia nada en la operación.**
+- **Código** (no cambia nada de lo publicado; M3s y C0r reproducen exactamente las corridas del 14-10):
+  - experimentos `m3s_r` y `m3s_rs` (`pronostico.py`);
+  - combos `M3s-r` y `M3s-rs` (`semana.py`, en `DIAGNOSTICO`);
+  - `indices.REZAGO_SALUD` y `salud_con_rezago`, por defecto 0;
+  - `mecanismos.columnas(dias, rezago_salud)`.
+- **Validación:** `notebooks/validacion_anual.py` (`--resumir` rehace las tablas en segundos) →
+  `salidas/pronostico/correcciones_red_salud/`. Sin procesos corriendo.
+- **`operacion/` no se tocó.** La corrida del lunes 19-10 sigue siendo M3s + C0r.
+- **Sigue abierto:** el lunes M3s lee una semana epidemiológica a medias. Corregirlo como dato de la operación exige
+  una fila propia.
+
+---
+
+## Lo demás del 16-10: lunes y pendientes del propietario
+
+**Qué se probó:** M3s-r (sin las columnas `ext_g_m_red_*`, endógenas) y M3s-rs (M3s-r con la salud leída con 1 semana
+más de rezago). El porqué está en `CONTEXTO.md`, entrada «2026-10-16 — Dos correcciones de M3s»; el resultado, en la
+sección de arriba: **ninguna pasa** y `operacion/` no cambia.
+
+**Lo que sigue son dos propuestas, cada una con su propia fila antes de medir:**
+1. la semana epidemiológica a medias como dato de la operación (por ejemplo, no usar en el origen una semana con menos
+   del 90 % de su valor esperado), sin cambiar el modelo;
+2. la catástrofe por fecha del evento (propuesta 1 de «(reacción)»), que es donde M3s-r pierde (sismo +0,41 puntos).
+
+**Versionado (16-10):** todo lo del 16-10 está en `main` (validaciones de 2026 y anual, experimentos m3cal, m3s_r y
+m3s_rs, las dos filas de `variables.csv`, `CONTEXTO.md`, este archivo y los datos de las tareas programadas).
+`NLP/modelo.py` **sigue fuera, a propósito**: apunta Ollama al servidor de MedGemma y es un cambio ajeno.
+
+**Hecho el 16-10:**
+- **Validación de 2026 de la operación semanal** (entrada del 16-10 de `CONTEXTO.md`): M3s **se mantiene** frente a
+  C0r. A 1-7 días, como se entrega: MAPE 8,57 % frente a 8,51 %, y cobertura 80,4 % frente a 82,5 %; DM p = 0,60.
+  - Con la extracción diaria, el error de la semana siguiente (8,5 %) es menor que el de 15-21 días que se usaba antes
+    (10,5 %).
+  - Lo que resta viene de la red (julio) y del sismo (agosto) dentro de M3s; el calendario suma.
+- **Tareas programadas funcionando:** la diaria corrió sola el 16-10 a las 07:42 (el equipo estaba apagado a las
+  06:30), con resultado 0. La semanal corre por primera vez el **lunes 19-10 a las 07:00**: revisar su resultado
+  (`Get-ScheduledTaskInfo triage_operacion_semanal`) y la corrida nueva en `salidas/operacion/corridas/`.
+
+**Pendientes del propietario, sin cambios:**
+- las fiestas con el estado vacío (Belalcázar el 26-oct y la Noche del Fuego el 7-dic);
+- la lista por confirmar;
+- las revisiones del pasado que solo se aplican con `--rehacer`;
+- las fichas por factor desde `calendarios/docs/LITERATURA_ENTORNO.md`, propuestas el 15-10 para que cada cambio
+  de modelo parta de la literatura. El propietario cuestionó el método («prueba y error»); ver la respuesta en la
+  sesión del 15-10 y la entrada «(reacción)».
 
 ---
 
@@ -34,9 +89,19 @@ para después.
   incoherentes del clima unificado.
 
 **Esperando al propietario:**
-1. **Registrar las tareas de Windows.** Los comandos están en `contexto/docs/CONTEXTO_EXTERNO.md`: los XML de
-   `contexto/`, `triage_contexto_diario` (06:30 diaria) y `triage_operacion_semanal` (lunes 07:00), y deshabilitar
-   `triage_capturas_semanales`. **Hasta entonces nada corre solo.**
+1. ~~Registrar las tareas de Windows~~ **Hecho por el propietario el 15-10.**
+   - `triage_contexto_diario` (06:30) y `triage_operacion_semanal` (lunes 07:00) están registradas;
+     `triage_capturas_semanales` está deshabilitada.
+   - Lanzada a mano desde el Programador, la diaria terminó con resultado 0, sin ventana.
+   - Corrió sola el 16-10 a las 07:42 (el equipo estaba apagado a las 06:30), con resultado 0, en 112 s.
+   - **Validación de 2026, hecha** (`CONTEXTO.md`, entrada del 2026-10-16; `notebooks/validacion_2026.py`;
+     `salidas/pronostico/validacion_2026/`). Veredicto preregistrado: M3s **se mantiene** frente a C0r.
+     - A 1-7 días, como se entrega: MAPE 8,57 % frente a 8,51 %, y cobertura 80,4 % frente a 82,5 %.
+     - Diebold-Mariano: p = 0,60.
+     - Lo poco que pierde viene de las columnas de red (julio) y de catástrofe (sismo de agosto) dentro de M3s.
+   - **Pendiente detectado:** la corrida del lunes lee la semana epidemiológica a medias, lo que hunde el índice de
+     salud unas 5 desviaciones. Hay que leer la última semana completa. (16-10: leerla como variante del modelo,
+     M3s-rs, no pasó la regla; ver arriba.)
 2. **8 filas de fiestas escritas a mano tienen el estado vacío y el modelo las ignora.** Entre ellas, Belalcázar
    (26-oct a 2-nov) y la Noche del Fuego de Salamina (7-8 dic 2026). Ponerles `programado` es una decisión del
    propietario.
@@ -50,6 +115,9 @@ para después.
 
    Se aplican con `--rehacer`, que mueve el pasado.
 5. **Autorizar el commit**, y decidir qué hacer con `NLP/modelo.py`, que trae un cambio ajeno.
+
+6. **Prueba de reacción** (`CONTEXTO.md`, «(reacción)»): el calendario funciona; salud, red, catástrofe y social no
+   se comportan como mecanismos. Decidir cuáles de las cinco propuestas se preregistran y validan.
 
 **Límites:**
 - El umbral del terremoto se fijó conociendo el único caso real.

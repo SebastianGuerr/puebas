@@ -68,9 +68,16 @@ def catastrofes():
     return sorted({pd.Timestamp(x) for x in d.fecha_inicio})
 
 
-def columnas(dias):
+def columnas(dias, rezago_salud=0):
     """Todas las columnas de mecanismo por dia (sin compuerta todavia, con la compuerta aparte). Devuelve
-    (FUT, PAS, compuertas), cada una indexada por dia."""
+    (FUT, PAS, compuertas), cada una indexada por dia. rezago_salud: semanas de mas con que se lee la salud publica,
+    en sus columnas y en su compuerta (fila m3s_correcciones_red_salud; 0 = lo publicado)."""
+    import indices as ix
+    with ix.salud_con_rezago(rezago_salud):
+        return _columnas(dias)
+
+
+def _columnas(dias):
     import indices as ix
     import marcas
     dias = pd.DatetimeIndex(dias)
@@ -143,11 +150,11 @@ def gatillo(c):
     return next((g for p, g in GATILLO_DE.items() if c.startswith(p)), None)
 
 
-def con_compuerta(T, G):
+def con_compuerta(T, G, libres=()):
     T = T.copy()
     for c in T:
         g = gatillo(c)
-        if g: T[c] = T[c].where(G[g])
+        if g and c not in libres: T[c] = T[c].where(G[g])
     return T
 
 
@@ -157,13 +164,20 @@ def contexto(dias, exp, H=None):
         raise RuntimeError("los experimentos m* se corren con notebooks/mecanismos.py (m2 y m3 cambian el entrenamiento)")
     if (H or pr.H) > 7 and not exp.get("semanal"):
         raise RuntimeError("las variables con rezago de 7 dias respecto del dia predicho exigen H <= 7")
-    FUT, PAS, G = columnas(dias)
+    FUT, PAS, G = columnas(dias, rezago_salud=exp.get("rezago_salud", 0))
     if exp.get("semanal"):             # fila m3_semanal: sin el clima de rezago corto, vale para cualquier adelanto
         FUT = FUT[[c for c in FUT if "_cli_" not in c]]; PAS = PAS[[c for c in PAS if "_cli_" not in c]]
+    # fila m3s_correcciones_red_salud: columnas que se quedan aunque su prefijo este en 'sin', y que van SIN compuerta
+    # (pasan de ext_g_m_ a ext_m_: faltante ya no significa apagada)
+    libres = tuple(exp.get("sin_compuerta", ()))
     sin = tuple(exp.get("sin", ()))    # fila mes_a_ciegas: columnas que el experimento deja fuera (el terremoto)
     if sin:
-        FUT = FUT[[c for c in FUT if not c.startswith(sin)]]; PAS = PAS[[c for c in PAS if not c.startswith(sin)]]
-    FUT, PAS = con_compuerta(FUT, G), con_compuerta(PAS, G)
+        FUT = FUT[[c for c in FUT if not c.startswith(sin) or c in libres]]
+        PAS = PAS[[c for c in PAS if not c.startswith(sin) or c in libres]]
+    FUT, PAS = con_compuerta(FUT, G, libres), con_compuerta(PAS, G, libres)
+    if libres:
+        FUT = FUT.rename(columns={c: "ext_m_" + c[len("ext_g_m_"):] for c in libres})
+        PAS = PAS.rename(columns={c: "ext_m_" + c[len("ext_g_m_"):] for c in libres})
     sin_g = [c for c in FUT if not c.startswith("ext_g_")]
     FUT[sin_g] = FUT[sin_g].fillna(0)
     sin_g = [c for c in PAS if not c.startswith("ext_g_")]

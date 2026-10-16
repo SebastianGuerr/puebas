@@ -35,11 +35,18 @@ FRANJAS = rp.FRANJAS                           # madrugada 0-5, mañana 6-11, ta
 PERFIL = "P52"                                 # elegido en reparto_del_dia: mismo día de la semana, 52 semanas
 DESCRIPCION = {"C0r": "SARIMAX + LightGBM, solo calendario, estación, nivel y memoria",
                "Cg": "SARIMAX + LightGBM con el contexto de salud pública, que se enciende cuando hay ola, y las marcas de contexto",
-               "M3s": "SARIMAX + LightGBM con los mecanismos medidos (Feria, noches festivas, fiestas lejanas, catástrofe, salud pública y red con compuerta), sin la fase fuerte de la COVID en el entrenamiento"}
+               "M3s": "SARIMAX + LightGBM con los mecanismos medidos (Feria, noches festivas, fiestas lejanas, catástrofe, salud pública y red con compuerta), sin la fase fuerte de la COVID en el entrenamiento",
+               "M3s-r": "M3s sin las variables de red calculadas con el propio triage (la red va solo en la corrección externa); la resolución de la Supersalud sobre Nueva EPS, sin compuerta",
+               "M3s-rs": "M3s-r con la salud pública leída en la última semana epidemiológica completa (1 semana de rezago de notificación)"}
 # 'modelo@exp': el modelo se construye con el contexto de ese experimento (Cg: salud publica en compuerta, fila
 # contexto_con_compuerta_confirmacion); sin '@', con el de e1 (sin contexto)
 COMBOS = {"C0": ["sarimax", "lightgbm"], "C0r": ["sarimax", "lightgbm_rel"], "Cg": ["sarimax", "lightgbm_rel@g"],
-          "M3s": ["sarimax_mec@m3s", "lightgbm_rel_mec@m3s"]}          # fila m3_semanal (notebooks/mecanismos.py)
+          "M3s": ["sarimax_mec@m3s", "lightgbm_rel_mec@m3s"],          # fila m3_semanal (notebooks/mecanismos.py)
+          "M3cal": ["sarimax_mec@m3cal", "lightgbm_rel_mec@m3cal"],    # diagnostico (fila validacion_2026_operacion_semanal)
+          # candidatas (fila m3s_correcciones_red_salud). Su SARIMAX es el de M3s: sarimax_mec no usa ni la red ni la salud
+          "M3s-r": ["sarimax_mec@m3s", "lightgbm_rel_mec@m3s_r"],
+          "M3s-rs": ["sarimax_mec@m3s", "lightgbm_rel_mec@m3s_rs"]}
+DIAGNOSTICO = {"M3cal", "M3s-r", "M3s-rs"}   # fuera del valor por defecto de validar() (no cambia lo publicado)
 
 
 def datos():
@@ -247,7 +254,7 @@ def validar(avisar=print, refit=4, combos=None, adelantos=(1, 15), archivo=None)
     for lead in adelantos:
         hs = list(range(lead, lead + 7))
         ors = [o for o in doms if o + pd.Timedelta(days=lead + 6) <= fin]
-        cs = combos or list(COMBOS)
+        cs = combos or [c for c in COMBOS if c not in DIAGNOSTICO]
         a = Ajuste(y, cal, sorted({m for c in cs for m in COMBOS[c]}))   # un solo SARIMAX y control para todos
         for i, o in enumerate(ors):
             if i % refit == 0: a.ajustar(o, hs)

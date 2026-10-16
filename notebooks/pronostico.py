@@ -89,6 +89,16 @@ EXPERIMENTOS["m3s"] = dict(ini="2020-01-01", contexto="mecanismos", excluir=[COV
                            origenes=("2025-12-31", ULTIMO_ORIGEN), carpeta=SALIDA / "m3s")
 # M3s en la prueba del mes a ciegas (fila mes_a_ciegas): sin el terremoto; la corre notebooks/mes_a_ciegas.py
 EXPERIMENTOS["m3s_ciego"] = dict(EXPERIMENTOS["m3s"], sin=["ext_m_catastrofe_"], carpeta=SALIDA / "mes_a_ciegas")
+# M3s con solo los 4 mecanismos de calendario, sin las columnas de estado (fila validacion_2026_operacion_semanal):
+# DIAGNOSTICO, no candidato a produccion. La corre notebooks/validacion_2026.py
+EXPERIMENTOS["m3cal"] = dict(EXPERIMENTOS["m3s"], sin=["ext_m_catastrofe_", "ext_m_paro_", "ext_g_m_sal_", "ext_g_m_red_",
+                                                        "ext_g_m_soc_"], carpeta=SALIDA / "validacion_2026")
+# Correcciones de M3s (fila m3s_correcciones_red_salud), candidatas; las corre notebooks/validacion_anual.py.
+# m3s_r: sin las columnas de red calculadas con el triage del SES; la resolucion de la Supersalud se queda sin compuerta.
+# m3s_rs: m3s_r con la salud publica leida 1 semana mas tarde (la ultima semana completa; rezago medido el 2026-10-16).
+EXPERIMENTOS["m3s_r"] = dict(EXPERIMENTOS["m3s"], sin=["ext_g_m_red_"], sin_compuerta=["ext_g_m_red_resolucion_nueva_eps_30d"],
+                             carpeta=SALIDA / "correcciones_red_salud")
+EXPERIMENTOS["m3s_rs"] = dict(EXPERIMENTOS["m3s_r"], rezago_salud=1)
 EXP = EXPERIMENTOS["e0"]                      # el experimento activo; lo cambia usar()
 ANIO_ORIGEN = "2025-12-31"
 

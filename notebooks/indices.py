@@ -10,6 +10,7 @@ Todas las referencias (climatologias, medias, desviaciones, componentes principa
 hasta REF_FIN = 2024-12-31: 2025 se reserva para elegir y 2026 para probar.
 """
 import re
+from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
@@ -202,13 +203,28 @@ def familias_operativas(foto=None):
     return out
 
 
+# Semanas de MAS con que se lee la salud publica. 0 (por defecto, lo publicado) = la semana epidemiologica que acabo
+# el sabado anterior al dia, que en la foto del Power BI llega a medias. El experimento m3s_rs lo pone en 1 con
+# salud_con_rezago() (fila m3s_correcciones_red_salud; rezago medido en docs/CONTEXTO.md, 2026-10-16 (rezago)).
+REZAGO_SALUD = 0
+
+
+@contextmanager
+def salud_con_rezago(semanas):
+    """Mientras dure, contexto_holistico (y lo que sale de el: marcas, compuertas) lee la salud 'semanas' mas tarde."""
+    global REZAGO_SALUD
+    previo, REZAGO_SALUD = REZAGO_SALUD, int(semanas)
+    try: yield
+    finally: REZAGO_SALUD = previo
+
+
 def contexto_holistico(dias):
     """Las 24 variables de H por dia, lo que se sabe ESE dia (se usan desplazadas al origen en pronostico.py)."""
     dias = pd.DatetimeIndex(dias)
     H = indices_clima(diario=True).reindex(dias).ffill(limit=30)
     F = familias_operativas()
     domingo = dias - pd.to_timedelta((dias.dayofweek + 1) % 7, unit="D")
-    for c in F: H[f"fam_{c}"] = F[c].reindex(domingo - pd.Timedelta(weeks=1)).values      # ultima semana completa
+    for c in F: H[f"fam_{c}"] = F[c].reindex(domingo - pd.Timedelta(weeks=1 + REZAGO_SALUD)).values   # ultima semana completa
     H = H.join(red_diaria().reindex(dias).ffill(limit=30))
     R = regimenes_diarios(str(max(dias.max(), pd.Timestamp("2026-09-30")).date())).reindex(dias)
     H = H.join(R[["oni", "el_nino", "la_nina", "sismo_fuerte_7d"]])
