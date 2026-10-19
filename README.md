@@ -48,7 +48,12 @@ pueden actualizar: `python -m extraccion` necesita SQL Server dentro de la red.
 
 Requiere Python **3.11** (medido con 3.11.9).
 
+**En Windows, antes de clonar**, hay que permitir las rutas largas. Algunas capturas de la Supersalud
+(`calendarios/capturas/medidas/`) tienen nombres de más de 100 caracteres, y en una carpeta profunda superan el límite
+de 260. El clon termina con «Filename too long» y queda a medias (comprobado el 2026-10-19).
+
 ```
+git config --global core.longpaths true
 git clone https://github.com/SebastianGuerr/puebas.git
 cd puebas
 python -m venv .venv
