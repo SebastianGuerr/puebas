@@ -14,6 +14,270 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-19 (Power BI, estilo del hospital) — Menos texto, probabilidad en píldoras, estética del tablero de urgencias
+
+**Lo que dijo el propietario de la v4.** Demasiado texto: un tablero no se lee, se mira. La probabilidad debe ser un
+aviso corto («66 % de probabilidad»), no una frase. Mejor el gráfico de barras que la tabla. La incertidumbre debe
+notarse de forma sutil, sin decir explícitamente «esto no es exacto». Cero scroll (volvió en el calendario). Pasó una
+copia del tablero de urgencias del hospital (`TABLERO TIEMPOS URGENCIAS.pbip`) **solo como referencia de estilo**.
+
+**Lo que se tomó del tablero del hospital** (solo se leyó la definición del informe; sus datos no se tocaron):
+- azul institucional `#176DAA` en los títulos;
+- fondo gris claro y tarjetas blancas con radio 10 y borde suave;
+- botones de navegación `#DE6A73`;
+- segmentadores arriba;
+- mapas de calor día × tramo horario en matriz;
+- medidores (gauge) en la portada.
+
+**Decisiones.**
+1. **La probabilidad va en píldoras y en las etiquetas**: «76 % de probabilidad» junto al día y «89 %» junto a las
+   horas. En cada barra de aseguradora la etiqueta es «69–98 · 66 %». La barra mide el valor más probable y la etiqueta
+   muestra el rango mediante un formato dinámico.
+2. **Arriba**: el rango del día, el medidor de «¿más que un lunes normal?» y un gráfico de columnas de las semanas
+   hasta diciembre (pacientes por día, con su rango). En rojo intenso, las semanas probablemente por encima de lo
+   normal. Esto reemplaza las tarjetas de semana y mes.
+3. **El calendario pierde la columna Total** (la semana está en el gráfico de columnas), para que no haya scroll.
+4. **Al tocar una semana lejana**, el calendario y el mapa de horas la muestran aunque esté fuera de las 4 semanas.
+5. **La copia del hospital queda en `.gitignore`**: su modelo usa `GPADOCUME` y su `cache.abf` puede tener filas de
+   pacientes.
+
+---
+
+## 2026-10-19 (Power BI, rangos) — Todo sigue al día elegido; rangos con su probabilidad medida, no cifras exactas
+
+**Lo que pidió el propietario al ver la página.** (1) Al tocar un día, todo debe hablar de ese día, también las
+aseguradoras; antes cada gráfica filtraba distinto y las cifras de arriba estaban fijas en hoy. (2) Mostrar rangos y
+no cifras exactas («no es 17, es 13-18»), con un aviso de probabilidad que salga del modelo y no esté escrito a mano.
+(3) Las cifras de arriba informaban sin decir qué hacer con la información.
+
+**Decisiones.**
+1. **Una sola regla de selección**: el día elegido (`Fecha mostrada`), y sin selección, hoy. Al tocar una hora, las
+   aseguradoras pasan a esa hora; al tocar el total de una semana, a la semana. El mapa de horas admite cualquier día de
+   las 4 semanas cuando hay selección (antes se quedaba vacío fuera de los 7 días).
+2. **Rangos q10-q90 en todas las cifras.** Día: del modelo. Semana: 7 × la media diaria q10-q90 de `semanas.parquet`.
+   Mes: promedio de esos rangos semanales, rotulado «aproximado». Hora: q10-q90 del modelo; para las aseguradoras sin
+   rango por hora (todas menos Nueva EPS y Sura), intervalo de Poisson del 80 % alrededor de lo esperado.
+3. **La probabilidad que se muestra es la medida, no la nominal**:
+   - día: 76 % (historial de M3s, 620 días, rango anunciado 15-21 días antes);
+   - aseguradora: por grupo, sobre el mismo rango sumado que se muestra (Nueva EPS 66 %, Sura 80 %, Otras EPS 79 %,
+     Régimen especial 82 %, Otros 95 %);
+   - hora: 89 % (`verificacion.parquet` frente a `triage_horario.parquet`, 42 días, 1.008 horas).
+
+   Se recalculan en cada exportación. El exportador escribe dos tablas nuevas, `historial_aseguradora.csv` y
+   `verificacion_hora.csv`.
+4. **La cifra que manda arriba es la pregunta del proyecto**: «¿más pacientes que un lunes normal?», respondida con
+   `p_sube` del modelo en un medidor de 0 a 100 % con la marca en 50 % (Probable · 61 % el 19-10). Al lado van el
+   rango del día, el de su semana (con `p_sobre_habitual`) y el de su mes.
+5. **Rojos solo para «más de lo normal»**; «menos de lo normal» va en gris, porque el azul queda reservado a las
+   aseguradoras.
+
+---
+
+## 2026-10-19 (Power BI, usuario final) — Power BI es solo para los jefes de urgencias: una página, volumen y aseguradora
+
+**Corrección del propietario.** El primer borrador (tres páginas espejo del Streamlit) era demasiado técnico. Power BI
+va al tablero de triage del hospital y lo leen **jefes médicos sin formación en datos**. Cómo se predijo, con qué datos
+y qué tan confiable es quedan en el Streamlit y los cuadernos, **no** en Power BI.
+
+**Decisiones.**
+1. **Una sola página 1280×720, sin scroll**: cuatro cifras (hoy, próximos 7 días, próximo mes, horas más llenas de
+   hoy), calendario de 4 semanas con total semanal, barras por aseguradora y mapa día × hora de los próximos 7 días.
+   Se borran las tres páginas anteriores. Si hace falta más, irá en páginas aparte con botones, como en los tableros
+   del hospital.
+2. **Rojos para el volumen, azules para la aseguradora.** Así lo usan los demás tableros del hospital, y separa las
+   dos cosas a simple vista. Los mapas de calor son de un solo tono (más oscuro = más pacientes). El calendario se
+   colorea frente al promedio de esas 4 semanas, el mapa de horas frente a la hora más llena de la semana.
+3. **Un filtro de aseguradora para toda la página** (5 grupos: Nueva EPS, Sura, Régimen especial, Otras EPS, Otros).
+   Al elegir una, todas las cifras y mapas pasan a esa aseguradora y a azul.
+4. **El calendario solo llega a 28 días** (lo validado), y el mes se rotula «aproximado».
+5. **Hora pico = bloque de 3 horas**, la misma definición que `operacion/__init__.py` (`pico_*`). **Corrige un error del
+   primer borrador**, que mostraba «9-10 h» donde la operación quiere decir 9 a 12 h. El mapa de horas usa el
+   «esperado» por hora (total del día × forma horaria), que suma exactamente el día: 214,5 el 19-10.
+
+**Base de la forma** (búsqueda del 19-10): Microsoft Learn, «Tips for designing a great Power BI dashboard» (una
+pantalla, sin scroll; lo más importante arriba a la izquierda; tarjetas para cifras clave; barras en vez de tortas;
+sin etiquetas innecesarias); Tabular Editor sobre KPI (máximo unas 5 cifras, cada una con su comparación y una flecha
+además del color); y los mapas de calor por hora usados en urgencias (HEAT maps, NSW 2017; ACEP Now).
+
+---
+
+## 2026-10-19 (Power BI) — El pronóstico en Power BI: exportación a CSV largos, modelo por MCP, páginas en PBIR
+
+**Encargo del propietario.** Llevar las predicciones que ya funcionan a `prediccion.pbip` para mostrarle a su superior
+cómo urgencias podría verlas, y saber qué se puede subir a Power BI y qué necesitaría al equipo de desarrollo.
+
+**Decisiones.**
+1. **Un paso intermedio, `python -m operacion.powerbi`, que escribe 11 CSV largos en `salidas/powerbi/`**, en vez de
+   que Power BI lea los parquet. Por qué: `dias.parquet` tiene 483 columnas y Power BI necesita tablas largas; y la
+   regla de qué corrida es la vigente (última de cada modelo + último ajuste por la red + comparación solo si es del
+   mismo origen) ya vive en `tablero.py`: se copia, no se reescribe en M. Sin Python dentro de Power BI, para no exigir
+   puerta de enlace con Python en el servicio.
+2. **No reentrena ni toca la operación** (receta congelada, «2026-10-16 (rumbo)»). Solo lee `salidas/operacion/`. No se
+   añadió a las tareas programadas: se corre a mano hasta que el propietario lo pida.
+3. **Las medidas hablan de un día** (`Fecha mostrada`: el elegido o el próximo pronosticado) **y de un modelo**
+   (`Modelo mostrado`: sin filtro, el principal). Sumar rangos del 80 % de varios días no es el rango de la suma, y
+   sumar M3s + C0r no significa nada.
+4. **`Calendario` con rango fijo** (1-ene-2025 al 31-dic del año siguiente). Derivarlo de `MIN(Historial[fecha])` con
+   relaciones de vuelta hizo que Desktop diera «referencia cíclica» al aplicar las consultas y dejara todo en blanco.
+5. **Los visuales se escriben como PBIR** (el MCP de modelado no hace visuales): tres páginas, «Próximos días», «Cómo ha
+   predicho» y «Qué tan confiable es», espejo de las tres pestañas de Streamlit, con la misma escala de color.
+
+**Evidencia.** Las sumas de cada tabla en Power BI coinciden exactamente con los CSV (p. ej. 25.694,30 de central en
+`Pronóstico día`, 237.297 reales en `Historial`); error medio del día M3s 10,58 % y C0r 10,62 %, días dentro del rango
+76 % y 80 %, idénticos a pandas. El lunes 19-10 sale con 214 de central y rango 181 a 245, como en la corrida.
+
+**Límites encontrados** (detalle en `operacion/docs/POWERBI.md`): mostrarlo sí se puede sin desarrollo; lo que necesita
+a TI es la **actualización automática fuera de este equipo** (puerta de enlace o CSV en SharePoint) y **dónde corre el
+Python** cuando el practicante no esté. Publicar exige licencia Pro o capacidad Premium; «publicar en la web» queda
+descartado por ser público.
+
+---
+
+## 2026-10-16 (desvío) — Aviso de desvío y recálculo sin reentrenar, razonado antes de calcular
+
+**Encargo** («(rumbo)»): si el triage real de los días desde el origen se sale demasiado de lo predicho, avisar y
+recalcular los días siguientes **sin reentrenar**. Preregistro: fila `aviso_desvio`, escrita antes de calcular nada.
+
+**El antecedente que manda.** El reanclaje R («(8)») no entró porque reaccionó a la semana del sismo como si fuera un
+cambio de nivel: reancló a Sura hacia abajo justo antes del rebote. Un detector nuevo tiene que distinguir lo pasajero
+de lo sostenido, y eso no se resuelve con un umbral más alto, sino con lo que se mira:
+- **Contra lo predicho, no contra los conteos.** R comparaba la media cruda de 7 días con la de 28. Aquí el residuo es
+  `log(real / q50)` de la corrida, así que el calendario (festivos, Feria, día de la semana) ya está descontado, y se
+  mide en unidades del propio rango (`z`), que en una semana con W ya viene ensanchado.
+- **Persistencia, en tres condiciones a la vez:** la semana entera fuera del borde del rango (|media de z| ≥ 1,28),
+  6 de los 7 días del mismo lado (un día raro no la arrastra) y los 2 últimos también (si ya rebotó, no dispara).
+  La ventana usa los días del origen anterior, así que «sostenido» significa al menos una semana entera, no 2-3 días.
+- **Causa conocida pasajera.** Un terremoto del catálogo en los 21 días previos ya es, en M3s, un episodio de 3
+  semanas (`ext_m_catastrofe_sem1` y `sem2_3`): ahí se avisa pero no se recalcula, para no contarlo dos veces.
+- **La mitad del desvío.** El reentreno del lunes absorbe el resto si el cambio es real (el nivel de 28 días y la
+  memoria). Cada revisión parte de la corrida original: no se acumula.
+
+**Cómo se evalúa, barato.** Sobre las predicciones de origen rodante ya guardadas en
+`salidas/pronostico/correcciones_red_salud/origenes/` (versión b = red v2 + W, la de la operación), M3s decide y C0r
+se informa. Para cada origen y cada día de la semana en que se podría leer el tablero (k = 1..6) se corrigen los días
+que faltan de esa semana y el bloque de 15-21 días. Regla: no empeora el puntaje de 2025 ni de 2026 (a 15-21 y en
+los días restantes de 1-7) y baja la suma de semanas de recuperación de la medida de «(8)». Si no pasa, queda solo el
+aviso.
+
+---
+
+## 2026-10-16 (semana completa) — La semana epidemiológica a medias se arregla en el dato de la operación
+
+**Decisión** («(rumbo)»): corrección de **dato**, no variante del modelo. Preregistro: fila `salud_semana_completa`,
+escrita antes de implementar.
+
+**Qué.** Al construir el contexto que ve M3s en la operación, para cada familia de salud pública se juzga la última
+semana epidemiológica de la foto del Power BI: si su conteo crudo llega por debajo del 90 % de la mediana de las 4
+semanas anteriores, no se usa y se arrastra el índice de la última semana completa. Si la semana que toca leer no está
+en la foto, también se arrastra (hasta 4 semanas). Interruptor `operacion.SALUD_SEMANA_COMPLETA = True`.
+
+**Por qué esta definición de «esperado».**
+- La completitud depende de los **días** entre el cierre de la semana y la foto, no de la edad en semanas: la SE39 en
+  la foto del 05-10 (2 días después del cierre) traía 154 consultas de IRA de 935; la SE40 en la foto del 15-10 (5 días
+  después) trae 951, ya completa. La curva de «(rezago)» por edad descartaría siempre la última semana, también cuando
+  llega completa.
+- Frente a la semana anterior sola, la mediana de 4 resiste una semana rara.
+- Coste conocido: en familias de pocos casos (materno, salud mental) el ruido hará descartar a veces una semana
+  completa. Cuesta leer una semana más vieja, y eso se midió pequeño en «(correcciones)» (+0,07 puntos).
+
+**Un hallazgo al leer el código, antes de medir nada.** `indices.contexto_holistico` pone en 0 (= lo normal) la semana
+que no está en la foto (`fillna(0)`). La captura del Power BI es semanal y la última es del 15-10, que llega hasta la
+SE40, así que **el lunes 19-10 (origen 18-10) M3s leería 0 en las cinco familias**, no una semana a medias. El arreglo
+cubre los dos casos con la misma regla: una semana ausente es una semana al 0 %.
+
+**Por qué no hace falta validación de origen rodante.** En el histórico las semanas ya están completas: el
+entrenamiento no cambia y la receta sigue congelada. Lo que se comprueba es que el dato que ve M3s el lunes sea el
+correcto, con las tres fotos guardadas, y cuánto mueve eso la predicción de la corrida 2026-10-14_M3s.
+
+---
+
+## 2026-10-16 (catástrofe) — La catástrofe por fecha del evento, razonada antes de calcular: mismas ventanas, contadas desde el día predicho
+
+**Qué es.** Una **prueba aislada**, pedida después de «(rumbo)». No toca la operación (`operacion/`, `contexto/`, la
+tarea del lunes) ni la receta congelada: es un experimento nuevo de diagnóstico, como M3s-r. Es la propuesta 1 de
+«(reacción)», y la que quedó abierta en «(correcciones)», porque los días del sismo son donde M3s-r perdió (+0,41).
+
+**Cómo entra hoy la catástrofe en M3s** (`mecanismos._columnas`, `pronostico.rasgos`, `pronostico._ConExogenas`):
+- Hay un solo evento en `calendarios/desastres_manizales_2020_2026.csv` que cuente (terremoto en Manizales): el
+  **2026-08-10**. Entre 2020 y 2025 no hay ninguno.
+- Dos indicadores por día: `ext_m_catastrofe_sem1` (días 0-6 desde el terremoto) y `ext_m_catastrofe_sem2_3`
+  (días 7-20). Están en `RAROS`: entran en el SARIMAX y en el LightGBM como desplazamiento lineal.
+- Van en la familia «lo que se sabe en el día» (`PAS`), así que se **desplazan al origen**:
+  - LightGBM, adelanto h: el día t ve el indicador de t − h. Al predecir, ve el estado del origen.
+  - SARIMAX: al entrenar ve el indicador de t − 1; al predecir, el del origen **congelado** en todo el horizonte.
+
+**Lo que está mal en esa codificación.** El reloj de una catástrofe es el **número de días desde el evento**, y ese
+reloj se conoce en el origen para cualquier día predicho. El estado del origen lo pierde:
+1. **Al predecir, el efecto cae en días equivocados.**
+   - Desde el domingo 16-08 (día 6), el efecto de la «semana 1» se aplica a los días 7-13.
+   - Desde el 30-08 (día 20), el de las «semanas 2-3» se aplica a los días 21-27, fuera de su ventana.
+2. **Al entrenar, el coeficiente no mide lo que dice su nombre.** El modelo del adelanto h aprende «semana 1» con los
+   días h a h + 6 después del evento: a 15-21 días eso es el rebote de los días 15-27, no la primera semana. Con un
+   solo evento, el coeficiente mide lo que pasó en esos días. Es lo que vio la prueba de reacción: un terremoto la
+   víspera del origen da −11 % el día 1 y **+3 a +5 % en los días 22-45**.
+
+**Qué cambia, y solo eso.** Variante **M3s-cf** = M3s con los dos indicadores contados desde el **día predicho**, con
+la condición de que el evento ya hubiera ocurrido en el origen:
+
+    columna(t | o) = 1[t − c en la ventana] · 1[c ≤ o]       (c = fecha del terremoto; ventanas 0-6 y 7-20)
+
+- LightGBM, adelanto h: c ≤ t − h.
+- SARIMAX: c ≤ t − 1 al entrenar; c ≤ o al predecir, día por día, sin congelar.
+- Mismos nombres de columna, mismas ventanas, mismo desplazamiento lineal de `RAROS`, mismo entrenamiento sin la COVID
+  fuerte, misma salud, red y social. **Parte de M3s**: es el modelo en operación y la receta congelada, así que la
+  variante cambia una sola cosa y lo que mida es esa cosa.
+- Entra como parámetro del experimento (`catastrofe = "fecha"`). Sin él, M3s, C0r y M3cal quedan exactamente iguales.
+
+**Por qué las mismas ventanas y no un decaimiento.** Las ventanas 0-6 y 7-20 se fijaron en las filas `mecanismos_*`
+antes de este evento. Elegir ahora otra forma (un decaimiento, otra longitud), habiendo visto ya la validación de 2026
+y los días del sismo, sería ajustar la variable al resultado. Así la variante no tiene ningún parámetro libre.
+
+**Qué se espera:**
+- **2025 y los orígenes de 2026 anteriores al 10-08: idéntico a M3s, diferencia 0 exacta.** Sin terremoto en el
+  entrenamiento, las dos columnas valen 0 y salen por varianza nula. No es evidencia: es la comprobación de que la
+  implementación no toca nada más. También detecta si algún dato cambió desde las corridas guardadas.
+- **La consecuencia honesta:** la regla de `m3s_correcciones_red_salud` elige con 2025, y en 2025 la variante no puede
+  diferir. **Por esa regla no puede pasar.** El veredicto descansa en 2026, en el tramo posterior al sismo, con un solo
+  evento: es diagnóstico, no prueba de superioridad.
+- **En 2026**, las diferencias quedan en los orígenes desde el 16-08:
+  - 1-7 desde el 16-08: M3s aplica la semana 1 a los días 7-13; M3s-cf no aplica nada (las «semanas 2-3» todavía no
+    tienen días en el entrenamiento).
+  - 1-7 desde el 23-08: los dos aplican las semanas 2-3 a los días 14-20.
+  - 1-7 desde el 30-08: M3s aplica las semanas 2-3 a los días 21-27; M3s-cf, no.
+  - Después, ninguno aplica nada al predecir; solo cambian un poco los coeficientes del resto.
+  - A 15-21 días se espera casi nada: las columnas casi no tienen días de entrenamiento a esos adelantos.
+- **Se espera que M3s-cf gane a M3s en el tramo del sismo**, porque pone el efecto en los días de su ventana. El
+  tamaño es incierto: en agosto también reabrió el convenio con Nueva EPS, que se cruza con el sismo.
+
+**Además de la validación, una prueba de mecanismo** (inyección, como en «(reacción)»): un terremoto la víspera del
+origen debe mover **solo** los días 1-20 en M3s-cf, y nada desde el día 21. Es el argumento principal del cambio:
+el efecto queda en los días correctos por construcción, como pasa con el calendario. El preregistro, con la regla y lo
+que cuenta como evidencia, está en la fila `m3s_catastrofe_por_fecha`.
+
+---
+
+## 2026-10-16 (rumbo) — Se congela la receta: los problemas de dato se arreglan en la automatización, no en el modelo
+
+**Decisión del propietario**, después de las correcciones de abajo:
+- **Se deja de experimentar con el modelo.** La receta queda congelada. El reajuste semanal con la misma receta y los
+  datos nuevos sí sigue, porque es lo que permitió recuperarse de Nueva EPS y del sismo.
+- **La semana epidemiológica a medias se corrige en los datos** (`python -m contexto` / `operacion`), no con una variante
+  del modelo. M3s aprendió con semanas completas: hay que dárselas completas.
+- **Lo que falta construir** es un aviso de desvío: si el triage real de los últimos días se sale demasiado de lo
+  predicho, la predicción de los días siguientes se recalcula **sin reentrenar**.
+- Queda por decidir si el principal es C0r o M3s; en 2026 empatan (8,51 % frente a 8,57 % a 1-7 días).
+
+**Por qué.** El entrenamiento ya predecía bien: la semana del 5 al 11 de octubre, verificada por fuera, dio 178
+anunciados frente a 177 reales con C0r. Lo que pide el propietario es que el modelo **vea lo actual**, cada fuente a su
+ritmo (semanal o quincenal basta, aceptando el retraso propio del SIVIGILA), para reaccionar a un imprevisto. No pide
+exprimir décimas de error. Que falle en una crisis es aceptable si se recupera a la semana o al mes siguiente.
+
+**Error de método reconocido.** M3s-rs trató como variante del modelo algo que era un problema de dato. Esa validación
+no podía medirlo: en el histórico las semanas ya están completas. Además no se le explicó al propietario que era una
+prueba aparte que no tocaba la operación.
+
+---
+
 ## 2026-10-16 (correcciones) — Ni M3s-r ni M3s-rs mejoran a M3s en 2025: la operación no cambia
 
 **Preregistro:** fila `m3s_correcciones_red_salud`, escrita antes de calcular ningún modelo y después de medir el

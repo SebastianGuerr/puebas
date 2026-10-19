@@ -68,6 +68,25 @@ def catastrofes():
     return sorted({pd.Timestamp(x) for x in d.fecha_inicio})
 
 
+CATASTROFE_VENTANAS = {"ext_m_catastrofe_sem1": (0, 6), "ext_m_catastrofe_sem2_3": (7, 20)}
+
+
+def catastrofe_por_fecha(dias, corte):
+    """Fila m3s_catastrofe_por_fecha: las dos columnas de catastrofe contadas desde el DIA PREDICHO t, con el evento ya
+    ocurrido en el corte (el origen): 1[t - c en la ventana] * 1[c <= corte_t], para cada terremoto c."""
+    dias = pd.DatetimeIndex(dias); corte = pd.DatetimeIndex(corte)
+    out = pd.DataFrame(0.0, index=dias, columns=list(CATASTROFE_VENTANAS))
+    for c in catastrofes():
+        d = (dias - c).days.values; sabido = (corte >= c)
+        for col, (a, b) in CATASTROFE_VENTANAS.items():
+            out.loc[sabido & (d >= a) & (d <= b), col] = 1.0
+    return out
+
+
+def _por_fecha():
+    return pr.EXP.get("catastrofe") == "fecha"
+
+
 def columnas(dias, rezago_salud=0):
     """Todas las columnas de mecanismo por dia (sin compuerta todavia, con la compuerta aparte). Devuelve
     (FUT, PAS, compuertas), cada una indexada por dia. rezago_salud: semanas de mas con que se lee la salud publica,
@@ -234,12 +253,29 @@ class SarimaxMec(pr.SARIMAX):
         super().__init__(y, cal)
         self.E = self.E[[c for c in self.E if not c.startswith(("ext_", "fut_")) or c in SARIMAX_COLS]]
         self.PAS = self.PAS[[c for c in self.PAS if c in SARIMAX_COLS]]
+        # fila m3s_catastrofe_por_fecha: al entrenar, la catastrofe del dia t sabida en t - 1 (no el estado de t - 1)
+        self.cat_fecha = _por_fecha() and self.ctx is not None
+        if self.cat_fecha:
+            cs = [c for c in CATASTROFE_VENTANAS if c in self.E]
+            self.E[cs] = catastrofe_por_fecha(self.E.index, self.E.index - pd.Timedelta(days=1))[cs].values
+    def exog_futuro(self, o, n, pasado_tipico=False):
+        F = super().exog_futuro(o, n, pasado_tipico)
+        if self.cat_fecha:             # al predecir: dia por dia, con lo sabido en el origen (sin congelar)
+            cs = [c for c in CATASTROFE_VENTANAS if c in F]
+            if cs: F[cs] = catastrofe_por_fecha(F.index, [o] * len(F))[cs].values
+        return F
 
 
 class LightGBMRelMec(pr.LightGBMRel):
     """lightgbm_rel con los episodios raros como desplazamiento lineal y, en m2, con los pesos del repertorio."""
     nombre = "lightgbm_rel_mec"
     tipos = None                       # DataFrame de tipos_de_dia() cuando el experimento pide pesos
+    def __init__(self, y, cal):
+        super().__init__(y, cal)
+        if _por_fecha() and self.ctx is not None:     # fila m3s_catastrofe_por_fecha: adelanto h -> sabida en t - h
+            for h, X in self.X.items():
+                cs = [c for c in CATASTROFE_VENTANAS if c in X]
+                X[cs] = catastrofe_por_fecha(X.index, X.index - pd.Timedelta(days=h))[cs].values
     def ajustar_h(self, X, yy):
         import lightgbm as lgb
         Z = X.drop(columns="nivel"); r = np.log(yy) - X.nivel

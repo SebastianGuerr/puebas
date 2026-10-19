@@ -37,7 +37,8 @@ DESCRIPCION = {"C0r": "SARIMAX + LightGBM, solo calendario, estación, nivel y m
                "Cg": "SARIMAX + LightGBM con el contexto de salud pública, que se enciende cuando hay ola, y las marcas de contexto",
                "M3s": "SARIMAX + LightGBM con los mecanismos medidos (Feria, noches festivas, fiestas lejanas, catástrofe, salud pública y red con compuerta), sin la fase fuerte de la COVID en el entrenamiento",
                "M3s-r": "M3s sin las variables de red calculadas con el propio triage (la red va solo en la corrección externa); la resolución de la Supersalud sobre Nueva EPS, sin compuerta",
-               "M3s-rs": "M3s-r con la salud pública leída en la última semana epidemiológica completa (1 semana de rezago de notificación)"}
+               "M3s-rs": "M3s-r con la salud pública leída en la última semana epidemiológica completa (1 semana de rezago de notificación)",
+               "M3s-cf": "M3s con la catástrofe contada desde el día predicho (días desde el terremoto sabido en el origen), no como estado congelado del origen"}
 # 'modelo@exp': el modelo se construye con el contexto de ese experimento (Cg: salud publica en compuerta, fila
 # contexto_con_compuerta_confirmacion); sin '@', con el de e1 (sin contexto)
 COMBOS = {"C0": ["sarimax", "lightgbm"], "C0r": ["sarimax", "lightgbm_rel"], "Cg": ["sarimax", "lightgbm_rel@g"],
@@ -45,8 +46,11 @@ COMBOS = {"C0": ["sarimax", "lightgbm"], "C0r": ["sarimax", "lightgbm_rel"], "Cg
           "M3cal": ["sarimax_mec@m3cal", "lightgbm_rel_mec@m3cal"],    # diagnostico (fila validacion_2026_operacion_semanal)
           # candidatas (fila m3s_correcciones_red_salud). Su SARIMAX es el de M3s: sarimax_mec no usa ni la red ni la salud
           "M3s-r": ["sarimax_mec@m3s", "lightgbm_rel_mec@m3s_r"],
-          "M3s-rs": ["sarimax_mec@m3s", "lightgbm_rel_mec@m3s_rs"]}
-DIAGNOSTICO = {"M3cal", "M3s-r", "M3s-rs"}   # fuera del valor por defecto de validar() (no cambia lo publicado)
+          "M3s-rs": ["sarimax_mec@m3s", "lightgbm_rel_mec@m3s_rs"],
+          # diagnostico aislado (fila m3s_catastrofe_por_fecha): la catastrofe entra en los dos modelos, asi que los
+          # dos son propios
+          "M3s-cf": ["sarimax_mec@m3s_cf", "lightgbm_rel_mec@m3s_cf"]}
+DIAGNOSTICO = {"M3cal", "M3s-r", "M3s-rs", "M3s-cf"}   # fuera del valor por defecto de validar() (no cambia lo publicado)
 
 
 def datos():

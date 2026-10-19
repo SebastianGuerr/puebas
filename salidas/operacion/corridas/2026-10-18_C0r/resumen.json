@@ -1,0 +1,99 @@
+{
+ "origen": "2026-10-18",
+ "modelo": "C0r",
+ "papel": "comparación",
+ "horizonte": 74,
+ "validado_hasta": 28,
+ "creado": "2026-10-19T07:53:41",
+ "segundos": 244,
+ "commit": "a8c3d8e",
+ "perfil": "P52",
+ "ventana_aseguradoras": "T4",
+ "ultimo_dato": "2026-10-18",
+ "antiguedad_dias": 1,
+ "red": {
+  "usada": true,
+  "version": "red_de_urgencias_v2",
+  "episodios": 30,
+  "conocido_al": "2026-10-19",
+  "efectos": {
+   "acceso": 0.1452,
+   "externos": -0.0109
+  },
+  "ses_atiende_nueva_eps": true,
+  "quiebre_total": false
+ },
+ "salud": {
+  "arreglo": true,
+  "umbral": 0.9,
+  "familias": [
+   {
+    "familia": "respiratoria",
+    "toca": "SE41-2026",
+    "usada": "SE40-2026",
+    "arrastre": true,
+    "motivo": "la SE41-2026 no está en la foto del 2026-10-15",
+    "ultima": "SE40-2026",
+    "fraccion_ultima": 1.01,
+    "ultima_incompleta": false,
+    "ausente": true,
+    "sin_dato": false,
+    "foto": "2026-10-15"
+   },
+   {
+    "familia": "violencias_y_agresiones",
+    "toca": "SE41-2026",
+    "usada": "SE40-2026",
+    "arrastre": true,
+    "motivo": "la SE41-2026 no está en la foto del 2026-10-15",
+    "ultima": "SE40-2026",
+    "fraccion_ultima": 1.148,
+    "ultima_incompleta": false,
+    "ausente": true,
+    "sin_dato": false,
+    "foto": "2026-10-15"
+   },
+   {
+    "familia": "salud_mental_e_intoxicaciones",
+    "toca": "SE41-2026",
+    "usada": "SE39-2026",
+    "arrastre": true,
+    "motivo": "la SE41-2026 no está en la foto del 2026-10-15 y la SE40-2026 llegó al 17 %",
+    "ultima": "SE40-2026",
+    "fraccion_ultima": 0.166,
+    "ultima_incompleta": true,
+    "ausente": true,
+    "sin_dato": false,
+    "foto": "2026-10-15"
+   },
+   {
+    "familia": "materno_perinatal",
+    "toca": "SE41-2026",
+    "usada": "SE40-2026",
+    "arrastre": true,
+    "motivo": "la SE41-2026 no está en la foto del 2026-10-15",
+    "ultima": "SE40-2026",
+    "fraccion_ultima": 1.231,
+    "ultima_incompleta": false,
+    "ausente": true,
+    "sin_dato": false,
+    "foto": "2026-10-15"
+   },
+   {
+    "familia": "inmunoprevenibles",
+    "toca": "SE41-2026",
+    "usada": "SE39-2026",
+    "arrastre": true,
+    "motivo": "la SE41-2026 no está en la foto del 2026-10-15 y la SE40-2026 llegó al 25 %",
+    "ultima": "SE40-2026",
+    "fraccion_ultima": 0.25,
+    "ultima_incompleta": true,
+    "ausente": true,
+    "sin_dato": false,
+    "foto": "2026-10-15"
+   }
+  ],
+  "texto": "respiratoria: se usó la SE40-2026 porque la SE41-2026 no está en la foto del 2026-10-15; violencias: se usó la SE40-2026 porque la SE41-2026 no está en la foto del 2026-10-15; salud mental: se usó la SE39-2026 porque la SE41-2026 no está en la foto del 2026-10-15 y la SE40-2026 llegó al 17 %; materno-perinatal: se usó la SE40-2026 porque la SE41-2026 no está en la foto del 2026-10-15; inmunoprevenibles: se usó la SE39-2026 porque la SE41-2026 no está en la foto del 2026-10-15 y la SE40-2026 llegó al 25 %",
+  "foto": "2026-10-15"
+ }
+}

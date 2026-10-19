@@ -6,28 +6,32 @@
   {
    "que": "Datos",
    "nivel": "verde",
-   "detalle": "último día completo: 2026-10-14 (hace 1 días)"
+   "detalle": "último día completo: 2026-10-18 (hace 1 días)"
   },
   {
    "que": "Acierto reciente",
    "nivel": "gris",
-   "detalle": "todavía no hay días predichos por M3s con dato real"
+   "detalle": "solo 3 días verificados"
   },
   {
    "que": "Nueva EPS",
    "nivel": "verde",
-   "detalle": "68 por día en las 2 últimas semanas frente a 61 en las 8 anteriores (+12 %)"
+   "detalle": "72 por día en las 2 últimas semanas frente a 62 en las 8 anteriores (+16 %)"
   },
   {
    "que": "Contexto externo",
    "en_general": true,
    "nivel": "amarillo",
-   "detalle": "en amarillo: clima_ideam (1 días de atraso), mindefensa (45 días de atraso), por_confirmar (-11 días de atraso) (última actualización: 2026-10-15T12:06:32)",
+   "detalle": "en amarillo: mindefensa (49 días de atraso), por_confirmar (-7 días de atraso) (última actualización: 2026-10-19T07:40:12)",
    "fuentes_con_problema": [
-    "clima_ideam",
     "mindefensa",
     "por_confirmar"
    ]
+  },
+  {
+   "que": "Salud pública",
+   "nivel": "verde",
+   "detalle": "foto del Power BI del 2026-10-15; respiratoria: se usó la SE40-2026 porque la SE41-2026 no está en la foto del 2026-10-15; violencias: se usó la SE40-2026 porque la SE41-2026 no está en la foto del 2026-10-15; salud mental: se usó la SE39-2026 porque la SE41-2026 no está en la foto del 2026-10-15 y la SE40-2026 llegó al 17 %; materno-perinatal: se usó la SE40-2026 porque la SE41-2026 no está en la foto del 2026-10-15; inmunoprevenibles: se usó la SE39-2026 porque la SE41-2026 no está en la foto del 2026-10-15 y la SE40-2026 llegó al 25 %"
   },
   {
    "que": "Comparación",
@@ -36,5 +40,5 @@
    "detalle": "0 días comunes de M3s y C0r a 15-21 días (hacen falta 14)"
   }
  ],
- "calculado": "2026-10-15T12:12:16"
+ "calculado": "2026-10-19T07:53:46"
 }

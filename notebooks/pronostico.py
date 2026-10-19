@@ -99,6 +99,10 @@ EXPERIMENTOS["m3cal"] = dict(EXPERIMENTOS["m3s"], sin=["ext_m_catastrofe_", "ext
 EXPERIMENTOS["m3s_r"] = dict(EXPERIMENTOS["m3s"], sin=["ext_g_m_red_"], sin_compuerta=["ext_g_m_red_resolucion_nueva_eps_30d"],
                              carpeta=SALIDA / "correcciones_red_salud")
 EXPERIMENTOS["m3s_rs"] = dict(EXPERIMENTOS["m3s_r"], rezago_salud=1)
+# Catastrofe por fecha del evento (fila m3s_catastrofe_por_fecha), diagnostico aislado: M3s con las dos columnas de
+# catastrofe contadas desde el dia predicho (con el evento sabido en el origen), no desde el estado del origen.
+# La corre notebooks/validacion_catastrofe.py; la codificacion vive en mecanismos.catastrofe_por_fecha.
+EXPERIMENTOS["m3s_cf"] = dict(EXPERIMENTOS["m3s"], catastrofe="fecha", carpeta=SALIDA / "catastrofe_por_fecha")
 EXP = EXPERIMENTOS["e0"]                      # el experimento activo; lo cambia usar()
 ANIO_ORIGEN = "2025-12-31"
 

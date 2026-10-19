@@ -56,6 +56,7 @@ NE_CAMBIO = .20                              # Nueva EPS: cambio de las 2 últim
 MIN_VERIFICADOS = 14
 USAR_RED = True                              # ajuste por la red (fila red_de_urgencias_v2: pasó su regla el 2026-10-14; la v1 no)
 RANGO_QUIEBRE = True                         # rango del total más ancho tras un quiebre (fila resiliencia, W: entró; R no)
+SALUD_SEMANA_COMPLETA = True                 # no usar la semana epidemiológica a medias (fila salud_semana_completa)
 
 
 def _commit():
@@ -146,8 +147,11 @@ def predecir(modelo=MODELO, avisar=print):
     y = y.loc[:o].reindex(pd.date_range(y.index[0], o + pd.Timedelta(days=n)))
     hs = list(range(1, n + 1)); fechas = pd.date_range(o + pd.Timedelta(days=1), periods=n)
     avisar(f"Reentrenando {modelo} con datos hasta el {o.date()}...")
-    aj = sm.Ajuste(y, cal, sm.COMBOS[modelo]); aj.ajustar(o, hs)
-    Q, normal = aj.predecir(o, hs, sm.COMBOS[modelo])
+    with ix.salud_semana_completa(ix.UMBRAL_SEMANA if SALUD_SEMANA_COMPLETA else None):
+        aj = sm.Ajuste(y, cal, sm.COMBOS[modelo]); aj.ajustar(o, hs)
+        Q, normal = aj.predecir(o, hs, sm.COMBOS[modelo])
+    salud = salud_info(o)
+    if salud.get("texto"): avisar(f"Salud pública: {salud['texto']}")
     hoy = pd.Timestamp(date.today())
     D, info = _dias(o, fechas, Q, hoy)
     D = _completar(D, y, o, normal)
@@ -156,8 +160,40 @@ def predecir(modelo=MODELO, avisar=print):
          "horizonte": n, "validado_hasta": VALIDADO, "creado": datetime.now().isoformat(timespec="seconds"),
          "segundos": round((datetime.now() - t0).total_seconds()),
          "commit": _commit(), "perfil": PERFIL, "ventana_aseguradoras": VENTANA_ASEG,
-         "ultimo_dato": str(o.date()), "antiguedad_dias": (hoy - o).days, "red": info}
+         "ultimo_dato": str(o.date()), "antiguedad_dias": (hoy - o).days, "red": info, "salud": salud}
     return D, W, R
+
+
+def salud_info(o):
+    """Qué semana epidemiológica de cada familia lee M3s en el origen y por qué (fila salud_semana_completa).
+    Nunca tumba la operación: si algo falla, lo dice."""
+    try:
+        L = ix.lectura_salud(o)
+    except Exception as e:
+        return {"arreglo": SALUD_SEMANA_COMPLETA, "error": str(e), "texto": f"no se pudo leer la salud pública: {e}"}
+    fam = []
+    for r in L.itertuples():
+        incompleta = bool(np.isfinite(r.fraccion_ultima) and r.fraccion_ultima < ix.UMBRAL_SEMANA)
+        fam.append({"familia": r.familia, "toca": r.se_toca, "usada": r.se_usada if SALUD_SEMANA_COMPLETA else r.se_toca,
+                    "arrastre": bool(r.arrastre) and SALUD_SEMANA_COMPLETA, "motivo": r.motivo,
+                    "ultima": r.se_ultima, "fraccion_ultima": None if not np.isfinite(r.fraccion_ultima) else round(float(r.fraccion_ultima), 3),
+                    "ultima_incompleta": incompleta, "ausente": bool(not np.isfinite(r.indice_sin)),
+                    "sin_dato": r.se_usada.startswith("ninguna"), "foto": r.foto})
+    nombre = {"respiratoria": "respiratoria", "violencias_y_agresiones": "violencias", "salud_mental_e_intoxicaciones":
+              "salud mental", "materno_perinatal": "materno-perinatal", "inmunoprevenibles": "inmunoprevenibles"}
+    if SALUD_SEMANA_COMPLETA:
+        partes = [f"{nombre[f['familia']]}: se usó la {f['usada']} porque {f['motivo']}" for f in fam if f["arrastre"]]
+        ok = [nombre[f["familia"]] for f in fam if not f["arrastre"]]
+        texto = "; ".join(partes + ([f"{', '.join(ok)}: la {fam[0]['toca']}, completa"] if ok else []))
+    else:
+        malas = [f for f in fam if f["toca"] == f["ultima"] and f["ultima_incompleta"]]
+        aus = [nombre[f["familia"]] for f in fam if f["ausente"]]
+        texto = ("arreglo apagado (SALUD_SEMANA_COMPLETA = False): M3s lee la " + fam[0]["toca"]
+                 + ("; llegó a medias en " + ", ".join(f"{nombre[f['familia']]} ({100 * f['fraccion_ultima']:.0f} %)" for f in malas)
+                    if malas else "")
+                 + (f"; no está en la foto y vale 0 (lo normal) en {', '.join(aus)}" if aus else ""))
+    return {"arreglo": SALUD_SEMANA_COMPLETA, "umbral": ix.UMBRAL_SEMANA, "familias": fam, "texto": texto,
+            "foto": fam[0]["foto"] if fam else ""}
 
 
 def correr(modelos=None, avisar=print):
@@ -333,6 +369,21 @@ def contexto_externo(archivo=None):
                 "fuentes_con_problema": [str(x) for x in pd.concat([rojo_m3s, rojo_otras, amarillas]).fuente]}
 
 
+def señal_salud(o):
+    """Señal «Salud pública»: qué semana epidemiológica leería M3s si se reentrenara hoy (origen o) y si se arrastró
+    la última completa (fila salud_semana_completa). Verde con el arreglo funcionando; amarillo si una familia queda
+    sin dato (vale 0) o si, con el arreglo apagado, M3s lee una semana a medias o ausente."""
+    s = {"que": "Salud pública"}
+    i = salud_info(o)
+    if "error" in i: return s | {"nivel": "gris", "detalle": i["texto"]}
+    fam = i["familias"]
+    if SALUD_SEMANA_COMPLETA:
+        nivel = "amarillo" if any(f["sin_dato"] for f in fam) else "verde"
+    else:
+        nivel = "amarillo" if any(f["ausente"] or (f["toca"] == f["ultima"] and f["ultima_incompleta"]) for f in fam) else "verde"
+    return s | {"nivel": nivel, "detalle": f"foto del Power BI del {i['foto']}; " + i["texto"]}
+
+
 def señal_comparacion(V):
     """Señal «Comparación»: principal frente a la vara en los días comunes. No entra en el estado general que ve
     urgencias (es para quien mantiene el sistema), ni siquiera en rojo, que es cuando la regla manda volver a C0r."""
@@ -383,6 +434,7 @@ def semaforo(V=None):
                     "detalle": f"{rec:.0f} por día en las 2 últimas semanas frente a {ant:.0f} en las 8 anteriores ({100 * cambio:+.0f} %)"
                                + ("; cambió de nivel: el total y el reparto por aseguradora pueden fallar" if nn != "verde" else "")})
     señales.append(contexto_externo())
+    señales.append(señal_salud(o))
     señales.append(señal_comparacion(V))
     orden = {"gris": 0, "verde": 1, "amarillo": 2, "rojo": 3}
     general = max((s["nivel"] for s in señales if s.get("en_general", True)), key=orden.get)

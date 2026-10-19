@@ -171,9 +171,25 @@ def _sem_epi(anio, semana_):
 
 def familias_operativas(foto=None):
     """Las familias que existen AL PREDECIR en 2026 (fila reentrenamiento_holistico): microdatos hasta 2025 y la
-    foto del Power BI del INS para 2026. Fuera la digestiva (sin 2026) y la IRAG hospitalizada (no empalma)."""
+    foto del Power BI del INS para 2026. Fuera la digestiva (sin 2026) y la IRAG hospitalizada (no empalma).
+    Con SEMANA_COMPLETA (umbral; None por defecto) se aplica el arreglo de la semana a medias (_semana_completa)."""
     import glob
     foto = foto or sorted(glob.glob(str(RAIZ / "calendarios/vigilancia/powerbi/20*")))[-1]
+    S = _series_operativas(foto)
+    crudas = S.copy()
+    S = S.apply(anomalia_operativa)
+    Z = (S - S.loc[:REF_FIN].mean()) / S.loc[:REF_FIN].std()
+    out = pd.DataFrame(index=Z.index)
+    for fam in FAMILIAS_OPERATIVAS:
+        cols = [f"{ev}_{var or 'casos'}" for ev, var in FAMILIAS[fam] if f"{ev}_{var or 'casos'}" in Z]
+        out[fam] = Z[cols].mean(axis=1, skipna=True).where(Z[cols].notna().any(axis=1))
+    if SEMANA_COMPLETA is not None:
+        out = _semana_completa(out, crudas, SEMANA_COMPLETA, foto)
+    return out
+
+
+def _series_operativas(foto):
+    """Los conteos crudos semanales de las familias operativas: microdatos hasta 2025 empalmados con la foto."""
     S = series_sivigila().drop(columns=[c for c in series_sivigila().columns if c.startswith("998") or "irag" in c])
     t = pd.read_csv(Path(foto) / "ira_995_tablero.csv"); t.index = [_sem_epi(a, w) for a, w in zip(t.anio, t.semana)]
     t = t.groupby(level=0).sum()
@@ -194,13 +210,90 @@ def familias_operativas(foto=None):
         r = pd.Series(r.reindex(range(1, int(ru.semana.max()) + 1)).fillna(0).values,
                       index=[_sem_epi(2026, w) for w in range(1, int(ru.semana.max()) + 1)]).astype(float)
         S[f"{ev}_casos"] = S[f"{ev}_casos"].combine_first(r)
-    S = S.sort_index().apply(anomalia_operativa)
-    Z = (S - S.loc[:REF_FIN].mean()) / S.loc[:REF_FIN].std()
-    out = pd.DataFrame(index=Z.index)
+    return S.sort_index()
+
+
+# ---------------------------------------------------------------- semana epidemiologica a medias (fila salud_semana_completa)
+# Umbral de completitud con que se juzga la ultima semana de la foto. None (por defecto) = sin arreglo, como siempre:
+# los cuadernos y las validaciones no cambian. La operacion lo enciende con salud_semana_completa(UMBRAL_SEMANA).
+SEMANA_COMPLETA = None
+UMBRAL_SEMANA = .90
+SEMANAS_ESPERADO = 4          # esperado = mediana de las 4 semanas anteriores (edad >= 1: completas, CONTEXTO (rezago))
+ARRASTRE_MAX = 4              # semanas que se arrastra la ultima completa cuando la que toca no esta en la foto
+COMPLETITUD = {}              # el ultimo diagnostico: {familia: {...}}, para la operacion, el semaforo y el tablero
+
+
+@contextmanager
+def salud_semana_completa(umbral=UMBRAL_SEMANA):
+    """Mientras dure, familias_operativas (y lo que sale de ella) aplica el arreglo con ese umbral (None = sin)."""
+    global SEMANA_COMPLETA
+    previo, SEMANA_COMPLETA = SEMANA_COMPLETA, umbral
+    try: yield
+    finally: SEMANA_COMPLETA = previo
+
+
+def semana_epi(fecha):
+    """'SE40-2026' de la semana epidemiologica que empieza ese domingo (o que contiene ese dia)."""
+    t = pd.Timestamp(fecha)
+    for a in (t.year + 1, t.year, t.year - 1):
+        s1 = _sem_epi(a, 1)
+        if t >= s1: return f"SE{(t - s1).days // 7 + 1}-{a}"
+    return str(t.date())
+
+
+def _semana_completa(out, crudas, umbral, foto):
+    """La ultima semana de cada familia se juzga contra la mediana de las SEMANAS_ESPERADO anteriores (suma de sus
+    conteos crudos): por debajo de umbral x esperado no se usa y vale el indice de la ultima completa. Las semanas que
+    faltan despues de la ultima completa se rellenan con ella, hasta ARRASTRE_MAX. Deja el diagnostico en COMPLETITUD."""
+    out = out.copy(); sem = pd.Timedelta(weeks=1)
+    out = out.reindex(out.index.union(pd.date_range(out.index.max() + sem, periods=ARRASTRE_MAX, freq="7D")))
+    COMPLETITUD.clear()
     for fam in FAMILIAS_OPERATIVAS:
-        cols = [f"{ev}_{var or 'casos'}" for ev, var in FAMILIAS[fam] if f"{ev}_{var or 'casos'}" in Z]
-        out[fam] = Z[cols].mean(axis=1, skipna=True).where(Z[cols].notna().any(axis=1))
+        cols = [f"{ev}_{var or 'casos'}" for ev, var in FAMILIAS[fam] if f"{ev}_{var or 'casos'}" in crudas]
+        raw = crudas[cols].sum(axis=1, min_count=1)
+        ult = raw.last_valid_index()
+        if ult is None: continue
+        prev = raw.reindex([ult - sem * i for i in range(1, SEMANAS_ESPERADO + 1)]).dropna()
+        esperado = float(prev.median()) if len(prev) else np.nan
+        valor = float(raw[ult])
+        frac = valor / esperado if esperado and np.isfinite(esperado) and esperado > 0 else np.nan
+        completa = not (np.isfinite(frac) and frac < umbral)
+        buena = ult if completa else ult - sem
+        tramo = (out.index > buena) & (out.index <= buena + sem * ARRASTRE_MAX)
+        out.loc[tramo, fam] = out.at[buena, fam]
+        COMPLETITUD[fam] = {"foto": Path(foto).name, "ultima": ult, "valor": valor, "esperado": esperado,
+                            "fraccion": frac, "completa": completa, "ultima_completa": buena, "umbral": umbral}
     return out
+
+
+def lectura_salud(origen, foto=None, umbral=UMBRAL_SEMANA):
+    """Que semana de cada familia lee M3s en el origen, con y sin el arreglo: una fila por familia con la semana que
+    toca, la que se usa y el porque. Calcula familias_operativas con el arreglo (umbral) y sin el."""
+    o = pd.Timestamp(origen)
+    toca = o - pd.Timedelta(days=(o.dayofweek + 1) % 7) - pd.Timedelta(weeks=1 + REZAGO_SALUD)
+    sin = familias_operativas(foto)
+    with salud_semana_completa(umbral):
+        con = familias_operativas(foto); diag = {k: dict(v) for k, v in COMPLETITUD.items()}
+    filas = []
+    for fam in FAMILIAS_OPERATIVAS:
+        d = diag.get(fam, {})
+        ult, buena = d.get("ultima"), d.get("ultima_completa")
+        if buena is None or toca <= buena:
+            usada, motivo = toca, f"{semana_epi(toca)} completa" if buena is not None else "sin datos"
+        else:
+            usada = buena if toca <= buena + pd.Timedelta(weeks=ARRASTRE_MAX) else None
+            if toca <= ult:
+                motivo = f"la {semana_epi(ult)} llegó al {100 * d['fraccion']:.0f} % de lo esperado"
+            else:
+                motivo = f"la {semana_epi(toca)} no está en la foto del {d['foto']}"
+                if not d["completa"]: motivo += f" y la {semana_epi(ult)} llegó al {100 * d['fraccion']:.0f} %"
+        filas.append({"familia": fam, "semana_toca": toca, "se_toca": semana_epi(toca), "semana_usada": usada,
+                      "se_usada": semana_epi(usada) if usada is not None else "ninguna (vale 0)",
+                      "arrastre": usada is not None and usada != toca, "motivo": motivo,
+                      "indice_sin": float(sin[fam].get(toca, np.nan)), "indice_con": float(con[fam].get(toca, np.nan)),
+                      "fraccion_ultima": d.get("fraccion", np.nan), "se_ultima": semana_epi(ult) if ult is not None else "",
+                      "foto": d.get("foto", "")})
+    return pd.DataFrame(filas)
 
 
 # Semanas de MAS con que se lee la salud publica. 0 (por defecto, lo publicado) = la semana epidemiologica que acabo

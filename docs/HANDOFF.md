@@ -6,7 +6,75 @@ decidió, cuándo y por qué— está en `docs/CONTEXTO.md` y esa solo crece.
 Regla 10 de `CLAUDE.md`. Se actualiza **durante** la sesión, cada vez que algo cambia de
 estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igual.
 
-**Última actualización: 2026-10-16.**
+**Última actualización: 2026-10-19.**
+
+---
+
+## HECHO (2026-10-19): el pronóstico en Power BI — `prediccion.pbip` — versionado en `main`
+
+**Siguiente sesión (pedido del propietario):** automatizar la cadena completa. Está en discusión usar n8n (que el
+hospital ya usa) como programador y central de avisos. n8n no puede correr el modelo (Python con lightgbm); solo puede
+dispararlo. Preguntas abiertas para quien administra n8n: si corre en la nube o en un equipo del hospital, qué
+versión es (desde la 2.0, «Execute Command» viene desactivado), si llega a SQL Server y por SSH al equipo de Python, y
+si existe una aplicación de Entra ID para la API de Power BI.
+
+
+**Encargo:** mostrar las predicciones en Power BI para enseñárselo al superior del propietario, y saber los límites.
+Razón y evidencia en `CONTEXTO.md` «2026-10-19 (Power BI)»; uso y límites en `operacion/docs/POWERBI.md`.
+- **Nuevo:** `operacion/powerbi.py` (`python -m operacion.powerbi` → 11 CSV en `salidas/powerbi/`), el modelo semántico
+  en `prediccion.SemanticModel/` (17 tablas, ~60 medidas en `Medidas`, parámetro `CarpetaDatos`) y 3 páginas PBIR en
+  `prediccion.Report/` (39 visuales). No toca `operacion/__init__.py`, ni el modelo, ni las tareas.
+- **Rediseño del 19-10 (tarde), `CONTEXTO.md` «(Power BI, usuario final)»:** ahora es UNA página para jefes médicos
+  (volumen de día, semana, mes y hora, más la aseguradora; rojos = volumen, azules = aseguradora). Las tres páginas
+  técnicas se borraron. Medidas en la carpeta «Tablero» de `Medidas`.
+- **Tercera vuelta (19-10), `CONTEXTO.md` «(Power BI, rangos)»:** todo sigue al día elegido; rangos con
+  probabilidad medida; medidor de «¿más que un día normal?». Exportador con dos tablas nuevas.
+- **Cuarta vuelta (19-10), `CONTEXTO.md` «(Power BI, estilo del hospital)»:** estilo del tablero del hospital,
+  probabilidad en píldoras y etiquetas, columnas por semana, cero scroll.
+- **Estado (19-10, tarde):** el propietario aprobó la v5 («ha mejorado significativamente», los filtros funcionan).
+  Se corrigieron tres errores visuales: la marca de 50 % del medidor, el filtro y el título cortados, y un scroll
+  residual. La página la escribe `python -m operacion.powerbi_pagina` (con Desktop cerrado). Falta que el propietario
+  vea la corrección en pantalla.
+- **Documento para el superior:** «Pronóstico de triages en Power BI: cómo funciona y qué se necesita» (Claude Docs,
+  https://claude.ai/artifact/LxysKAgvVHEhCHEQPsrjgh). Recoge la cadena, los cuatro pedidos a TI, la integración
+  (recomendada: tablas en SQL Server, porque el tablero de urgencias ya lee `Sql.Database`) y las decisiones
+  pendientes.
+- **Pendiente de autorización:** añadir `python -m operacion.powerbi` a `contexto/operacion_semanal.cmd`. Toca la
+  tarea programada, por eso se pregunta antes.
+- **Referencia de estilo:** `TABLERO TIEMPOS URGENCIAS.pbip` (copia del hospital, ignorada en git, no se modifica).
+  El superior integrará el pronóstico ahí; probablemente como una página más, con un botón desde «TRIAGES». Lo que
+  falta luego: integrar con el tablero de triage del hospital (el propietario pasará una copia cuando apruebe el diseño).
+- **Cómo se edita:** abrir Desktop → cambiar el modelo con el MCP → `ExportToTmdlFolder` a una carpeta temporal →
+  cerrar Desktop **sin guardar** → copiar el TMDL y las páginas PBIR → reabrir. Desktop no guarda lo que hace el MCP.
+- **Cómo actualizarlo hoy:** `python -m operacion.powerbi` y Actualizar en Desktop. No está en las tareas
+  programadas; añadirlo es una línea en `contexto/operacion_semanal.cmd` y en la diaria, si el propietario lo pide.
+- **Pendiente del propietario:** si se publica en el servicio, con qué licencia y dónde quedan los CSV (SharePoint o
+  puerta de enlace): eso es de TI.
+- `.pbi/cache.abf` y `.pbi/localSettings.json` son caché local: no versionar.
+
+---
+
+## EN CURSO (2026-10-16): operación — semana incompleta y aviso de desvío
+
+Dos arreglos de la operación, con la receta del modelo congelada (`CONTEXTO.md` «2026-10-16 (rumbo)»). No reentrena,
+no crea corridas, no toca `notebooks/pronostico.py`, `semana.py` ni `mecanismos.py`.
+- **Estado:** leyendo contexto; nada escrito todavía. Siguiente: preregistro (filas `salud_semana_completa` y
+  `aviso_desvio`) y entradas en `CONTEXTO.md` antes de implementar.
+- **Cómo retomar:** leer esta sección y las entradas de `CONTEXTO.md` «(semana completa)» y «(desvío)» cuando existan.
+
+---
+
+## EN CURSO (2026-10-16): prueba aislada — catástrofe por fecha del evento
+
+**No toca la operación** (`operacion/`, `contexto/`, `salidas/operacion/`, `datos/` intactos; la tarea del lunes 19-10
+no cambia). Razonamiento en `CONTEXTO.md` «2026-10-16 (catástrofe)»; preregistro en la fila `m3s_catastrofe_por_fecha`.
+- **Estado:** razonamiento, preregistro e implementación hechos (experimento `m3s_cf`, combo `M3s-cf` en
+  `semana.DIAGNOSTICO`, `mecanismos.catastrofe_por_fecha`, script `notebooks/validacion_catastrofe.py`). Corriendo la
+  reproducción y la inyección (log en `salidas/pronostico/catastrofe_por_fecha/previo.out.log`).
+- **Cómo retomar:** `python notebooks/validacion_catastrofe.py --correr --anio 2026 2025` (reanuda por origen) y
+  después `--resumir`. Lanzar con `Start-Process` y log a archivo; el progreso queda en `progreso.log` de esa carpeta.
+- **Ya se sabe que por la regla de 2025 no puede pasar** (en 2025 da idéntico a M3s por construcción). El veredicto
+  diagnóstico descansa en el tramo del sismo de 2026.
 
 ---
 
@@ -36,10 +104,17 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 más de rezago). El porqué está en `CONTEXTO.md`, entrada «2026-10-16 — Dos correcciones de M3s»; el resultado, en la
 sección de arriba: **ninguna pasa** y `operacion/` no cambia.
 
-**Lo que sigue son dos propuestas, cada una con su propia fila antes de medir:**
-1. la semana epidemiológica a medias como dato de la operación (por ejemplo, no usar en el origen una semana con menos
-   del 90 % de su valor esperado), sin cambiar el modelo;
-2. la catástrofe por fecha del evento (propuesta 1 de «(reacción)»), que es donde M3s-r pierde (sismo +0,41 puntos).
+**RUMBO FIJADO POR EL PROPIETARIO (16-10, `CONTEXTO.md` «(rumbo)»): la receta queda congelada; no más variantes del
+modelo.** El reajuste semanal con la misma receta sigue. Lo que sigue, en este orden:
+1. El principal sigue siendo **M3s** (el propietario no pidió cambiarlo; C0r sale al lado y la regla de vuelta atrás
+   de los 84 días sigue en pie). Cambiarlo es `operacion.MODELO`.
+   - 16-10, tarde: el propietario autorizó seguir con las pruebas aisladas y, en paralelo, los puntos 2 y 3. Hay dos
+     agentes en marcha, cada uno con su sección «EN CURSO» arriba del todo en este archivo.
+2. **La semana epidemiológica a medias se arregla en los datos** (`contexto`/`operacion`), no en el modelo. Si la semana
+   más reciente llega por debajo del 90 % de lo esperado, se usa la última completa, y el semáforo lo dice.
+3. **Aviso de desvío:** si el triage real se sale demasiado de lo predicho, recalcular los días siguientes sin
+   reentrenar. Cuidado: el reanclaje del 14-10 no entró porque el sismo lo engañó.
+- Al proponer cualquier prueba: decir que va aparte y no toca la operación, y preguntar antes.
 
 **Versionado (16-10):** todo lo del 16-10 está en `main` (validaciones de 2026 y anual, experimentos m3cal, m3s_r y
 m3s_rs, las dos filas de `variables.csv`, `CONTEXTO.md`, este archivo y los datos de las tareas programadas).
