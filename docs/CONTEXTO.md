@@ -14,6 +14,116 @@ Para saber **dónde está todo ahora mismo**, este archivo no sirve — es histo
 
 ---
 
+## 2026-10-19 (datos para otro equipo) — Se versionan los dos archivos que faltaban para correr la operación sin la base
+
+**Pedido del propietario.** Replicar el proyecto en su equipo de casa, que no tiene acceso a la base, para desarrollar
+las fases del plan de noche y comprobarlas en el hospital con un pull. Preguntó si se podía subir una copia de los
+conteos de triage y de la aseguradora sin dato sensible.
+
+**Qué se decidió.**
+- Ya estaban versionadas, desde el 24-09 y el 28-09 y por decisión del propietario, las series agregadas por día, hora,
+  nivel, banda de edad, estancia y aseguradora.
+- Faltaban dos archivos que la operación lee: `salidas/ingresos_entidad.parquet` (día × tipo de ingreso × por triage ×
+  entidad; lo usa `red.EfectoV2`) y `salidas/entidades_clasificadas.csv` (349 entidades con su grupo; lo usan
+  `aseguradoras.py` y `red.py`). **Se versionan.**
+- **No se versionan:** `turnos_triage.parquet` (la operación no lo usa, y sus casillas pequeñas llevan los minutos de
+  espera de uno o dos pacientes) ni `perfil_dx_diario.parquet` (excluido el 30-09 por no tener supresión).
+- Se escribe el `README.md` de la raíz, con la instalación y lo que se puede y no se puede hacer fuera del hospital.
+
+**Por qué es seguro.** Las entidades son organizaciones (EPS, SOAT, ARL), y los conteos no llevan nombre, documento,
+texto ni identificador. Es el mismo criterio con que se versionó `triage_entidad`. El repositorio de GitHub es
+**privado**: la API pública devuelve 404, comprobado el 19-10.
+
+**Comprobado.** `requirements.txt` coincide con el `.venv` paquete por paquete. Lo único que el código importa y no
+está listado (`Bio`, `PIL`, `h5py`, `scholarly`, `seaborn`) aparece solo en `.claude/skills/`, que no se versiona.
+
+---
+
+## 2026-10-19 (rediseño, respuestas y frontera) — W = 28, criterio de «confiable», recálculo que no arregla, cadencia; qué cuenta como entrenar
+
+**Respuestas del propietario a las cuatro preguntas abiertas.** Aceptó las propuestas de Claude, y dejó dicho que
+venían formuladas de forma algo sugestiva:
+- **`W` = 28 días** de anticipación mínima para urgencias. La vigencia es `V = h* − 28`.
+- **Criterio de «confiable»**, en los dos años de la retroprueba: error medio del día ≤ 12 %, cobertura del 80 % entre
+  70 y 90 %, y error menor que el de «lo habitual» en el mismo adelanto.
+- **Recálculo que no arregla:** si el centinela salta otra vez en los 14 días siguientes a un recálculo por
+  centinela, se recalcula igual y el semáforo marca «requiere revisión de un profesional».
+- **Cadencia:** el dato real del hospital se baja a diario (unos 16 s), para que el centinela reaccione en días. El
+  contexto externo, semanal o dos veces por semana. La fase 6 lo confirma midiendo.
+
+**La frontera de «entrenar», fijada por Claude a partir de D2-D3.** Al leer `operacion._dias()` apareció que, además
+de SARIMAX y LightGBM, cada corrida estima otras piezas.
+- **Regla:** lo que sale de un ajuste se congela en el artefacto; las proporciones y los promedios de una ventana
+  reciente son dato fresco.
+- **Se congela:** los coeficientes de `red.EfectoV2.estimar` (`np.linalg.lstsq` sobre semanas desde 2024-01-08) y el
+  control.
+- **Son dato fresco:** el perfil horario P52, el reparto por aseguradora T4 y el detector de quiebre.
+- La tabla completa está en `docs/PLAN_OPERACION.md`, sección 5.
+
+**Paralelismo: el plan es secuencial.** El propietario preguntó si podía tener 3 sesiones a la vez con 2 fases cada
+una. No, por tres motivos:
+- cada fase usa lo que produce la anterior;
+- las fases comparten archivos (`operacion/`, `CONTEXTO.md`, `HANDOFF.md`);
+- el equipo aguanta una sola cosa pesada a la vez, y las fases 2 y 3 entrenan modelos de 180 días.
+
+**El plan se reescribió** con contexto, glosario, decisiones con lo que *no* significan, pasos, archivos y criterios
+de parada por fase. Así una sesión que solo reciba «comienza con la fase N» no tiene margen de interpretación.
+
+---
+
+## 2026-10-19 (rediseño de la operación) — Un solo entrenamiento, modelo congelado con datos frescos, centinela y horizonte medido
+
+**Decisión del propietario.** El plan por fases y las pruebas de cada una están en `docs/PLAN_OPERACION.md`.
+
+**Qué se decidió.**
+1. **Se quita el reentrenamiento semanal de la operación.** Esto **revierte** dos puntos anteriores: el punto 1 de
+   «2026-10-13 (5)» («reentrenar cada semana con receta fija») y el «reajuste semanal con la misma receta» de
+   «2026-10-16 (rumbo)».
+2. **Habrá un solo entrenamiento más.** Será en local, con todos los datos hasta ahora, incluidas las caídas de Nueva
+   EPS de 2025 y 2026 y el sismo. Después, ningún script reentrena. Reentrenar será decisión de un profesional, y solo
+   si algo institucional o del país lo justifica.
+3. **El modelo queda congelado y se alimenta con datos frescos.** Los parámetros no cambian; las entradas (triage,
+   aseguradoras, red, contexto externo) sí.
+4. **El horizonte deja de atarse al 31 de diciembre.** Se mide hasta cuántos días es confiable una predicción (`h*`)
+   y se le da una vigencia `V = h* − W`, con `W` los días mínimos que urgencias necesita ver por delante.
+5. **Centinela:** con 5 de los últimos 7 días fuera del rango de la predicción vigente, se recalcula sola con datos
+   frescos y sin reentrenar.
+6. **La predicción solo se rehace** al acabarse la vigencia o al saltar el centinela. Los datos se actualizan cada
+   semana o dos veces por semana.
+7. **Los rangos del tablero deben ser útiles**, con una probabilidad honesta aunque sea menor.
+8. **n8n queda descartado.** El despliegue (servidor actual o máquina nueva) se decide al final, con los recursos del
+   diseño nuevo.
+9. **No se compara contra el reentrenamiento semanal.** El propietario ya vio su efecto.
+
+**Por qué.**
+- El propietario pidió el 13-10 «reentrenar cada cierto tiempo», y una sesión lo convirtió en «cada semana». Para él,
+  reentrenar tan seguido es peligroso, porque lo que funcionó la semana pasada no tiene por qué funcionar esta.
+  También es innecesario, y un script reentrena sin que ningún profesional lo revise.
+- El argumento escrito a favor del reentrenamiento («la serie cambia de nivel y un modelo congelado se desvía») no
+  obliga a reentrenar. En el código, el nivel ya es una **entrada** del modelo: `rasgos()` usa la media de 28 días de
+  `log(y)`, y `LightGBMRel` aprende la desviación respecto a ese nivel. Además, `SARIMAX.predecir` ya filtra los datos
+  nuevos con parámetros fijos. Con datos frescos, el nivel se mueve solo.
+- **Esto no está medido.** La validación siempre reajustaba cada 4 semanas. Lo mide la fase 2 del plan, en términos
+  absolutos.
+- El horizonte «hasta el 31 de diciembre, mínimo 28 y máximo 120» no salía de ninguna medición. Solo los primeros 28
+  días están validados.
+
+**Evidencia medida en esta sesión (para la fase 5).**
+- El «89 %» que se ve en Power BI es `P acierto hora`: el 88,6 % de 1.008 horas verificadas cayó en su rango
+  (`salidas/powerbi/verificacion_hora.csv`). El ancho mediano es de 7 pacientes, con 7,5 de media por hora.
+- Con Poisson de media 7,5, un modelo perfecto ya da un rango del 80 % de unos 4 a 11. Un rango de 6 a 9 acertaría
+  el 54 %.
+- Por tanto, en la hora el ancho viene del azar de las llegadas, no del modelo. Se estrecha bajando la probabilidad
+  anunciada o agrupando en franjas. El exceso sobre el 80 % viene de los límites enteros inclusivos.
+- En el día, el rango mide el 25-30 % del valor central y la cobertura es del 76 % (M3s, 620 días): ahí no sobra
+  ancho.
+
+**Advertencia que el propietario aceptó.** Con dos episodios de Nueva EPS, el entrenamiento aprende cómo se ve el
+hospital después de la caída, no a anticiparla. Las señales previas (Supersalud, BDUA) se guardan desde octubre de
+2026 y no tienen historia. La defensa ante una caída es el nivel fresco, el centinela y el registro de la red.
+
+---
+
 ## 2026-10-19 (Power BI, estilo del hospital) — Menos texto, probabilidad en píldoras, estética del tablero de urgencias
 
 **Lo que dijo el propietario de la v4.** Demasiado texto: un tablero no se lee, se mira. La probabilidad debe ser un

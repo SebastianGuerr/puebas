@@ -187,6 +187,13 @@ _[!_]*
 # Por entidad administradora (EPS, SOAT, ARL), anadida el 2026-09-28 con el mismo
 # criterio: conteo dia x hora x entidad; la entidad es una organizacion, no una persona.
 !/salidas/triage_entidad.parquet
+# Anadidos el 2026-10-19 con el mismo criterio, para poder correr la operacion en un equipo sin acceso a la base
+# (decision del propietario, docs/CONTEXTO.md «2026-10-19 (datos para otro equipo)»): ingresos por dia x tipo de
+# ingreso x entidad (la red de urgencias, notebooks/red.py) y la clasificacion de las 349 entidades en grupos (la
+# rehace python -m extraccion.entidades desde triage_entidad). Organizaciones y conteos; ninguna persona.
+# NO se versionan: turnos_triage.parquet (la operacion no lo usa) ni perfil_dx_diario.parquet (sin supresion).
+!/salidas/ingresos_entidad.parquet
+!/salidas/entidades_clasificadas.csv
 # Perfil del hospital (cuaderno 10), anadido el 2026-09-30: solo conteos por mes, semana o
 # anio y por categoria de catalogo, con TODA casilla < 5 oculta (columna 'suprimido'). Lo
 # autorizo el propietario ("enmascarar lo mejor posible"). La tabla diaria por capitulo

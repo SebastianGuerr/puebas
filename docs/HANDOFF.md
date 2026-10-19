@@ -10,6 +10,37 @@ estado: una sesión que se corta a la mitad tiene que dejar esto utilizable igua
 
 ---
 
+## PLAN VIGENTE (2026-10-19): rediseño de la operación — leer `docs/PLAN_OPERACION.md` antes de tocar `operacion/`
+
+**El propietario decidió quitar el reentrenamiento semanal.** Queda un solo entrenamiento, hecho en local y con 2026
+incluido. El modelo queda congelado y se alimenta con datos frescos. Un centinela (5 de los últimos 7 días fuera del
+rango) recalcula sin reentrenar, y el horizonte y la vigencia se miden en vez de atarse al 31 de diciembre. El porqué
+está en `CONTEXTO.md` «2026-10-19 (rediseño de la operación)».
+
+- **Hay 7 fases, una por sesión, en orden.** Cada una tiene su entregable y sus pruebas de aceptación. El estado de
+  cada fase está en la tabla del final de `PLAN_OPERACION.md`.
+- **Siguiente: la fase 1**, separar entrenar de predecir sin cambiar ni un número. Todavía no se ha tocado código.
+- **Mientras tanto, la operación de hoy sigue tal cual.** Reentrena cada semana con `python -m operacion`. No se
+  desmonta hasta la fase 4.
+- **Queda absorbido por el plan:**
+  - el «aviso de desvío» de la sección «EN CURSO (2026-10-16)» de abajo: ahora es la fase 4;
+  - la discusión sobre n8n de la sección de Power BI: el propietario la **descartó**;
+  - el despliegue: se decide en la fase 7.
+- **Ya no quedan preguntas abiertas.** Están contestadas en el plan (D11-D14): `W` = 28, el criterio de «confiable»,
+  la revisión profesional si un recálculo no arregla, y la extracción diaria del hospital.
+- **El plan es secuencial**, sin sesiones en paralelo (sección 7 del plan).
+- **Para arrancar, el propietario dirá «comienza con el plan de desarrollo, fase N».** La sección 0 del plan dice qué
+  hacer.
+- **Otro equipo (19-10):** el propietario va a desarrollar las fases en su equipo de casa, sin acceso a la base, y a
+  comprobarlas aquí con un pull. El repositorio ya trae todo lo agregado que la operación necesita: se añadieron
+  `ingresos_entidad.parquet` y `entidades_clasificadas.csv`. La instalación y los límites están en `README.md`.
+  - Regla: **los datos viajan del hospital a casa y el código de casa al hospital.**
+  - En casa no se modifican `salidas/triage_*.parquet`.
+  - Un artefacto entrenado en casa vale aquí solo si se entrena con los mismos datos y las mismas versiones
+    (`meta.json` de la fase 1).
+
+---
+
 ## HECHO (2026-10-19): el pronóstico en Power BI — `prediccion.pbip` — versionado en `main`
 
 **Siguiente sesión (pedido del propietario):** automatizar la cadena completa. Está en discusión usar n8n (que el
