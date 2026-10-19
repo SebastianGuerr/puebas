@@ -1,0 +1,23 @@
+/// M3s = principal (con contexto externo); C0r = vara (solo calendario, nivel y memoria). Sin filtro, las medidas muestran el principal.
+table Modelo
+	lineageTag: a46da1d1-dae6-43f2-bf38-7f3b3c193988
+
+	column Modelo
+		lineageTag: 49fa5cf5-ec02-4939-8125-95a88bce87a9
+		isNameInferred
+		sourceColumn: [Modelo]
+
+	column Papel
+		lineageTag: 59f95b6e-ab87-489f-a26d-1dd6850eee90
+		isNameInferred
+		sourceColumn: [Papel]
+
+	column Descripción
+		lineageTag: d0f754be-1044-4dd7-a4e0-b9bb93180959
+		isNameInferred
+		sourceColumn: [Descripción]
+
+	partition Modelo = calculated
+		mode: import
+		source = DATATABLE ( "Modelo", STRING, "Papel", STRING, "Descripción", STRING, { { "M3s", "Principal", "Calendario, nivel y memoria, más el contexto externo (Feria, fiestas de los pueblos, noches de diciembre, catástrofes, salud pública, red de urgencias, seguridad)" }, { "C0r", "Comparación", "Solo calendario, nivel reciente y memoria de las últimas semanas" } } )
+

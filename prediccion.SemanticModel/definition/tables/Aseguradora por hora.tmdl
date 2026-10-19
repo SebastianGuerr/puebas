@@ -1,0 +1,60 @@
+/// Solo el modelo principal. Llegadas esperadas por hora y aseguradora, y probabilidad de que llegue al menos uno (Poisson). Rango solo para Nueva EPS y Sura.
+table 'Aseguradora por hora'
+	lineageTag: 2df9537e-6a83-43e2-859c-b699786ec313
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: 7f557da9-c6a4-448f-b426-4c6459727ec3
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: 5c4dad6e-3485-41a0-80ef-5a249e6b8b84
+		sourceColumn: modelo
+
+	column aseguradora
+		dataType: string
+		lineageTag: 93495e61-a3bf-4773-840e-9af4c6698259
+		sourceColumn: aseguradora
+
+	column hora
+		dataType: int64
+		lineageTag: 9433eaa5-9349-466d-b8d4-2d3337a0f914
+		summarizeBy: none
+		sourceColumn: hora
+
+	column esperado
+		dataType: double
+		formatString: 0.0
+		lineageTag: 51aa32ad-4340-4608-b259-83a1698d9433
+		sourceColumn: esperado
+
+	column prob_al_menos_uno
+		dataType: double
+		formatString: 0%
+		lineageTag: cb3a62e1-2657-49ce-9199-1aea481e2b38
+		sourceColumn: prob_al_menos_uno
+
+	column q10
+		dataType: double
+		formatString: 0.0
+		lineageTag: 04a36bd0-a603-44f6-8720-2ab8942745f1
+		sourceColumn: q10
+
+	column q90
+		dataType: double
+		formatString: 0.0
+		lineageTag: c5d6725e-8d10-4b51-8592-271d36e0070c
+		sourceColumn: q90
+
+	partition 'Aseguradora por hora' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "pronostico_aseguradora_hora.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"aseguradora", type text}, {"hora", Int64.Type}, {"esperado", type number}, {"prob_al_menos_uno", type number}, {"q10", type number}, {"q90", type number}}, "en-US")
+				in
+				    Tipos
+

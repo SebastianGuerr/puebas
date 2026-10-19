@@ -1,0 +1,25 @@
+/// Horas del día 0-23.
+table Hora
+	lineageTag: 27dad9f3-3c71-4953-b3d4-4ff0e23e2b28
+
+	column Value
+		lineageTag: 554ab697-c531-472d-9dd6-ca9c4b4ade01
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Value]
+
+	column Franja
+		lineageTag: 8f2aac75-a812-4cdb-939b-ea4ea4295e36
+		isNameInferred
+		sourceColumn: [Franja]
+		sortByColumn: Value
+
+	column Jornada
+		lineageTag: f2756a7a-d4d8-4cd0-affe-f5270bfb8c07
+		isNameInferred
+		sourceColumn: [Jornada]
+
+	partition Hora = calculated
+		mode: import
+		source = ADDCOLUMNS ( GENERATESERIES ( 0, 23, 1 ), "Franja", FORMAT ( [Value], "00" ) & ":00", "Jornada", SWITCH ( TRUE (), [Value] < 6, "Madrugada (0-6 h)", [Value] < 12, "Mañana (6-12 h)", [Value] < 18, "Tarde (12-18 h)", "Noche (18-24 h)" ) )
+

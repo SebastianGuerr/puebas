@@ -1,0 +1,72 @@
+/// Día × aseguradora y modelo; con el central por jornada.
+table 'Pronóstico aseguradora'
+	lineageTag: ea185b5d-ecc2-4c8d-b048-865dbdfd71ce
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: 279023ed-5514-4ed6-ac0e-3de173e2e666
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: 026f9b10-df2b-41dd-8499-82591f362ea6
+		sourceColumn: modelo
+
+	column aseguradora
+		dataType: string
+		lineageTag: f5063f25-52e0-4e1e-ae19-563e6d884b2f
+		sourceColumn: aseguradora
+
+	column q10
+		dataType: double
+		formatString: 0
+		lineageTag: b31eb836-5555-4336-b5e4-ba85fff66b22
+		sourceColumn: q10
+
+	column q50
+		dataType: double
+		formatString: 0
+		lineageTag: a591f652-6420-4c82-b0be-f12478ec4a1a
+		sourceColumn: q50
+
+	column q90
+		dataType: double
+		formatString: 0
+		lineageTag: 39b5e3ba-8652-462e-8b9d-51e63ed77525
+		sourceColumn: q90
+
+	column madrugada_q50
+		dataType: double
+		formatString: 0
+		lineageTag: 067b5b8f-85d8-4b32-9d35-7e39fcf46a0e
+		sourceColumn: madrugada_q50
+
+	column manana_q50
+		dataType: double
+		formatString: 0
+		lineageTag: 44e89ef4-c221-41da-8136-2548337e1c61
+		sourceColumn: manana_q50
+
+	column tarde_q50
+		dataType: double
+		formatString: 0
+		lineageTag: 250e5954-8ac8-43f6-86cb-d189be249aec
+		sourceColumn: tarde_q50
+
+	column noche_q50
+		dataType: double
+		formatString: 0
+		lineageTag: f73e8835-632b-4665-8f7c-44f6e9ff356a
+		sourceColumn: noche_q50
+
+	partition 'Pronóstico aseguradora' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "pronostico_aseguradora.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"aseguradora", type text}, {"q10", type number}, {"q50", type number}, {"q90", type number}, {"madrugada_q50", type number}, {"manana_q50", type number}, {"tarde_q50", type number}, {"noche_q50", type number}}, "en-US")
+				in
+				    Tipos
+

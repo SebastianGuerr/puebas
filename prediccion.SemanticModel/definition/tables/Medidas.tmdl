@@ -1,0 +1,664 @@
+/// Todas las medidas del tablero. Sin filtro de Modelo muestran el principal (Corrida[principal]).
+table Medidas
+	lineageTag: 66ced144-b092-40c1-95ed-18f443d9559b
+
+	/// El modelo elegido en el filtro de Modelo; sin filtro, el principal de la última corrida.
+	measure 'Modelo mostrado' = IF ( HASONEVALUE ( Modelo[Modelo] ), VALUES ( Modelo[Modelo] ), MAX ( Corrida[principal] ) )
+		displayFolder: Pronóstico
+		lineageTag: d020a0d8-fc0b-4ea7-82c5-e416f8a8961d
+
+	/// Valor central (mediana) del pronóstico de pacientes que piden triage.
+	measure 'Pacientes (central)' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico día'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f )
+		formatString: #,0
+		displayFolder: Pronóstico
+		lineageTag: cd6439b7-b891-484d-906a-a25d219583b0
+
+	/// Borde inferior del rango del 80 % (q10).
+	measure 'Mínimo probable' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico día'[q10] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f )
+		formatString: #,0
+		displayFolder: Pronóstico
+		lineageTag: 6aa8cc45-e727-4d2e-862b-9007617eb7c3
+
+	/// Borde superior del rango del 80 % (q90).
+	measure 'Máximo probable' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico día'[q90] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f )
+		formatString: #,0
+		displayFolder: Pronóstico
+		lineageTag: 4efcc5c7-0261-4430-a258-495ce7f8133e
+
+	/// 8 de cada 10 días el valor real cae dentro. Válido para un día.
+	measure 'Rango 80 %' = IF ( NOT ISBLANK ( [Pacientes (central)] ), FORMAT ( [Mínimo probable], "0" ) & " a " & FORMAT ( [Máximo probable], "0" ) )
+		displayFolder: Pronóstico
+		lineageTag: 4ffa3036-469b-449a-849f-c86b66947797
+
+	/// Media del mismo día de la semana en las 8 semanas que terminan en el origen.
+	measure 'Día habitual' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico día'[habitual] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f )
+		formatString: #,0
+		displayFolder: Pronóstico
+		lineageTag: 27bc4498-4c0c-4bec-9ec0-25f0a741d464
+
+	measure 'Diferencia con lo habitual' = IF ( NOT ISBLANK ( [Pacientes (central)] ), DIVIDE ( [Pacientes (central)], [Día habitual] ) - 1 )
+		formatString: +0%;-0%;0%
+		displayFolder: Pronóstico
+		lineageTag: 943f37de-66c1-49b3-a922-d3e1fc5426b4
+
+	/// Probabilidad de que el día supere al día habitual.
+	measure 'Prob. de más que lo habitual' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( AVERAGE ( 'Pronóstico día'[p_sube] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f )
+		formatString: 0%
+		displayFolder: Pronóstico
+		lineageTag: d67c79e3-fbe8-4e03-bce8-930c7a670ea8
+
+	/// Valor central del modelo de comparación (C0r, sin contexto externo).
+	measure 'Central comparación' = VAR m = MAX ( Corrida[comparacion] ) VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico día'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f )
+		formatString: #,0
+		displayFolder: Pronóstico
+		lineageTag: b3c0c1f8-3af1-41de-b756-e7d230d72b61
+
+	/// Rojo = más pacientes que un día habitual de ese tipo; azul = menos; gris = lo de siempre. Misma escala que el tablero Streamlit.
+	measure 'Color frente a lo habitual' = VAR d = [Diferencia con lo habitual] RETURN SWITCH ( TRUE (), ISBLANK ( d ), BLANK (), d <= -0.15, "#184f95", d <= -0.08, "#3987e5", d <= -0.03, "#9ec5f4", d < 0.03, "#f0efec", d < 0.08, "#f2a3a2", d < 0.15, "#e34948", "#a82a2a" )
+		displayFolder: Pronóstico
+		lineageTag: 40b12b74-d939-4658-8c4a-04bc72ce1b07
+
+	measure 'Color texto frente a lo habitual' = VAR d = [Diferencia con lo habitual] RETURN IF ( ABS ( d ) >= 0.08, "#ffffff", "#0b0b0b" )
+		displayFolder: Pronóstico
+		lineageTag: 0fb3c84f-b503-489e-b570-2b1ffaa32d6b
+
+	/// Texto de cada día en el calendario: día, rango y central. «≈» = más de 28 días, léase como tendencia.
+	measure 'Celda calendario' =
+			VAR m = [Modelo mostrado]
+			VAR lejos = CALCULATE ( COUNTROWS ( 'Pronóstico día' ), REMOVEFILTERS ( Modelo ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[largo_plazo] = TRUE () ) > 0
+			VAR fest = CALCULATE ( COUNTROWS ( 'Pronóstico día' ), REMOVEFILTERS ( Modelo ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[festivo] = TRUE () ) > 0
+			RETURN IF ( NOT ISBLANK ( [Pacientes (central)] ), MAX ( Calendario[Día del mes] ) & IF ( fest, " · festivo", "" ) & UNICHAR ( 10 ) & IF ( lejos, "≈ ", "" ) & [Rango 80 %] & UNICHAR ( 10 ) & "central ~" & FORMAT ( [Pacientes (central)], "0" ) )
+		displayFolder: Pronóstico
+		lineageTag: 9429fc18-bdab-48c1-9a40-31cf37e661c6
+
+	measure 'Aviso día lejano' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] VAR lejos = CALCULATE ( COUNTROWS ( 'Pronóstico día' ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f, 'Pronóstico día'[largo_plazo] = TRUE () ) > 0 RETURN IF ( lejos, "Día lejano (más de 28 días): léase como tendencia, no como cifra exacta.", "" )
+		displayFolder: Pronóstico
+		lineageTag: ca78b824-93c4-4210-be93-9412f4d3cbcc
+
+	/// Bloque de 3 horas de más llegadas en la mañana y en la tarde, con pacientes por hora.
+	measure 'Horas pico' =
+			VAR m = [Modelo mostrado] VAR f = [Fecha mostrada]
+			VAR T = CALCULATETABLE ( 'Pronóstico día', REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f )
+			VAR hm = MAXX ( T, 'Pronóstico día'[pico_manana] ) VAR vm = MAXX ( T, 'Pronóstico día'[pico_manana_por_hora] )
+			VAR ht = MAXX ( T, 'Pronóstico día'[pico_tarde] ) VAR vt = MAXX ( T, 'Pronóstico día'[pico_tarde_por_hora] )
+			RETURN IF ( COUNTROWS ( T ) = 1, "Mañana: " & hm & "-" & hm + 3 & " h (~" & FORMAT ( vm, "0" ) & " por hora) · Tarde: " & ht & "-" & ht + 3 & " h (~" & FORMAT ( vt, "0" ) & " por hora)" )
+		displayFolder: Pronóstico
+		lineageTag: e71c05bf-9a51-466f-9724-b6d9ac6d1e5b
+
+	/// Cuánto cambia Nueva EPS por el estado de la red de urgencias; el total del día ya lo incluye.
+	measure 'Ajuste por la red (Nueva EPS)' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( AVERAGE ( 'Pronóstico día'[f_red] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f ) - 1
+		formatString: +0%;-0%;0%
+		displayFolder: Pronóstico
+		lineageTag: 6fc9f655-d2ce-4fab-a1b3-db20bfec99a9
+
+	measure 'Episodios de la red' = VAR f = [Fecha mostrada] RETURN CALCULATE ( COUNTROWS ( 'Red de urgencias' ), REMOVEFILTERS ( Calendario ), 'Red de urgencias'[fecha] = f )
+		formatString: 0
+		displayFolder: Pronóstico
+		lineageTag: 9fb71c8c-ecab-48c1-8b8e-cc8eb67b766e
+
+	measure 'Jornada central' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico jornada'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico jornada'[modelo] = m, 'Pronóstico jornada'[fecha] = f )
+		formatString: #,0
+		displayFolder: Jornadas y horas
+		lineageTag: fc5eebab-bde9-4c24-9725-d82ca7ec5f8f
+
+	measure 'Jornada mínimo' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico jornada'[q10] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico jornada'[modelo] = m, 'Pronóstico jornada'[fecha] = f )
+		formatString: #,0
+		displayFolder: Jornadas y horas
+		lineageTag: febe2cee-f3e8-470c-be11-88a59f193924
+
+	measure 'Jornada máximo' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico jornada'[q90] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico jornada'[modelo] = m, 'Pronóstico jornada'[fecha] = f )
+		formatString: #,0
+		displayFolder: Jornadas y horas
+		lineageTag: 53235d44-af59-41f3-823f-cb880fbbbf52
+
+	measure '% del día en la jornada' = DIVIDE ( [Jornada central], CALCULATE ( [Jornada central], REMOVEFILTERS ( Jornada ) ) )
+		formatString: 0%
+		displayFolder: Jornadas y horas
+		lineageTag: 0170b966-b2ac-488c-b705-3b153398a20b
+
+	measure 'Por hora central' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico hora'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico hora'[modelo] = m, 'Pronóstico hora'[fecha] = f )
+		formatString: 0.0
+		displayFolder: Jornadas y horas
+		lineageTag: 8d2c23b8-d6b2-4635-83e8-c45b18534342
+
+	measure 'Por hora mínimo' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico hora'[q10] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico hora'[modelo] = m, 'Pronóstico hora'[fecha] = f )
+		formatString: 0.0
+		displayFolder: Jornadas y horas
+		lineageTag: ab01ea31-24df-475c-867b-941c8246d993
+
+	measure 'Por hora máximo' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico hora'[q90] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico hora'[modelo] = m, 'Pronóstico hora'[fecha] = f )
+		formatString: 0.0
+		displayFolder: Jornadas y horas
+		lineageTag: 2ceff8c5-4308-478d-aded-b0532ee74f51
+
+	measure 'Aseguradora central' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico aseguradora'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] = f )
+		formatString: #,0
+		displayFolder: Aseguradoras
+		lineageTag: ffdbfa73-0be4-41aa-b8af-f12749506a86
+
+	measure 'Aseguradora mínimo' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico aseguradora'[q10] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] = f )
+		formatString: #,0
+		displayFolder: Aseguradoras
+		lineageTag: 5cc6135c-9943-4f93-a6d7-4e374d7e4ebf
+
+	measure 'Aseguradora máximo' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Pronóstico aseguradora'[q90] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] = f )
+		formatString: #,0
+		displayFolder: Aseguradoras
+		lineageTag: 203a9071-0534-4490-9ece-401db3c02cf1
+
+	measure 'Aseguradora rango 80 %' = IF ( NOT ISBLANK ( [Aseguradora central] ), FORMAT ( [Aseguradora mínimo], "0" ) & " a " & FORMAT ( [Aseguradora máximo], "0" ) )
+		displayFolder: Aseguradoras
+		lineageTag: b57a8008-f2a2-4d27-a980-99aceebdcad2
+
+	/// Llegadas esperadas por hora y aseguradora (solo modelo principal). La forma por hora sale de las últimas 4 semanas.
+	measure 'Esperados por hora' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN CALCULATE ( SUM ( 'Aseguradora por hora'[esperado] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Aseguradora por hora'[modelo] = m, 'Aseguradora por hora'[fecha] = f )
+		formatString: 0.0
+		displayFolder: Aseguradoras
+		lineageTag: 4e798965-e295-40ab-9743-40d041887b6f
+
+	/// Con menos de 1 paciente por hora se informa la probabilidad de que llegue al menos uno (Poisson). Válida para un día y una hora.
+	measure 'Prob. de al menos uno' = VAR e = [Esperados por hora] RETURN IF ( NOT ISBLANK ( e ), 1 - EXP ( -e ) )
+		formatString: 0%
+		displayFolder: Aseguradoras
+		lineageTag: 09d8e41e-760d-46f2-84da-c62e97387785
+
+	measure 'Semana central (media por día)' = VAR m = [Modelo mostrado] RETURN CALCULATE ( SUM ( 'Pronóstico semana'[media_q50] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m )
+		formatString: #,0
+		displayFolder: Pronóstico
+		lineageTag: 3eb23c86-0799-41e4-abc8-7814581fa6b1
+
+	measure 'Semana rango 80 %' = VAR m = [Modelo mostrado] VAR a = CALCULATE ( SUM ( 'Pronóstico semana'[media_q10] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m ) VAR b = CALCULATE ( SUM ( 'Pronóstico semana'[media_q90] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m ) RETURN IF ( NOT ISBLANK ( a ), FORMAT ( a, "0" ) & " a " & FORMAT ( b, "0" ) )
+		displayFolder: Pronóstico
+		lineageTag: a1552713-2373-43f3-a407-2bb2fb1b252d
+
+	measure 'Semana habitual' = VAR m = [Modelo mostrado] RETURN CALCULATE ( SUM ( 'Pronóstico semana'[habitual] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m )
+		formatString: #,0
+		displayFolder: Pronóstico
+		lineageTag: 76c69f06-0f1a-4736-8394-50d86fd35680
+
+	measure 'Prob. semana sobre lo habitual' = VAR m = [Modelo mostrado] RETURN CALCULATE ( AVERAGE ( 'Pronóstico semana'[p_sobre_habitual] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m )
+		formatString: 0%
+		displayFolder: Pronóstico
+		lineageTag: 678eaece-2171-4e7b-be59-664ffbc3b5d2
+
+	/// Pacientes que pidieron triage ese día.
+	measure Real = VAR m = [Modelo mostrado] RETURN CALCULATE ( SUM ( Historial[real] ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m )
+		formatString: #,0
+		displayFolder: Historial
+		lineageTag: f3055067-e5ce-4953-adbc-acf433bd0d54
+
+	measure 'Predicho 15-21 días antes' = VAR m = [Modelo mostrado] RETURN CALCULATE ( SUM ( Historial[q50] ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m )
+		formatString: #,0
+		displayFolder: Historial
+		lineageTag: 07004811-c088-4333-8abc-feba3d9e3fbc
+
+	measure 'Historial mínimo' = VAR m = [Modelo mostrado] RETURN CALCULATE ( SUM ( Historial[q10] ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m )
+		formatString: #,0
+		displayFolder: Historial
+		lineageTag: 77dfbeb2-568e-4dd4-b3bb-9bf40fb66fc2
+
+	measure 'Historial máximo' = VAR m = [Modelo mostrado] RETURN CALCULATE ( SUM ( Historial[q90] ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m )
+		formatString: #,0
+		displayFolder: Historial
+		lineageTag: 446774e1-38db-420c-8497-e04389a68b3c
+
+	measure 'Días evaluados' = VAR m = [Modelo mostrado] RETURN CALCULATE ( COUNTROWS ( Historial ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m, NOT ISBLANK ( Historial[real] ) )
+		formatString: #,0
+		displayFolder: Historial
+		lineageTag: bd6058a4-160a-40b9-b422-093284a6bc8c
+
+	/// Media del error absoluto del día, en % de lo real (MAPE).
+	measure 'Error medio del día' = VAR m = [Modelo mostrado] RETURN CALCULATE ( AVERAGE ( Historial[error_pct] ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m ) / 100
+		formatString: 0.0%
+		displayFolder: Historial
+		lineageTag: b7bee9ed-d371-4ac8-8e8a-c2a5c8f5eeed
+
+	/// Parte de los días en que lo real cayó dentro del rango del 80 % anunciado. Bien calibrado ronda el 80 %.
+	measure 'Días dentro del rango' = VAR m = [Modelo mostrado] RETURN CALCULATE ( DIVIDE ( COUNTROWS ( FILTER ( Historial, Historial[en_rango] = TRUE () ) ), COUNTROWS ( FILTER ( Historial, NOT ISBLANK ( Historial[en_rango] ) ) ) ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m )
+		formatString: 0%
+		displayFolder: Historial
+		lineageTag: 11f5b6bf-a6de-424e-b64a-797f9bac7956
+
+	/// Parte de los días en que acertó si el día quedaría por encima o por debajo de lo habitual.
+	measure 'Acierto sube o baja' = VAR m = [Modelo mostrado] RETURN CALCULATE ( DIVIDE ( COUNTROWS ( FILTER ( Historial, Historial[acierta_sube] = TRUE () ) ), COUNTROWS ( FILTER ( Historial, NOT ISBLANK ( Historial[acierta_sube] ) ) ) ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m )
+		formatString: 0%
+		displayFolder: Historial
+		lineageTag: ed522026-5ed7-4cc9-af5c-06d885cf534c
+
+	measure 'Real frente a lo predicho' = IF ( NOT ISBLANK ( [Real] ), DIVIDE ( [Real], [Predicho 15-21 días antes] ) - 1 )
+		formatString: +0%;-0%;0%
+		displayFolder: Historial
+		lineageTag: 9f2ce6ce-0a26-47bd-9fe3-2b4787adb25e
+
+	/// Rojo = llegaron más de los predichos; azul = menos; gris = acertó.
+	measure 'Color real frente a lo predicho' = VAR d = [Real frente a lo predicho] RETURN SWITCH ( TRUE (), ISBLANK ( d ), BLANK (), d <= -0.15, "#184f95", d <= -0.08, "#3987e5", d <= -0.03, "#9ec5f4", d < 0.03, "#f0efec", d < 0.08, "#f2a3a2", d < 0.15, "#e34948", "#a82a2a" )
+		displayFolder: Historial
+		lineageTag: e46eeaf0-4709-4925-aa18-217ef072fbca
+
+	measure 'Color texto historial' = IF ( ABS ( [Real frente a lo predicho] ) >= 0.08, "#ffffff", "#0b0b0b" )
+		displayFolder: Historial
+		lineageTag: f8c7a196-4801-48cc-97be-cb11255f9c35
+
+	/// Día (✓ = dentro del rango), lo real y lo predicho 15-21 días antes.
+	measure 'Celda historial' =
+			VAR m = [Modelo mostrado]
+			VAR ok = CALCULATE ( COUNTROWS ( Historial ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m, Historial[en_rango] = TRUE () ) > 0
+			RETURN IF ( NOT ISBLANK ( [Real] ), MAX ( Calendario[Día del mes] ) & IF ( ok, "  ✓", "  ✗" ) & UNICHAR ( 10 ) & FORMAT ( [Real], "0" ) & UNICHAR ( 10 ) & "pred. " & FORMAT ( [Predicho 15-21 días antes], "0" ) & " (" & FORMAT ( [Historial mínimo], "0" ) & "-" & FORMAT ( [Historial máximo], "0" ) & ")" )
+		displayFolder: Historial
+		lineageTag: 31830e10-8a26-4d17-8e8c-3e6800bc816b
+
+	/// Error medio por jornada o por aseguradora grande.
+	measure 'Error por pieza' = VAR m = [Modelo mostrado] RETURN CALCULATE ( AVERAGE ( 'Historial piezas'[error_pct] ), REMOVEFILTERS ( Modelo ), 'Historial piezas'[modelo] = m ) / 100
+		formatString: 0%
+		displayFolder: Historial
+		lineageTag: a972d283-ae89-4a67-baf7-a6ca5e8c8069
+
+	/// Error medio del día del modelo de comparación (C0r) en los mismos días.
+	measure 'Error medio comparación' = VAR m = MAX ( Corrida[comparacion] ) RETURN CALCULATE ( AVERAGE ( Historial[error_pct] ), REMOVEFILTERS ( Modelo ), Historial[modelo] = m ) / 100
+		formatString: 0.0%
+		displayFolder: Historial
+		lineageTag: eddb12df-3bc5-48f0-9760-c1617591cc0b
+
+	measure 'Estado general' = MAX ( Corrida[estado_general] )
+		displayFolder: Estado
+		lineageTag: c212c3a3-fd66-4a12-a8af-2175321010b6
+
+	measure 'Color estado general' = SWITCH ( MAX ( Corrida[nivel_general] ), "verde", "#1e8e3e", "amarillo", "#e8a400", "rojo", "#d93025", "#9aa0a6" )
+		displayFolder: Estado
+		lineageTag: eec343cf-9d7b-47f5-84a4-b82403272127
+
+	measure 'Color señal' = SWITCH ( MAX ( 'Semáforo'[nivel] ), "verde", "#1e8e3e", "amarillo", "#e8a400", "rojo", "#d93025", "#9aa0a6" )
+		displayFolder: Estado
+		lineageTag: 0ff586ac-71f6-4e51-8ff5-2d36eefe929e
+
+	/// Qué se está viendo: datos hasta, modelo, cuándo se reentrenó.
+	measure Encabezado = "Datos hasta el " & FORMAT ( MAX ( Corrida[origen] ), "d \de mmmm \de yyyy", "es-CO" ) & " · modelo " & [Modelo mostrado] & " · reentrenado el " & FORMAT ( MAX ( Corrida[creado] ), "d \de mmmm", "es-CO" ) & " · lea el rango, no la cifra exacta: 8 de cada 10 días el valor real cae dentro"
+		displayFolder: Estado
+		lineageTag: 03132ff6-409f-4895-bf1f-44e7c51c2d8d
+
+	/// El día elegido; si no hay uno solo, el próximo día pronosticado (desde hoy) dentro de los filtros. Las medidas del pronóstico diario hablan siempre de este día.
+	measure 'Fecha mostrada' =
+			VAR prox = CALCULATE ( MIN ( 'Pronóstico día'[fecha] ), 'Pronóstico día'[fecha] >= TODAY () )
+			VAR prim = CALCULATE ( MIN ( 'Pronóstico día'[fecha] ) )
+			RETURN IF ( HASONEVALUE ( Calendario[Date] ), VALUES ( Calendario[Date] ), COALESCE ( prox, prim ) )
+		formatString: d mmm yyyy
+		displayFolder: Pronóstico
+		lineageTag: 03a499c3-2cb9-41d7-900d-6cff01866d73
+
+	measure 'Día mostrado' = VAR f = [Fecha mostrada] VAR m = [Modelo mostrado] VAR fest = CALCULATE ( COUNTROWS ( 'Pronóstico día' ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = f, 'Pronóstico día'[festivo] = TRUE () ) > 0 RETURN IF ( NOT ISBLANK ( f ), UPPER ( LEFT ( FORMAT ( f, "dddd", "es-CO" ), 1 ) ) & MID ( FORMAT ( f, "dddd d \de mmmm \de yyyy", "es-CO" ), 2, 60 ) & IF ( fest, " · festivo", "" ) )
+		displayFolder: Pronóstico
+		lineageTag: c88fb786-9bd3-4e09-ac25-655d24bd3ec2
+
+	/// Más oscuro = más pacientes por hora.
+	measure 'Color calor por hora' = VAR e = [Esperados por hora] RETURN SWITCH ( TRUE (), ISBLANK ( e ), BLANK (), e < 0.25, "#eef4fc", e < 1, "#c9defa", e < 3, "#9ec5f4", e < 6, "#3987e5", "#184f95" )
+		displayFolder: Aseguradoras
+		lineageTag: a76c4203-6feb-4c17-80ca-192a72fc6055
+
+	measure 'Color texto calor' = IF ( [Esperados por hora] >= 3, "#ffffff", "#0b0b0b" )
+		displayFolder: Aseguradoras
+		lineageTag: d0e59200-03c5-432b-b4a3-a318b03a240c
+
+	/// Hoy, o el primer día pronosticado desde hoy.
+	measure 'Fecha hoy' = VAR h = TODAY () RETURN CALCULATE ( MIN ( 'Pronóstico día'[fecha] ), REMOVEFILTERS (), 'Pronóstico día'[fecha] >= h )
+		formatString: d mmm yyyy
+		displayFolder: Tablero
+		lineageTag: 6f10f700-99fa-4aec-b424-6a033c7d905b
+
+	measure 'T Subtítulo' = "Datos hasta el " & FORMAT ( MAX ( Corrida[origen] ), "d \de mmmm", "es-CO" ) & IF ( [T Filtra aseguradora], "   ·   " & [T Grupo elegido], "" )
+		displayFolder: Tablero
+		lineageTag: 1bd36b28-3f20-4443-8d90-ca31f1be6282
+
+	/// El bloque de 3 horas con más llegadas hoy, como en la operación (operacion/__init__.py, pico_*): total o de la aseguradora elegida.
+	measure 'T Pico' =
+			VAR d = [Fecha mostrada]
+			VAR t = ADDCOLUMNS ( FILTER ( ALL ( Hora[Value] ), Hora[Value] <= 21 ), "v", VAR s = Hora[Value] RETURN CALCULATE ( [V hora], REMOVEFILTERS ( Calendario ), Calendario[Date] = d, REMOVEFILTERS ( Hora ), Hora[Value] >= s, Hora[Value] <= s + 2 ) )
+			VAR s1 = MAXX ( TOPN ( 1, t, [v], DESC ), Hora[Value] )
+			RETURN s1 & " a " & s1 + 3 & " h"
+		displayFolder: Tablero
+		lineageTag: 4e6468d5-bcb0-4518-ae0e-5195ab3d1fbe
+
+	/// Pacientes del día en las próximas 4 semanas; en la columna Total, la suma de la semana. * = festivo.
+	measure 'T Calendario' =
+			VAR h = [Fecha hoy] VAR lim = IF ( ISFILTERED ( Calendario ), DATE ( 2999, 1, 1 ), h + 28 )
+			RETURN IF ( HASONEVALUE ( Calendario[Date] ),
+			    VAR d = VALUES ( Calendario[Date] ) RETURN IF ( d >= h && d < lim, [V día] ),
+			    SUMX ( FILTER ( VALUES ( Calendario[Date] ), Calendario[Date] >= h && Calendario[Date] < lim ), [V día] ) )
+		displayFolder: Tablero
+		lineageTag: 2c809441-b52c-4e74-a7a9-c06110d1ca11
+
+		formatStringDefinition = VAR m = [Modelo mostrado] VAR fest = HASONEVALUE ( Calendario[Date] ) && CALCULATE ( COUNTROWS ( 'Pronóstico día' ), REMOVEFILTERS ( Modelo ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[festivo] = TRUE () ) > 0 RETURN IF ( fest, "0""*""", "#,0" )
+
+	/// Más oscuro = más pacientes que el promedio de estas 4 semanas. Rojos para el total, azules para una aseguradora.
+	measure 'T Calendario color' =
+			VAR v = [T Calendario] VAR h = [Fecha hoy]
+			RETURN IF ( ISBLANK ( v ), BLANK (), IF ( NOT HASONEVALUE ( Calendario[Date] ), "#f4f4f1",
+			    VAR prom = CALCULATE ( AVERAGEX ( FILTER ( VALUES ( Calendario[Date] ), Calendario[Date] >= h && Calendario[Date] < h + 28 ), [V día] ), REMOVEFILTERS ( Calendario ) )
+			    VAR r = DIVIDE ( v, prom ) VAR az = [T Filtra aseguradora]
+			    RETURN SWITCH ( TRUE (), r < 0.85, IF ( az, "#e4effc", "#fde7e6" ), r < 0.95, IF ( az, "#b7d3f6", "#f8c4c2" ), r < 1.05, IF ( az, "#6da7ec", "#f09491" ), r < 1.15, IF ( az, "#2a78d6", "#e34948" ), IF ( az, "#184f95", "#a82a2a" ) ) ) )
+		displayFolder: Tablero
+		lineageTag: c7d17733-f513-4b5b-a7d3-594e5d8fccfd
+
+	measure 'T Calendario texto' = VAR c = [T Calendario color] RETURN IF ( c IN { "#e34948", "#a82a2a", "#2a78d6", "#184f95" }, "#ffffff", "#0b0b0b" )
+		displayFolder: Tablero
+		lineageTag: 91883fb5-5eaa-4bf2-9c39-c444b5418e38
+
+	measure 'T Aseguradoras título' =
+			VAR h = [Fecha hoy]
+			VAR periodo = IF ( HASONEVALUE ( Calendario[Date] ) || NOT ISFILTERED ( Calendario ), LOOKUPVALUE ( Calendario[Día corto], Calendario[Date], [Fecha mostrada] ) & IF ( [Fecha mostrada] = h, " (hoy)", "" ), "semana " & SELECTEDVALUE ( Calendario[Semana etiqueta], "elegida" ) )
+			VAR hora = IF ( ISFILTERED ( Hora ), ", " & MIN ( Hora[Value] ) & " a " & MAX ( Hora[Value] ) + 1 & " h", "" )
+			RETURN "POR ASEGURADORA  ·  " & UPPER ( periodo & hora )
+		displayFolder: Tablero
+		lineageTag: b39bb6dd-3941-40e7-b3f5-7b57508b867f
+
+	measure 'T Filtra aseguradora' = ISFILTERED ( Aseguradora[Grupo] ) || ISFILTERED ( Aseguradora[Aseguradora] )
+		displayFolder: Tablero
+		lineageTag: aeba776b-1d33-46c4-82d3-aaa333df0102
+
+	measure 'T Grupo elegido' = IF ( [T Filtra aseguradora], CONCATENATEX ( VALUES ( Aseguradora[Grupo] ), Aseguradora[Grupo], ", " ), "todas las aseguradoras" )
+		displayFolder: Tablero
+		lineageTag: 6894058f-c053-4b60-b1e1-a1fbe0f995ab
+
+	/// Pacientes del día (Fecha mostrada): el total o, si hay aseguradora elegida, solo esa.
+	measure 'V día' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN IF ( [T Filtra aseguradora], CALCULATE ( SUM ( 'Pronóstico aseguradora'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] = f ), [Pacientes (central)] )
+		formatString: 0
+		displayFolder: Tablero
+		lineageTag: 1afd0282-af68-4e11-a205-cc0d609ead42
+
+	measure 'V mínimo día' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN IF ( [T Filtra aseguradora], CALCULATE ( SUM ( 'Pronóstico aseguradora'[q10] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] = f ), [Mínimo probable] )
+		formatString: 0
+		displayFolder: Tablero
+		lineageTag: 414669e1-5875-4412-a4e2-3aaa2def8b20
+
+	measure 'V máximo día' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN IF ( [T Filtra aseguradora], CALCULATE ( SUM ( 'Pronóstico aseguradora'[q90] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] = f ), [Máximo probable] )
+		formatString: 0
+		displayFolder: Tablero
+		lineageTag: 79a88b19-90e6-4806-bad2-3c84eb1f47ba
+
+	/// Pacientes esperados en la hora del contexto, del día (Fecha mostrada): total del día × forma por hora, como en la operación; o de la aseguradora elegida.
+	measure 'V hora' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN IF ( [T Filtra aseguradora], CALCULATE ( SUM ( 'Aseguradora por hora'[esperado] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Aseguradora por hora'[modelo] = m, 'Aseguradora por hora'[fecha] = f ), CALCULATE ( SUM ( 'Pronóstico hora'[esperado] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico hora'[modelo] = m, 'Pronóstico hora'[fecha] = f ) )
+		formatString: 0.0
+		displayFolder: Tablero
+		lineageTag: 04454112-fff4-4329-9f5b-52557374d678
+
+	/// Pacientes por hora en los próximos 7 días.
+	measure 'T Hora' = VAR h = [Fecha hoy] VAR lim = IF ( ISFILTERED ( Calendario ), DATE ( 2999, 1, 1 ), h + 7 ) RETURN IF ( HASONEVALUE ( Calendario[Date] ) && HASONEVALUE ( Hora[Value] ), VAR d = VALUES ( Calendario[Date] ) RETURN IF ( d >= h && d < lim, [V hora] ) )
+		displayFolder: Tablero
+		lineageTag: 73b4d192-a0cf-4113-9f8f-0fa09cb925a9
+
+		formatStringDefinition = IF ( [T Filtra aseguradora], "0.0", "0" )
+
+	/// Más oscuro = más pacientes en esa hora, frente a la hora más llena de la semana.
+	measure 'T Hora color' =
+			VAR v = [T Hora] VAR h = [Fecha hoy] VAR m = [Modelo mostrado] VAR az = [T Filtra aseguradora]
+			VAR mx = IF ( az,
+			    CALCULATE ( MAXX ( SUMMARIZE ( 'Aseguradora por hora', 'Aseguradora por hora'[fecha], 'Aseguradora por hora'[hora] ), CALCULATE ( SUM ( 'Aseguradora por hora'[esperado] ) ) ), REMOVEFILTERS ( Calendario ), REMOVEFILTERS ( Hora ), REMOVEFILTERS ( Modelo ), 'Aseguradora por hora'[modelo] = m, 'Aseguradora por hora'[fecha] >= h, 'Aseguradora por hora'[fecha] < h + 7 ),
+			    CALCULATE ( MAX ( 'Pronóstico hora'[esperado] ), REMOVEFILTERS ( Calendario ), REMOVEFILTERS ( Hora ), REMOVEFILTERS ( Modelo ), 'Pronóstico hora'[modelo] = m, 'Pronóstico hora'[fecha] >= h, 'Pronóstico hora'[fecha] < h + 7 ) )
+			VAR r = DIVIDE ( v, mx )
+			RETURN IF ( ISBLANK ( v ), BLANK (), SWITCH ( TRUE (), r < 0.2, IF ( az, "#e4effc", "#fde7e6" ), r < 0.4, IF ( az, "#b7d3f6", "#f8c4c2" ), r < 0.6, IF ( az, "#6da7ec", "#f09491" ), r < 0.8, IF ( az, "#2a78d6", "#e34948" ), IF ( az, "#184f95", "#a82a2a" ) ) )
+		displayFolder: Tablero
+		lineageTag: a5325072-aa2a-42b5-9190-9d1f9032346d
+
+	measure 'T Hora texto' = VAR c = [T Hora color] RETURN IF ( c IN { "#e34948", "#a82a2a", "#2a78d6", "#184f95" }, "#ffffff", "#0b0b0b" )
+		displayFolder: Tablero
+		lineageTag: 16bb3ffa-9c61-4bc9-be82-feae5e1e6099
+
+	/// Pacientes por aseguradora del periodo elegido: el día tocado, la semana tocada (columna Total) o, sin nada elegido, hoy.
+	measure 'T Aseguradoras' =
+			VAR h = [Fecha hoy]
+			RETURN IF ( HASONEVALUE ( Calendario[Date] ), [Aseguradora central],
+			    IF ( ISFILTERED ( Calendario ), SUMX ( FILTER ( VALUES ( Calendario[Date] ), Calendario[Date] >= h ), [Aseguradora central] ),
+			        CALCULATE ( [Aseguradora central], REMOVEFILTERS ( Calendario ), Calendario[Date] = h ) ) )
+		formatString: #,0
+		displayFolder: Tablero
+		lineageTag: 5ad2187f-923a-4969-ae8f-b032ff29b975
+
+	measure 'T Título calendario' = "PRÓXIMAS 4 SEMANAS" & IF ( [T Filtra aseguradora], "  ·  " & UPPER ( [T Grupo elegido] ), "" )
+		displayFolder: Tablero
+		lineageTag: 9b0afa8e-02a8-4f21-971d-2d4e00ce744b
+
+	measure 'T Título horas' = "PACIENTES POR HORA" & IF ( [T Filtra aseguradora], "  ·  " & UPPER ( [T Grupo elegido] ), "" )
+		displayFolder: Tablero
+		lineageTag: 592f7dbd-ba5c-4dac-9b06-aff592ed4de8
+
+	/// Parte de los días del historial en que el total real cayó dentro del rango anunciado 15-21 días antes (modelo principal). Medido, no supuesto.
+	measure 'P acierto día' = VAR m = MAX ( Corrida[principal] ) RETURN CALCULATE ( DIVIDE ( COUNTROWS ( FILTER ( Historial, Historial[en_rango] = TRUE () ) ), COUNTROWS ( FILTER ( Historial, NOT ISBLANK ( Historial[en_rango] ) ) ) ), REMOVEFILTERS (), Historial[modelo] = m )
+		formatString: 0%
+		displayFolder: Tablero
+		lineageTag: c61dd75e-cf84-4c5b-9d0c-17913908400b
+
+	/// Parte de las horas ya verificadas en que las llegadas reales cayeron dentro del rango por hora.
+	measure 'P acierto hora' = CALCULATE ( DIVIDE ( COUNTROWS ( FILTER ( 'Verificación hora', 'Verificación hora'[real] >= 'Verificación hora'[q10] && 'Verificación hora'[real] <= 'Verificación hora'[q90] ) ), COUNTROWS ( 'Verificación hora' ) ), REMOVEFILTERS () )
+		formatString: 0%
+		displayFolder: Tablero
+		lineageTag: 36744913-31a9-4a18-8f96-97364713a357
+
+	/// Parte de los días del historial en que lo real de la(s) aseguradora(s) del contexto cayó dentro de su rango (modelo principal).
+	measure 'P acierto aseguradora' =
+			VAR m = MAX ( Corrida[principal] )
+			VAR t = CALCULATETABLE ( ADDCOLUMNS ( VALUES ( 'Historial aseguradora'[fecha] ), "r", CALCULATE ( SUM ( 'Historial aseguradora'[real] ) ), "a", CALCULATE ( SUM ( 'Historial aseguradora'[q10] ) ), "b", CALCULATE ( SUM ( 'Historial aseguradora'[q90] ) ) ), 'Historial aseguradora'[modelo] = m )
+			RETURN DIVIDE ( COUNTROWS ( FILTER ( t, [r] >= [a] && [r] <= [b] ) ), COUNTROWS ( t ) )
+		formatString: 0%
+		displayFolder: Tablero
+		lineageTag: 77cd2584-8a1f-4e99-b73f-5856c31b27f2
+
+	measure 'D título día' = VAR f = [Fecha mostrada] RETURN UPPER ( LOOKUPVALUE ( Calendario[Etiqueta día], Calendario[Date], f ) ) & IF ( f = [Fecha hoy], "  ·  HOY", "" )
+		displayFolder: Tablero
+		lineageTag: 48c23485-e5b9-4e51-8bf1-998d7c99d95b
+
+	/// Rango de pacientes del día elegido (q10 a q90).
+	measure 'D rango' = IF ( NOT ISBLANK ( [V día] ), FORMAT ( [V mínimo día], "0" ) & " a " & FORMAT ( [V máximo día], "0" ) )
+		displayFolder: Tablero
+		lineageTag: 36a8c658-7062-4a7a-8f19-e9a032c9a190
+
+	measure 'D rango detalle' = "pacientes  ·  lo más probable: " & FORMAT ( [V día], "0" ) & "  ·  acierta " & FORMAT ( IF ( [T Filtra aseguradora], [P acierto aseguradora], [P acierto día] ), "0%" ) & " de los días"
+		displayFolder: Tablero
+		lineageTag: bedc77bf-6fc6-4589-b81a-7442c1791ba7
+
+	/// Probabilidad (del modelo) de que el día elegido tenga más pacientes que un día normal de ese tipo. Siempre del total.
+	measure 'D prob más' = [Prob. de más que lo habitual]
+		formatString: 0%
+		displayFolder: Tablero
+		lineageTag: eb5ff772-af6e-4be6-bdb9-835a0bd9b9d8
+
+	measure 'D cero' = 0
+		formatString: 0%
+		displayFolder: Tablero
+		lineageTag: 937ea00d-4182-41d2-8cce-ea9881bc327e
+
+	measure 'D uno' = 1
+		formatString: 0%
+		displayFolder: Tablero
+		lineageTag: 89ca9f24-5c23-446a-a268-ca77840698a1
+
+	measure 'D mitad' = 0.5
+		formatString: 0%
+		displayFolder: Tablero
+		lineageTag: 0ce63486-2f83-48f3-813a-cd605d4bf7b3
+
+	measure 'D pregunta título' = VAR f = [Fecha mostrada] VAR dia = SWITCH ( WEEKDAY ( f, 2 ), 1, "LUNES", 2, "MARTES", 3, "MIÉRCOLES", 4, "JUEVES", 5, "VIERNES", 6, "SÁBADO", "DOMINGO" ) RETURN "¿MÁS QUE UN " & dia & " NORMAL?"
+		displayFolder: Tablero
+		lineageTag: 442c89aa-8efb-4f8d-8386-58c1dbeae80f
+
+	measure 'D pregunta respuesta' = VAR p = [D prob más] RETURN SWITCH ( TRUE (), ISBLANK ( p ), BLANK (), p >= 0.7, "Muy probable", p >= 0.55, "Probable", p > 0.45, "Igual de probable que no", p > 0.3, "Poco probable", "Improbable" )
+		displayFolder: Tablero
+		lineageTag: ff29b23b-6f88-40fd-8b6c-8b5b5980118b
+
+	measure 'D pregunta color' = VAR p = [D prob más] RETURN SWITCH ( TRUE (), p >= 0.7, "#a82a2a", p >= 0.55, "#e34948", "#898781" )
+		displayFolder: Tablero
+		lineageTag: 235c5cfa-380c-4ee2-9e92-a1bbb6ca7f6f
+
+	measure 'D pregunta detalle' = VAR f = [Fecha mostrada] VAR dia = SWITCH ( WEEKDAY ( f, 2 ), 1, "lunes", 2, "martes", 3, "miércoles", 4, "jueves", 5, "viernes", 6, "sábado", "domingo" ) RETURN [D pregunta respuesta] & "  ·  un " & dia & " normal: " & FORMAT ( [Día habitual], "0" ) & IF ( [T Filtra aseguradora], "  ·  (todas las aseguradoras)", "" )
+		displayFolder: Tablero
+		lineageTag: 95d366e4-1607-41aa-a31f-991347edc691
+
+	measure 'D semana lunes' = VAR f = [Fecha mostrada] RETURN f - WEEKDAY ( f, 2 ) + 1
+		formatString: d mmm yyyy
+		displayFolder: Tablero
+		lineageTag: 3022fde8-e005-4ede-8ffa-b7186385398f
+
+	measure 'D semana título' = "SEMANA DEL " & UPPER ( LOOKUPVALUE ( Calendario[Semana etiqueta], Calendario[Date], [Fecha mostrada] ) )
+		displayFolder: Tablero
+		lineageTag: 8a162fa2-29f8-4d54-a00b-4714220413c2
+
+	/// Total de la semana del día elegido: rango del modelo (7 × media diaria q10-q90) para el total; aproximado para una aseguradora.
+	measure 'D semana rango' =
+			VAR l = [D semana lunes] VAR m = [Modelo mostrado]
+			VAR a = CALCULATE ( SUM ( 'Pronóstico semana'[media_q10] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l ) * 7
+			VAR b = CALCULATE ( SUM ( 'Pronóstico semana'[media_q90] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l ) * 7
+			VAR c = IF ( [T Filtra aseguradora], CALCULATE ( SUM ( 'Pronóstico aseguradora'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] >= l, 'Pronóstico aseguradora'[fecha] <= l + 6 ), CALCULATE ( SUM ( 'Pronóstico día'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] >= l, 'Pronóstico día'[fecha] <= l + 6 ) )
+			RETURN IF ( NOT [T Filtra aseguradora] && NOT ISBLANK ( a ), FORMAT ( a, "#,0" ) & " a " & FORMAT ( b, "#,0" ), IF ( NOT ISBLANK ( c ), "≈ " & FORMAT ( c, "#,0" ) ) )
+		displayFolder: Tablero
+		lineageTag: 095ffce5-04c5-43f5-9c57-df7fce611c0d
+
+	measure 'D semana detalle' =
+			VAR l = [D semana lunes] VAR m = [Modelo mostrado]
+			VAR p = CALCULATE ( AVERAGE ( 'Pronóstico semana'[p_sobre_habitual] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l )
+			VAR hab = CALCULATE ( SUM ( 'Pronóstico semana'[habitual] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l ) * 7
+			RETURN IF ( [T Filtra aseguradora] || ISBLANK ( p ), "pacientes en la semana", "pacientes  ·  " & FORMAT ( p, "0%" ) & " de prob. de superar una semana normal (" & FORMAT ( hab, "#,0" ) & ")" )
+		displayFolder: Tablero
+		lineageTag: fbd89839-81e9-4bf3-9960-4632f8cac466
+
+	measure 'D mes título' = VAR f = [Fecha mostrada] RETURN UPPER ( FORMAT ( f, "mmmm", "es-CO" ) ) & IF ( MONTH ( f ) = MONTH ( [Fecha hoy] ) && YEAR ( f ) = YEAR ( [Fecha hoy] ), " (LO QUE QUEDA)", "" )
+		displayFolder: Tablero
+		lineageTag: 1975fb1d-b1c2-40cb-9180-0de197c5a988
+
+	/// Pacientes por día en el mes del día elegido: promedio de los rangos semanales del modelo (semanas que empiezan en el mes); aproximado para una aseguradora.
+	measure 'D mes rango' =
+			VAR f = [Fecha mostrada] VAR m = [Modelo mostrado] VAR a0 = DATE ( YEAR ( f ), MONTH ( f ), 1 ) VAR b0 = EOMONTH ( f, 0 )
+			VAR a = CALCULATE ( AVERAGE ( 'Pronóstico semana'[media_q10] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] >= a0, 'Pronóstico semana'[lunes] <= b0 )
+			VAR b = CALCULATE ( AVERAGE ( 'Pronóstico semana'[media_q90] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] >= a0, 'Pronóstico semana'[lunes] <= b0 )
+			VAR c = CALCULATE ( AVERAGE ( 'Pronóstico aseguradora'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] >= a0, 'Pronóstico aseguradora'[fecha] <= b0 ) * CALCULATE ( DISTINCTCOUNT ( 'Pronóstico aseguradora'[aseguradora] ), REMOVEFILTERS ( Calendario ) )
+			RETURN IF ( NOT [T Filtra aseguradora] && NOT ISBLANK ( a ), FORMAT ( a, "0" ) & " a " & FORMAT ( b, "0" ), IF ( NOT ISBLANK ( c ), "≈ " & FORMAT ( c, "0" ) ) )
+		displayFolder: Tablero
+		lineageTag: 93f05a6a-73d9-419f-9df2-26f57edc20b3
+
+	measure 'D mes detalle' =
+			VAR f = [Fecha mostrada] VAR m = [Modelo mostrado] VAR h = [Fecha hoy] VAR a0 = MAX ( DATE ( YEAR ( f ), MONTH ( f ), 1 ), h ) VAR b0 = EOMONTH ( f, 0 )
+			VAR tot = IF ( [T Filtra aseguradora], CALCULATE ( SUM ( 'Pronóstico aseguradora'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] >= a0, 'Pronóstico aseguradora'[fecha] <= b0 ), CALCULATE ( SUM ( 'Pronóstico día'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] >= a0, 'Pronóstico día'[fecha] <= b0 ) )
+			RETURN "pacientes por día  ·  ≈ " & FORMAT ( tot, "#,0" ) & IF ( a0 > DATE ( YEAR ( f ), MONTH ( f ), 1 ), " en lo que queda del mes", " en el mes" ) & "  ·  aproximado"
+		displayFolder: Tablero
+		lineageTag: d70f58e3-6e1a-4a56-b237-396c41656a78
+
+	/// Rango de pacientes del día (q10–q90); en la columna Total, el rango de la semana. * = festivo.
+	measure 'T Calendario celda' =
+			VAR h = [Fecha hoy] VAR m = [Modelo mostrado]
+			RETURN IF ( NOT ISBLANK ( [T Calendario] ),
+			  IF ( HASONEVALUE ( Calendario[Date] ),
+			    VAR d = VALUES ( Calendario[Date] )
+			    VAR fest = CALCULATE ( COUNTROWS ( 'Pronóstico día' ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico día'[modelo] = m, 'Pronóstico día'[fecha] = d, 'Pronóstico día'[festivo] = TRUE () ) > 0
+			    RETURN FORMAT ( [V mínimo día], "0" ) & "–" & FORMAT ( [V máximo día], "0" ) & IF ( fest, "*", "" ),
+			    VAR l = MIN ( Calendario[Semana del calendario] )
+			    VAR a = CALCULATE ( SUM ( 'Pronóstico semana'[media_q10] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l ) * 7
+			    VAR b = CALCULATE ( SUM ( 'Pronóstico semana'[media_q90] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l ) * 7
+			    RETURN IF ( NOT [T Filtra aseguradora] && NOT ISBLANK ( a ) && l >= h, FORMAT ( a, "#,0" ) & "–" & FORMAT ( b, "#,0" ), "≈ " & FORMAT ( [T Calendario], "#,0" ) ) ) )
+		displayFolder: Tablero
+		lineageTag: bd225e0c-3241-4290-aabb-6315960d424c
+
+	/// Rango de pacientes en la hora (q10–q90 del modelo; para aseguradoras sin rango por hora, intervalo de Poisson del 80 % alrededor de lo esperado).
+	measure 'T Hora celda' =
+			VAR v = [T Hora] VAR m = [Modelo mostrado] VAR f = [Fecha mostrada]
+			RETURN IF ( NOT ISBLANK ( v ),
+			  IF ( [T Filtra aseguradora],
+			    VAR filas = CALCULATETABLE ( 'Aseguradora por hora', REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Aseguradora por hora'[modelo] = m, 'Aseguradora por hora'[fecha] = f )
+			    VAR sin_rango = COUNTROWS ( FILTER ( filas, ISBLANK ( 'Aseguradora por hora'[q10] ) ) )
+			    VAR l = SUMX ( filas, 'Aseguradora por hora'[esperado] )
+			    VAR a = IF ( sin_rango = 0, SUMX ( filas, 'Aseguradora por hora'[q10] ), MINX ( FILTER ( GENERATESERIES ( 0, 80 ), POISSON.DIST ( [Value], l, TRUE ) >= 0.1 ), [Value] ) )
+			    VAR b = IF ( sin_rango = 0, SUMX ( filas, 'Aseguradora por hora'[q90] ), MINX ( FILTER ( GENERATESERIES ( 0, 80 ), POISSON.DIST ( [Value], l, TRUE ) >= 0.9 ), [Value] ) )
+			    RETURN FORMAT ( a, "0" ) & "–" & FORMAT ( b, "0" ),
+			    VAR a = CALCULATE ( SUM ( 'Pronóstico hora'[q10] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico hora'[modelo] = m, 'Pronóstico hora'[fecha] = f )
+			    VAR b = CALCULATE ( SUM ( 'Pronóstico hora'[q90] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico hora'[modelo] = m, 'Pronóstico hora'[fecha] = f )
+			    RETURN FORMAT ( a, "0" ) & "–" & FORMAT ( b, "0" ) ) )
+		displayFolder: Tablero
+		lineageTag: 16dd54b0-0e44-4d3e-9622-069b4d9ee8e8
+
+	/// Valor central por aseguradora del periodo elegido: la hora tocada, el día tocado, la semana tocada o, sin nada, hoy. Sirve para la barra.
+	measure 'A pacientes' = VAR m = [Modelo mostrado] VAR f = [Fecha mostrada] RETURN IF ( ISFILTERED ( Hora ), CALCULATE ( SUM ( 'Aseguradora por hora'[esperado] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Aseguradora por hora'[modelo] = m, 'Aseguradora por hora'[fecha] = f ), [T Aseguradoras] )
+		formatString: 0
+		displayFolder: Tablero
+		lineageTag: 8f9e1bd5-c321-47de-97da-5f8c81895a1d
+
+	/// Rango por aseguradora del periodo elegido.
+	measure 'A rango' =
+			VAR m = [Modelo mostrado] VAR f = [Fecha mostrada]
+			RETURN IF ( ISBLANK ( [A pacientes] ), BLANK (),
+			  IF ( ISFILTERED ( Hora ),
+			    VAR filas = CALCULATETABLE ( 'Aseguradora por hora', REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Aseguradora por hora'[modelo] = m, 'Aseguradora por hora'[fecha] = f )
+			    VAR sin_rango = COUNTROWS ( FILTER ( filas, ISBLANK ( 'Aseguradora por hora'[q10] ) ) )
+			    VAR l = SUMX ( filas, 'Aseguradora por hora'[esperado] )
+			    VAR a = IF ( sin_rango = 0, SUMX ( filas, 'Aseguradora por hora'[q10] ), MINX ( FILTER ( GENERATESERIES ( 0, 80 ), POISSON.DIST ( [Value], l, TRUE ) >= 0.1 ), [Value] ) )
+			    VAR b = IF ( sin_rango = 0, SUMX ( filas, 'Aseguradora por hora'[q90] ), MINX ( FILTER ( GENERATESERIES ( 0, 80 ), POISSON.DIST ( [Value], l, TRUE ) >= 0.9 ), [Value] ) )
+			    RETURN FORMAT ( a, "0" ) & " a " & FORMAT ( b, "0" ),
+			    IF ( HASONEVALUE ( Calendario[Date] ) || NOT ISFILTERED ( Calendario ),
+			      FORMAT ( [Aseguradora mínimo], "0" ) & " a " & FORMAT ( [Aseguradora máximo], "0" ),
+			      "≈ " & FORMAT ( [A pacientes], "#,0" ) ) ) )
+		displayFolder: Tablero
+		lineageTag: 5bd8d225-4d92-472a-9b7a-187bde21540f
+
+	/// Con qué frecuencia ha acertado ese rango: por día, medido en el historial de cada aseguradora; por hora, en las horas ya verificadas (del total).
+	measure 'A acierta' = IF ( ISBLANK ( [A pacientes] ), BLANK (), IF ( ISFILTERED ( Hora ), [P acierto hora], IF ( HASONEVALUE ( Calendario[Date] ) || NOT ISFILTERED ( Calendario ), [P acierto aseguradora] ) ) )
+		formatString: 0%
+		displayFolder: Tablero
+		lineageTag: 810a0dce-e42f-4c88-81f9-95e04a88bebb
+
+	measure 'T Nota rangos' = "Las cifras son rangos, no cantidades exactas: entre cuántos y cuántos pacientes es probable que lleguen.  «Acierta " & FORMAT ( [P acierto día], "0%" ) & "» quiere decir que, de cada 100 días ya pasados, en " & FORMAT ( 100 * [P acierto día], "0" ) & " el número real quedó dentro del rango."
+		displayFolder: Tablero
+		lineageTag: dc916129-a421-4d28-b98a-a1fd1bc9736f
+
+	measure 'D rango corto' = IF ( NOT ISBLANK ( [V día] ), FORMAT ( [V mínimo día], "0" ) & " – " & FORMAT ( [V máximo día], "0" ) )
+		displayFolder: Tablero
+		lineageTag: 41a144bb-e75d-470a-9f31-5e4edf4667b1
+
+	/// Probabilidad medida de que el real quede en el rango del día (total o aseguradora elegida).
+	measure 'D píldora' = FORMAT ( 100 * IF ( [T Filtra aseguradora], [P acierto aseguradora], [P acierto día] ), "0" ) & " % de probabilidad"
+		displayFolder: Tablero
+		lineageTag: a2b2eea9-fcc9-4933-8e68-82d609a6e76b
+
+	measure 'H píldora' = FORMAT ( 100 * [P acierto hora], "0" ) & " % de probabilidad"
+		displayFolder: Tablero
+		lineageTag: 4a07ae30-9bed-4756-9ce8-3891053040c8
+
+	/// Largo de la barra = valor más probable; la etiqueta (formato dinámico) muestra el rango y su probabilidad.
+	measure 'A barra' = [A pacientes]
+		displayFolder: Tablero
+		lineageTag: 4b1d252d-da33-40e8-bef1-83398e9fcb00
+
+		formatStringDefinition = VAR r = SUBSTITUTE ( [A rango], " a ", "–" ) VAR p = [A acierta] RETURN """" & r & IF ( NOT ISBLANK ( p ), "   ·  " & FORMAT ( 100 * p, "0" ) & " %", "" ) & """"
+
+	/// Pacientes por día de cada semana (eje: Calendario[Semana del calendario]). Total: media del modelo; aseguradora: promedio de sus valores centrales. Etiqueta: el rango (q10–q90 de la media diaria) o «≈».
+	measure 'S por día' =
+			VAR l = MIN ( Calendario[Semana del calendario] ) VAR m = [Modelo mostrado] VAR h = [Fecha hoy]
+			RETURN IF ( HASONEVALUE ( Calendario[Semana del calendario] ) && l >= h - 6,
+			  IF ( [T Filtra aseguradora],
+			    DIVIDE ( CALCULATE ( SUM ( 'Pronóstico aseguradora'[q50] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] >= l, 'Pronóstico aseguradora'[fecha] <= l + 6 ), CALCULATE ( DISTINCTCOUNT ( 'Pronóstico aseguradora'[fecha] ), REMOVEFILTERS ( Modelo ), REMOVEFILTERS ( Calendario ), 'Pronóstico aseguradora'[modelo] = m, 'Pronóstico aseguradora'[fecha] >= l, 'Pronóstico aseguradora'[fecha] <= l + 6 ) ),
+			    CALCULATE ( SUM ( 'Pronóstico semana'[media_q50] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l ) ) )
+		displayFolder: Tablero
+		lineageTag: 5c053568-153b-405f-b5db-74254916047c
+
+		formatStringDefinition =
+				VAR l = MIN ( Calendario[Semana del calendario] ) VAR m = [Modelo mostrado]
+				VAR a = CALCULATE ( SUM ( 'Pronóstico semana'[media_q10] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l )
+				VAR b = CALCULATE ( SUM ( 'Pronóstico semana'[media_q90] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l )
+				RETURN IF ( [T Filtra aseguradora] || ISBLANK ( a ), """≈ ""0", """" & FORMAT ( a, "0" ) & "–" & FORMAT ( b, "0" ) & """" )
+
+	/// Rojo intenso = semana probablemente por encima de lo normal; rosado = no. Azul si hay aseguradora elegida.
+	measure 'S color' =
+			VAR l = MIN ( Calendario[Semana del calendario] ) VAR m = [Modelo mostrado]
+			VAR p = CALCULATE ( AVERAGE ( 'Pronóstico semana'[p_sobre_habitual] ), REMOVEFILTERS ( Modelo ), 'Pronóstico semana'[modelo] = m, 'Pronóstico semana'[lunes] = l )
+			RETURN IF ( [T Filtra aseguradora], "#6da7ec", SWITCH ( TRUE (), ISBLANK ( p ), "#f8c4c2", p >= 0.7, "#a82a2a", p >= 0.55, "#e34948", "#f8c4c2" ) )
+		displayFolder: Tablero
+		lineageTag: 2f037f99-431e-4f5f-a3e9-da85d00c9a6a
+
+	measure 'S título' = "PRÓXIMAS SEMANAS  ·  PACIENTES POR DÍA" & IF ( [T Filtra aseguradora], "  ·  " & UPPER ( [T Grupo elegido] ), "" )
+		displayFolder: Tablero
+		lineageTag: 02b4f3a9-a924-4a26-b347-086cd493fb57
+
+	column oculta
+		isHidden
+		lineageTag: 4cb1ae31-fd3b-4e7c-9828-078aca5940a4
+		isNameInferred
+		sourceColumn: [oculta]
+
+	partition Medidas = calculated
+		mode: import
+		source = ROW ( "oculta", BLANK () )
+

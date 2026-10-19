@@ -1,0 +1,94 @@
+/// Un día por fila, del 1-ene-2025 (inicio del historial) al 31-dic del año siguiente. No depende de las tablas de hechos: si dependiera, Desktop ve un ciclo con las relaciones al aplicar las consultas. Semana del calendario = lunes de esa semana.
+table Calendario
+	lineageTag: e2d57bf9-4e3f-40bd-a21c-f698be20205d
+
+	column Date
+		formatString: d mmm yyyy
+		lineageTag: cb7d02af-4c2e-48f6-aa42-0f52de385e5e
+		isNameInferred
+		sourceColumn: [Date]
+
+	column Año
+		lineageTag: f0698251-a5e5-4881-8b71-262bb7a53b46
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Año]
+
+	column 'Mes número'
+		isHidden
+		lineageTag: 10ae195b-8c8f-467a-9b29-532418d6ae06
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Mes número]
+
+	column Mes
+		lineageTag: d2a5f3c1-eeab-4d14-aeb1-990635f6c919
+		isNameInferred
+		sourceColumn: [Mes]
+		sortByColumn: 'Mes número'
+
+	column 'Día semana número'
+		isHidden
+		lineageTag: cdfd4247-f3e7-46f3-ab1b-309529170cc2
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Día semana número]
+
+	column 'Día semana'
+		lineageTag: 8e8d8b48-7498-46b1-b697-fce82c0bef45
+		isNameInferred
+		sourceColumn: [Día semana]
+		sortByColumn: 'Día semana número'
+
+	column 'Día del mes'
+		lineageTag: be4b2d1a-057e-4e75-a16c-cc1a23701d81
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Día del mes]
+
+	column 'Semana del calendario'
+		formatString: d mmm
+		lineageTag: bb94ca4a-b20a-473c-b7b1-19933e71808c
+		isNameInferred
+		sourceColumn: [Semana del calendario]
+
+	column 'Etiqueta día'
+		lineageTag: f80d2dc4-1f54-491c-a1d7-efba9fec5d6d
+		isNameInferred
+		sourceColumn: [Etiqueta día]
+
+	column 'Es futuro'
+		lineageTag: d104862f-3fce-45d4-9b83-7bdbe9f539f3
+		isNameInferred
+		sourceColumn: [Es futuro]
+
+	column 'Semana etiqueta'
+		lineageTag: 324ea1bc-c720-4287-9b95-7ed2f38c1863
+		isNameInferred
+		sourceColumn: [Semana etiqueta]
+		sortByColumn: 'Semana del calendario'
+
+	column 'Día corto'
+		lineageTag: 0e938fe9-572e-4112-8964-1ae4cece09d3
+		isNameInferred
+		sourceColumn: [Día corto]
+		sortByColumn: Date
+
+	partition Calendario = calculated
+		mode: import
+		source =
+				ADDCOLUMNS (
+				    CALENDAR ( DATE ( 2025, 1, 1 ), DATE ( YEAR ( TODAY () ) + 1, 12, 31 ) ),
+				    "Año", YEAR ( [Date] ),
+				    "Mes número", YEAR ( [Date] ) * 100 + MONTH ( [Date] ),
+				    "Mes", SWITCH ( MONTH ( [Date] ), 1, "enero", 2, "febrero", 3, "marzo", 4, "abril", 5, "mayo", 6, "junio", 7, "julio", 8, "agosto", 9, "septiembre", 10, "octubre", 11, "noviembre", "diciembre" ) & " " & YEAR ( [Date] ),
+				    "Día semana número", WEEKDAY ( [Date], 2 ),
+				    "Día semana", SWITCH ( WEEKDAY ( [Date], 2 ), 1, "Lun", 2, "Mar", 3, "Mié", 4, "Jue", 5, "Vie", 6, "Sáb", "Dom" ),
+				    "Día del mes", DAY ( [Date] ),
+				    "Semana del calendario", [Date] - WEEKDAY ( [Date], 2 ) + 1,
+				    "Semana etiqueta", VAR l = [Date] - WEEKDAY ( [Date], 2 ) + 1 RETURN DAY ( l ) & IF ( MONTH ( l ) <> MONTH ( l + 6 ), " " & SWITCH ( MONTH ( l ), 1, "ene", 2, "feb", 3, "mar", 4, "abr", 5, "may", 6, "jun", 7, "jul", 8, "ago", 9, "sep", 10, "oct", 11, "nov", "dic" ), "" ) & "–" & DAY ( l + 6 ) & " " & SWITCH ( MONTH ( l + 6 ), 1, "ene", 2, "feb", 3, "mar", 4, "abr", 5, "may", 6, "jun", 7, "jul", 8, "ago", 9, "sep", 10, "oct", 11, "nov", "dic" ),
+				    "Día corto", SWITCH ( WEEKDAY ( [Date], 2 ), 1, "lun", 2, "mar", 3, "mié", 4, "jue", 5, "vie", 6, "sáb", "dom" ) & " " & DAY ( [Date] ) & " " & SWITCH ( MONTH ( [Date] ), 1, "ene", 2, "feb", 3, "mar", 4, "abr", 5, "may", 6, "jun", 7, "jul", 8, "ago", 9, "sep", 10, "oct", 11, "nov", "dic" ),
+				    "Etiqueta día", SWITCH ( WEEKDAY ( [Date], 2 ), 1, "lunes", 2, "martes", 3, "miércoles", 4, "jueves", 5, "viernes", 6, "sábado", "domingo" ) & " " & DAY ( [Date] ) & " de " & SWITCH ( MONTH ( [Date] ), 1, "enero", 2, "febrero", 3, "marzo", 4, "abril", 5, "mayo", 6, "junio", 7, "julio", 8, "agosto", 9, "septiembre", 10, "octubre", 11, "noviembre", "diciembre" ),
+				    "Es futuro", [Date] > TODAY () - 1
+				)
+

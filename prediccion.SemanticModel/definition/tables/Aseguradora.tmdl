@@ -1,0 +1,39 @@
+/// Grupos de aseguradora. En el tablero se muestran en 5 grupos (columna Grupo): las tres grandes, Otras EPS y Otros.
+table Aseguradora
+	lineageTag: 026ca141-dfe6-427a-b688-5e5433a342af
+
+	column Aseguradora
+		lineageTag: 8a9218d3-dd0d-4be4-9b4a-b7742999968a
+		isNameInferred
+		sourceColumn: [Aseguradora]
+		sortByColumn: Orden
+
+	column Orden
+		isHidden
+		lineageTag: c6046a6e-9332-4d73-b6e6-17ef4c03a5ef
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Orden]
+
+	column Grande
+		lineageTag: 63509c5f-4b16-4b21-824c-2e21dd52c9c0
+		isNameInferred
+		sourceColumn: [Grande]
+
+	column Grupo
+		lineageTag: 62517c10-7829-49d8-a9d1-650499be4be2
+		isNameInferred
+		sourceColumn: [Grupo]
+		sortByColumn: 'Orden grupo'
+
+	column 'Orden grupo'
+		isHidden
+		lineageTag: e0054d11-dd95-45ab-83f6-7dd6c2c70429
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Orden grupo]
+
+	partition Aseguradora = calculated
+		mode: import
+		source = DATATABLE ( "Aseguradora", STRING, "Orden", INTEGER, "Grande", BOOLEAN, "Grupo", STRING, "Orden grupo", INTEGER, { { "Nueva EPS", 1, TRUE, "Nueva EPS", 1 }, { "Sura EPS", 2, TRUE, "Sura EPS", 2 }, { "Otras EPS", 3, FALSE, "Otras EPS", 4 }, { "Régimen especial", 4, FALSE, "Régimen especial", 3 }, { "SOAT (tránsito)", 5, FALSE, "Otros (SOAT, ARL, prepagada)", 5 }, { "ARL (laboral)", 6, FALSE, "Otros (SOAT, ARL, prepagada)", 5 }, { "Prepagada", 7, FALSE, "Otros (SOAT, ARL, prepagada)", 5 }, { "Otros", 8, FALSE, "Otros (SOAT, ARL, prepagada)", 5 } } )
+

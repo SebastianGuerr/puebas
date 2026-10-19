@@ -1,0 +1,35 @@
+model Model
+	culture: es-ES
+	defaultPowerBIDataSourceVersion: powerBI_V3
+	sourceQueryCulture: es-CO
+	valueFilterBehavior: independent
+	dataAccessOptions
+		legacyRedirects
+		returnErrorValuesAsNull
+
+annotation __PBI_TimeIntelligenceEnabled = 1
+
+annotation PBI_ProTooling = ["DevMode","MCP-PBIModeling"]
+
+ref table Corrida
+ref table 'Pronóstico día'
+ref table 'Pronóstico jornada'
+ref table 'Pronóstico hora'
+ref table 'Pronóstico aseguradora'
+ref table 'Aseguradora por hora'
+ref table 'Red de urgencias'
+ref table 'Pronóstico semana'
+ref table Historial
+ref table 'Historial piezas'
+ref table Semáforo
+ref table Calendario
+ref table Modelo
+ref table Hora
+ref table Jornada
+ref table Aseguradora
+ref table Medidas
+ref table 'Historial aseguradora'
+ref table 'Verificación hora'
+
+ref cultureInfo es-ES
+

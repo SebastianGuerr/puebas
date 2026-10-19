@@ -1,0 +1,4 @@
+/// Carpeta donde python -m operacion.powerbi deja los CSV. Para moverlo a otro equipo o a una carpeta compartida, se cambia solo aquí.
+expression CarpetaDatos = "C:\Users\ad6708\Documents\puebas\salidas\powerbi\" meta [IsParameterQuery=true, Type="Text", IsParameterQueryRequired=true]
+	lineageTag: 4d57d1ad-89a6-4f86-8c40-2cbd438eaabe
+

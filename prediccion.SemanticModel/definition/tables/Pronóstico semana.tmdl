@@ -1,0 +1,62 @@
+/// Semanas completas: media diaria (rango y central), semana habitual y probabilidad de superarla.
+table 'Pronóstico semana'
+	lineageTag: 2efcdfb5-3d64-4923-965a-9d02db71be41
+
+	column lunes
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: e322d187-98ce-42d4-8b3a-86965b53813e
+		sourceColumn: lunes
+
+	column modelo
+		dataType: string
+		lineageTag: 0c630163-7192-4918-a81d-c5dee9ea6b9c
+		sourceColumn: modelo
+
+	column media_q10
+		dataType: double
+		formatString: 0
+		lineageTag: 2edd00d1-d9b1-4a0a-89a6-973addaf8a52
+		sourceColumn: media_q10
+
+	column media_q50
+		dataType: double
+		formatString: 0
+		lineageTag: 5b6be926-3908-41c5-bb2f-459c4b64cd30
+		sourceColumn: media_q50
+
+	column media_q90
+		dataType: double
+		formatString: 0
+		lineageTag: a992565c-9650-4a1d-990d-0654d2962f3f
+		sourceColumn: media_q90
+
+	column habitual
+		dataType: double
+		formatString: 0
+		lineageTag: fac3d859-1c6a-4841-ac42-ffb002da7cc6
+		sourceColumn: habitual
+
+	column p_sobre_habitual
+		dataType: double
+		formatString: 0%
+		lineageTag: 5a7ef288-b924-4892-85f7-ed7bbf2c4af0
+		sourceColumn: p_sobre_habitual
+
+	column semana
+		dataType: string
+		lineageTag: 628d8d9f-e35d-495c-b370-10c6fe2693d2
+		sourceColumn: semana
+		sortByColumn: lunes
+
+	partition 'Pronóstico semana' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "pronostico_semana.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"lunes", type date}, {"modelo", type text}, {"media_q10", type number}, {"media_q50", type number}, {"media_q90", type number}, {"habitual", type number}, {"p_sobre_habitual", type number}}, "en-US"),
+				    Etiqueta = Table.AddColumn(Tipos, "semana", each "del " & Date.ToText([lunes], [Format = "d MMM", Culture = "es-CO"]) & " al " & Date.ToText(Date.AddDays([lunes], 6), [Format = "d MMM", Culture = "es-CO"]), type text)
+				in
+				    Etiqueta
+

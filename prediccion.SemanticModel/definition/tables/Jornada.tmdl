@@ -1,0 +1,21 @@
+/// Las cuatro jornadas del día, en orden.
+table Jornada
+	lineageTag: 2a818b32-caf2-42ac-898e-1707a4b8b366
+
+	column Jornada
+		lineageTag: 9ea85b34-3506-4aa8-9979-b9517d96b559
+		isNameInferred
+		sourceColumn: [Jornada]
+		sortByColumn: Orden
+
+	column Orden
+		isHidden
+		lineageTag: 31a202ca-115b-49d7-aa23-2e6b1799a720
+		summarizeBy: none
+		isNameInferred
+		sourceColumn: [Orden]
+
+	partition Jornada = calculated
+		mode: import
+		source = DATATABLE ( "Jornada", STRING, "Orden", INTEGER, { { "Madrugada (0-6 h)", 1 }, { "Mañana (6-12 h)", 2 }, { "Tarde (12-18 h)", 3 }, { "Noche (18-24 h)", 4 } } )
+

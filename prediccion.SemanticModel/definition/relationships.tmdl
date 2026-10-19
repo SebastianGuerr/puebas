@@ -1,0 +1,84 @@
+relationship 'Pronóstico día_fecha_Calendario_Date'
+	fromColumn: 'Pronóstico día'.fecha
+	toColumn: Calendario.Date
+
+relationship 'Pronóstico jornada_fecha_Calendario_Date'
+	fromColumn: 'Pronóstico jornada'.fecha
+	toColumn: Calendario.Date
+
+relationship 'Pronóstico hora_fecha_Calendario_Date'
+	fromColumn: 'Pronóstico hora'.fecha
+	toColumn: Calendario.Date
+
+relationship 'Pronóstico aseguradora_fecha_Calendario_Date'
+	fromColumn: 'Pronóstico aseguradora'.fecha
+	toColumn: Calendario.Date
+
+relationship 'Aseguradora por hora_fecha_Calendario_Date'
+	fromColumn: 'Aseguradora por hora'.fecha
+	toColumn: Calendario.Date
+
+relationship 'Red de urgencias_fecha_Calendario_Date'
+	fromColumn: 'Red de urgencias'.fecha
+	toColumn: Calendario.Date
+
+relationship Historial_fecha_Calendario_Date
+	fromColumn: Historial.fecha
+	toColumn: Calendario.Date
+
+relationship 'Historial piezas_fecha_Calendario_Date'
+	fromColumn: 'Historial piezas'.fecha
+	toColumn: Calendario.Date
+
+relationship 'Pronóstico día_modelo_Modelo_Modelo'
+	fromColumn: 'Pronóstico día'.modelo
+	toColumn: Modelo.Modelo
+
+relationship 'Pronóstico jornada_modelo_Modelo_Modelo'
+	fromColumn: 'Pronóstico jornada'.modelo
+	toColumn: Modelo.Modelo
+
+relationship 'Pronóstico hora_modelo_Modelo_Modelo'
+	fromColumn: 'Pronóstico hora'.modelo
+	toColumn: Modelo.Modelo
+
+relationship 'Pronóstico aseguradora_modelo_Modelo_Modelo'
+	fromColumn: 'Pronóstico aseguradora'.modelo
+	toColumn: Modelo.Modelo
+
+relationship 'Pronóstico semana_modelo_Modelo_Modelo'
+	fromColumn: 'Pronóstico semana'.modelo
+	toColumn: Modelo.Modelo
+
+relationship Historial_modelo_Modelo_Modelo
+	fromColumn: Historial.modelo
+	toColumn: Modelo.Modelo
+
+relationship 'Historial piezas_modelo_Modelo_Modelo'
+	fromColumn: 'Historial piezas'.modelo
+	toColumn: Modelo.Modelo
+
+relationship 'Pronóstico jornada_jornada_Jornada_Jornada'
+	fromColumn: 'Pronóstico jornada'.jornada
+	toColumn: Jornada.Jornada
+
+relationship 'Pronóstico hora_hora_Hora_Value'
+	fromColumn: 'Pronóstico hora'.hora
+	toColumn: Hora.Value
+
+relationship 'Aseguradora por hora_hora_Hora_Value'
+	fromColumn: 'Aseguradora por hora'.hora
+	toColumn: Hora.Value
+
+relationship 'Pronóstico aseguradora_aseguradora_Aseguradora_Aseguradora'
+	fromColumn: 'Pronóstico aseguradora'.aseguradora
+	toColumn: Aseguradora.Aseguradora
+
+relationship 'Aseguradora por hora_aseguradora_Aseguradora_Aseguradora'
+	fromColumn: 'Aseguradora por hora'.aseguradora
+	toColumn: Aseguradora.Aseguradora
+
+relationship 'Historial aseguradora_aseguradora_Aseguradora_Aseguradora'
+	fromColumn: 'Historial aseguradora'.aseguradora
+	toColumn: Aseguradora.Aseguradora
+

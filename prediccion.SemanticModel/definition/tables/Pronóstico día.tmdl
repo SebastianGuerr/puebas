@@ -1,0 +1,130 @@
+/// Una fila por día y modelo: rango del 80 % (q10-q90), valor central (q50), día habitual y probabilidad de superarlo.
+table 'Pronóstico día'
+	lineageTag: 83b27bae-fdb5-4193-bf43-bab5cea4871a
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: bad7e5b9-05ee-44ff-bddc-77dcf29a95ff
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: 847d1629-53b4-4883-bab5-2258c3daef62
+		sourceColumn: modelo
+
+	column papel
+		dataType: string
+		lineageTag: 0920440c-ca66-4673-80e8-29ac002d4b79
+		sourceColumn: papel
+
+	column q10
+		dataType: double
+		formatString: 0
+		lineageTag: c337c4cc-c0d8-4bfb-8b17-86c165abef57
+		sourceColumn: q10
+
+	column q25
+		dataType: double
+		formatString: 0
+		lineageTag: 42901157-d607-420c-b40f-68bc656bb60d
+		sourceColumn: q25
+
+	column q50
+		dataType: double
+		formatString: 0
+		lineageTag: 56f278b8-0a8d-47d2-a8c4-fb23df8363b8
+		sourceColumn: q50
+
+	column q75
+		dataType: double
+		formatString: 0
+		lineageTag: 7364f030-2788-426c-abd9-37497c4895cb
+		sourceColumn: q75
+
+	column q90
+		dataType: double
+		formatString: 0
+		lineageTag: 74554634-25b8-4815-987a-7fff55682ce1
+		sourceColumn: q90
+
+	column habitual
+		dataType: double
+		formatString: 0
+		lineageTag: b1df0b12-cdac-4ef7-a952-4cded435330f
+		sourceColumn: habitual
+
+	column p_sube
+		dataType: double
+		formatString: 0%
+		lineageTag: a69dc8c3-9875-49d8-a6e2-050244c7f706
+		sourceColumn: p_sube
+
+	column festivo
+		dataType: boolean
+		lineageTag: 741e2d5b-6e12-4d10-bbe1-6cb643e5aed8
+		sourceColumn: festivo
+
+	column largo_plazo
+		dataType: boolean
+		lineageTag: 525f0670-a9f2-48e6-b670-cb6018eb55a8
+		sourceColumn: largo_plazo
+
+	column adelanto
+		dataType: int64
+		lineageTag: 567c0a2a-ad7b-493d-9029-e5eb80b57331
+		summarizeBy: none
+		sourceColumn: adelanto
+
+	column pico_manana
+		dataType: int64
+		lineageTag: 3675e3d3-76c1-4feb-9609-8edd80c54f97
+		summarizeBy: none
+		sourceColumn: pico_manana
+
+	column pico_manana_por_hora
+		dataType: double
+		formatString: 0.0
+		lineageTag: 22d56f31-fdba-4369-b118-55d3acc14c8a
+		sourceColumn: pico_manana_por_hora
+
+	column pico_tarde
+		dataType: int64
+		lineageTag: 58e6c622-092c-4210-b632-9b6fc38e35c6
+		summarizeBy: none
+		sourceColumn: pico_tarde
+
+	column pico_tarde_por_hora
+		dataType: double
+		formatString: 0.0
+		lineageTag: 5ac9d7c1-7ff5-4dca-89e7-fbcb5680603f
+		sourceColumn: pico_tarde_por_hora
+
+	column f_red
+		dataType: double
+		formatString: 0.00
+		lineageTag: 7182c5be-78a8-4918-a02d-83530840ab4c
+		sourceColumn: f_red
+
+	column q50_sin_red
+		dataType: double
+		formatString: 0
+		lineageTag: 632a262a-8028-483a-b61e-637476a673f8
+		sourceColumn: q50_sin_red
+
+	column dif_habitual
+		dataType: double
+		formatString: +0%;-0%;0%
+		lineageTag: 73f0deb6-198a-423c-b607-3299f006c561
+		sourceColumn: dif_habitual
+
+	partition 'Pronóstico día' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "pronostico_dia.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"papel", type text}, {"q10", type number}, {"q25", type number}, {"q50", type number}, {"q75", type number}, {"q90", type number}, {"habitual", type number}, {"p_sube", type number}, {"festivo", type logical}, {"largo_plazo", type logical}, {"adelanto", Int64.Type}, {"pico_manana", Int64.Type}, {"pico_manana_por_hora", type number}, {"pico_tarde", Int64.Type}, {"pico_tarde_por_hora", type number}, {"f_red", type number}, {"q50_sin_red", type number}, {"dif_habitual", type number}}, "en-US")
+				in
+				    Tipos
+

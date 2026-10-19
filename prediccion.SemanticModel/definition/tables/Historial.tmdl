@@ -1,0 +1,122 @@
+/// Cómo ha predicho: lo que cada modelo dijo 15 a 21 días antes frente a lo real. Columnas _red: la misma predicción corregida por la red de urgencias, donde existe.
+table Historial
+	lineageTag: f9c6ab01-b262-4086-9d88-763cdcc6fef7
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: b1b319bf-d785-43f0-b00f-d55bd5e45ef5
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: bf397c08-5f52-45fe-aa2f-17decc15176a
+		sourceColumn: modelo
+
+	column fuente
+		dataType: string
+		lineageTag: 34ed1d05-df97-4a6b-b2de-de3f28a72842
+		sourceColumn: fuente
+
+	column origen
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: c84ddc41-bdb0-4088-9454-7a49cd252efd
+		sourceColumn: origen
+
+	column adelanto
+		dataType: int64
+		lineageTag: 63a53923-38a0-478d-8fb4-ce83b48b822a
+		summarizeBy: none
+		sourceColumn: adelanto
+
+	column q10
+		dataType: double
+		formatString: 0
+		lineageTag: 98992b7e-ed1f-4241-9906-d9c4928077d1
+		sourceColumn: q10
+
+	column q50
+		dataType: double
+		formatString: 0
+		lineageTag: 6914e35c-8af7-45bd-b6cc-65b5615ee341
+		sourceColumn: q50
+
+	column q90
+		dataType: double
+		formatString: 0
+		lineageTag: ade56cbe-6eab-44e9-a55d-1325da4aaca7
+		sourceColumn: q90
+
+	column real
+		dataType: double
+		formatString: 0
+		lineageTag: b872e31a-618f-4eec-97aa-72848651c8d3
+		sourceColumn: real
+
+	column en_rango
+		dataType: boolean
+		lineageTag: e96afde1-4b9a-4052-8ba4-a7b5a3d544e6
+		sourceColumn: en_rango
+
+	column error_pct
+		dataType: double
+		formatString: 0.0
+		lineageTag: 75c6a2f4-7d32-4344-8fa2-07d85c6d8ffa
+		sourceColumn: error_pct
+
+	column subio
+		dataType: boolean
+		lineageTag: 6e607b02-1e57-4fe9-b69a-0168bf0c6d37
+		sourceColumn: subio
+
+	column acierta_sube
+		dataType: boolean
+		lineageTag: d771b4b7-4b11-426a-8786-957a38da48a9
+		sourceColumn: acierta_sube
+
+	column q10_red
+		dataType: double
+		formatString: 0
+		lineageTag: 82069278-9aa2-4acb-b4d0-891020f13577
+		sourceColumn: q10_red
+
+	column q50_red
+		dataType: double
+		formatString: 0
+		lineageTag: 418d7cee-6097-42bc-8f80-655c6a3d2420
+		sourceColumn: q50_red
+
+	column q90_red
+		dataType: double
+		formatString: 0
+		lineageTag: b6404bd4-f8af-4985-b9eb-e1e394393465
+		sourceColumn: q90_red
+
+	column en_rango_red
+		dataType: boolean
+		lineageTag: 569a383b-83a5-4fc2-8df0-1ea947bd54fc
+		sourceColumn: en_rango_red
+
+	column error_pct_red
+		dataType: double
+		formatString: 0.0
+		lineageTag: bb99212b-5e8b-4ad3-a4cd-ac27af7d4575
+		sourceColumn: error_pct_red
+
+	column habitual
+		dataType: double
+		formatString: 0
+		lineageTag: 28bafd48-f6fb-44cc-a45b-af6e24a68908
+		sourceColumn: habitual
+
+	partition Historial = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "historial.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"fuente", type text}, {"origen", type date}, {"adelanto", Int64.Type}, {"q10", type number}, {"q50", type number}, {"q90", type number}, {"real", type number}, {"en_rango", type logical}, {"error_pct", type number}, {"subio", type logical}, {"acierta_sube", type logical}, {"q10_red", type number}, {"q50_red", type number}, {"q90_red", type number}, {"en_rango_red", type logical}, {"error_pct_red", type number}, {"habitual", type number}}, "en-US")
+				in
+				    Tipos
+

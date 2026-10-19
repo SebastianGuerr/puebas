@@ -1,0 +1,69 @@
+/// Qué corrida se está mostrando: modelo principal, comparación, datos hasta, semáforo general.
+table Corrida
+	lineageTag: 9a051781-e846-4d3f-8311-af2ac8654c44
+
+	column principal
+		dataType: string
+		lineageTag: 0a7416e5-3f5b-42b3-a882-0b8142605c10
+		sourceColumn: principal
+
+	column comparacion
+		dataType: string
+		lineageTag: de9b44e8-217b-4cb7-b68e-bdb979adc680
+		sourceColumn: comparacion
+
+	column origen
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: a5008a22-1f34-4afd-9171-c3f81c22a3ac
+		sourceColumn: origen
+
+	column creado
+		dataType: dateTime
+		formatString: d mmm yyyy hh:nn
+		lineageTag: 87fce08b-7ea4-4ec9-9129-20943418c551
+		sourceColumn: creado
+
+	column ajuste_red
+		dataType: string
+		lineageTag: 518c0542-ef1d-45f3-8812-449ba19cefc5
+		sourceColumn: ajuste_red
+
+	column validado_hasta
+		dataType: int64
+		lineageTag: f84a3f82-442f-4ea1-8a77-708075fdb0b6
+		summarizeBy: none
+		sourceColumn: validado_hasta
+
+	column estado_general
+		dataType: string
+		lineageTag: f8a378e8-1b3c-40f0-b16c-e15a12a3b14e
+		sourceColumn: estado_general
+
+	column nivel_general
+		dataType: string
+		lineageTag: 1cddb50a-e5ee-4bdd-af41-93591fe0fc47
+		sourceColumn: nivel_general
+
+	column semaforo_calculado
+		dataType: dateTime
+		formatString: d mmm yyyy hh:nn
+		lineageTag: 87adf40c-e422-4bc7-8126-6f43d08b5eb5
+		sourceColumn: semaforo_calculado
+
+	column exportado
+		dataType: dateTime
+		formatString: d mmm yyyy hh:nn
+		lineageTag: 5a5ebd2c-6926-4d23-93fb-9c90e8437679
+		sourceColumn: exportado
+
+	partition Corrida = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "corrida.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"principal", type text}, {"comparacion", type text}, {"origen", type date}, {"creado", type datetime}, {"ajuste_red", type text}, {"validado_hasta", Int64.Type}, {"estado_general", type text}, {"nivel_general", type text}, {"semaforo_calculado", type datetime}, {"exportado", type datetime}}, "en-US")
+				in
+				    Tipos
+

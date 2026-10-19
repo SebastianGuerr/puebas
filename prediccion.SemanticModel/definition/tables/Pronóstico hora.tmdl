@@ -1,0 +1,55 @@
+/// Día × hora (0-23) y modelo: pacientes por hora.
+table 'Pronóstico hora'
+	lineageTag: e9f67fd7-b6ea-4847-a5be-d2626c4ac7fb
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: 74023d91-2efd-4c40-9ef9-563577aedf62
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: 8a42b462-b18d-4516-8d95-fec39713653b
+		sourceColumn: modelo
+
+	column hora
+		dataType: int64
+		lineageTag: 42acf6e7-849a-4a06-9bcc-cffe762f29a9
+		summarizeBy: none
+		sourceColumn: hora
+
+	column q10
+		dataType: double
+		formatString: 0.0
+		lineageTag: 5472cffe-756f-4062-a9f9-02e2d4343eef
+		sourceColumn: q10
+
+	column q50
+		dataType: double
+		formatString: 0.0
+		lineageTag: 198d16bb-31a1-4db9-b67e-f4fb944a4fd9
+		sourceColumn: q50
+
+	column q90
+		dataType: double
+		formatString: 0.0
+		lineageTag: 072b5b0d-1042-4ab0-84fe-b4863e7fc3b1
+		sourceColumn: q90
+
+	column esperado
+		dataType: double
+		formatString: 0.0
+		lineageTag: 15c16131-5423-4010-877d-e8a8c6de8c00
+		sourceColumn: esperado
+
+	partition 'Pronóstico hora' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "pronostico_hora.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"hora", Int64.Type}, {"q10", type number}, {"q50", type number}, {"q90", type number}, {"esperado", type number}}, "en-US")
+				in
+				    Tipos
+

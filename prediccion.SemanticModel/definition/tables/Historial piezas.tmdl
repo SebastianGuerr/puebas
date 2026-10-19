@@ -1,0 +1,66 @@
+/// Error por jornada y por las dos aseguradoras grandes en el historial.
+table 'Historial piezas'
+	lineageTag: ce542cd8-79f3-49a7-a1cb-da727c034f57
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: 44276f2c-7596-4e29-ad25-0fd03837c3e5
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: 4ec3918c-6594-4164-b84b-452b595da0be
+		sourceColumn: modelo
+
+	column fuente
+		dataType: string
+		lineageTag: cc0ba424-b441-4509-a4d0-b9b59886edbf
+		sourceColumn: fuente
+
+	column tipo
+		dataType: string
+		lineageTag: 603db991-920c-498e-b5c7-28319639245d
+		sourceColumn: tipo
+
+	column pieza
+		dataType: string
+		lineageTag: f7c5685b-d90a-4e9f-8ed4-4c46059e8ab8
+		sourceColumn: pieza
+		sortByColumn: orden
+
+	column orden
+		dataType: int64
+		isHidden
+		lineageTag: 2e4816ce-5a02-4ed8-9519-e308537b3ebf
+		summarizeBy: none
+		sourceColumn: orden
+
+	column q50
+		dataType: double
+		formatString: 0
+		lineageTag: 8d6b233a-f5b7-438d-ab61-08b79531f07a
+		sourceColumn: q50
+
+	column real
+		dataType: double
+		formatString: 0
+		lineageTag: 3621f39d-70ab-4a9e-82d1-9d8ffb9688d0
+		sourceColumn: real
+
+	column error_pct
+		dataType: double
+		formatString: 0.0
+		lineageTag: 3111375c-053e-4ad6-b97b-a0e7fa9e68c9
+		sourceColumn: error_pct
+
+	partition 'Historial piezas' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "historial_piezas.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"fuente", type text}, {"tipo", type text}, {"pieza", type text}, {"orden", Int64.Type}, {"q50", type number}, {"real", type number}, {"error_pct", type number}}, "en-US")
+				in
+				    Tipos
+

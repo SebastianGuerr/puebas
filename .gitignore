@@ -262,3 +262,12 @@ _[!_]*
 # Se versiona todo calendarios/capturas/ (agregados, sin persona; no se pueden rehacer) MENOS crudo/:
 # los zips nacionales de MinSalud (pesados; de ellos se versiona solo lo de Caldas) y el log de la tarea.
 /calendarios/capturas/crudo/
+
+# Copia del tablero de urgencias del hospital, solo como referencia de estilo para prediccion.pbip
+# (operacion/docs/POWERBI.md). Su modelo usa columnas identificables (GPADOCUME) y su cache.abf puede
+# guardar filas de pacientes: no se versiona nunca.
+/TABLERO TIEMPOS URGENCIAS*
+# Cache local de Power BI Desktop del pronostico: se regenera al abrir y actualizar.
+/prediccion.SemanticModel/.pbi/cache.abf
+/prediccion.SemanticModel/.pbi/localSettings.json
+/prediccion.Report/.pbi/localSettings.json

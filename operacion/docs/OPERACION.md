@@ -241,6 +241,7 @@ primeras semanas.
 | `operacion/__main__.py` | La línea de comandos |
 | `operacion/tablero.py` | El tablero de Streamlit. Solo lee `salidas/operacion/`; no reentrena ni toca la base |
 | `operacion/semanal.cmd`, `operacion/tablero.cmd` | Lanzadores para Windows |
+| `operacion/powerbi.py` | Lo mismo que el tablero, en CSV largos para `prediccion.pbip` (`docs/POWERBI.md`) |
 | `notebooks/semana.py`, `pronostico.py` | Los modelos (C0r y M3s) |
 | `notebooks/mecanismos.py` | Las variables de contexto externo de M3s |
 | `salidas/contexto/frescura.csv` | La frescura de cada fuente externa, que escribe `python -m contexto`; la lee el semáforo |

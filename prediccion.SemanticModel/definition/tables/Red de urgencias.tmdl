@@ -1,0 +1,35 @@
+/// Episodios de la red de urgencias de Manizales en curso cada día (datos/eventos_red.csv).
+table 'Red de urgencias'
+	lineageTag: c98f0b27-744c-4c19-8e9e-b97ea9cb0ee9
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: c9f73b92-d630-4c48-958c-5ef4b60b2c7a
+		sourceColumn: fecha
+
+	column lugar
+		dataType: string
+		lineageTag: 64769833-4887-4d17-9cd1-519f58bc03b2
+		sourceColumn: lugar
+
+	column aseguradora
+		dataType: string
+		lineageTag: 97f9631f-14a9-4aa8-9016-f7a9a8877d12
+		sourceColumn: aseguradora
+
+	column episodio
+		dataType: string
+		lineageTag: 53fc1855-75a2-4146-9c99-e9c3d588768e
+		sourceColumn: episodio
+
+	partition 'Red de urgencias' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "red_urgencias.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"lugar", type text}, {"aseguradora", type text}, {"episodio", type text}}, "en-US")
+				in
+				    Tipos
+

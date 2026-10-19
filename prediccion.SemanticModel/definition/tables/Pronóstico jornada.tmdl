@@ -1,0 +1,55 @@
+/// Día × jornada (madrugada, mañana, tarde, noche) y modelo.
+table 'Pronóstico jornada'
+	lineageTag: 4f4e220a-db31-4fb3-b173-a87084828e71
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: 49ca8513-ba82-4b83-8661-43a06b61656b
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: ea9628f7-891a-4d92-a99b-4b3ac14586c8
+		sourceColumn: modelo
+
+	column jornada
+		dataType: string
+		lineageTag: 4b22707f-02c8-4bb2-af51-963c2ac8ff31
+		sourceColumn: jornada
+
+	column orden
+		dataType: int64
+		isHidden
+		lineageTag: c4ea1146-c32e-43c2-b42e-c0758735bf14
+		summarizeBy: none
+		sourceColumn: orden
+
+	column q10
+		dataType: double
+		formatString: 0
+		lineageTag: e4c252b7-3569-42ba-9d30-efe235f2812a
+		sourceColumn: q10
+
+	column q50
+		dataType: double
+		formatString: 0
+		lineageTag: 40337fc7-299b-4eb5-b500-2edfd00e5778
+		sourceColumn: q50
+
+	column q90
+		dataType: double
+		formatString: 0
+		lineageTag: bd2a4c87-255d-4bed-90e7-523ba392a570
+		sourceColumn: q90
+
+	partition 'Pronóstico jornada' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "pronostico_jornada.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"jornada", type text}, {"orden", Int64.Type}, {"q10", type number}, {"q50", type number}, {"q90", type number}}, "en-US")
+				in
+				    Tipos
+

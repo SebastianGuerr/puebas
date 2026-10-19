@@ -1,0 +1,54 @@
+/// Estado de cada pieza del pronóstico (datos, contexto externo, comparación con la vara).
+table Semáforo
+	lineageTag: 61d75ff6-cf8c-4332-b5d5-01d7b0a7ff62
+
+	column orden
+		dataType: int64
+		isHidden
+		lineageTag: 24eba375-2494-4212-a23b-28bd03b28c4b
+		summarizeBy: none
+		sourceColumn: orden
+
+	column senal
+		dataType: string
+		lineageTag: f38f08f2-97c8-4851-8a55-3210a31d05e9
+		sourceColumn: senal
+		sortByColumn: orden
+
+	column nivel
+		dataType: string
+		lineageTag: 5636e803-14f5-47e9-b423-d32ba93760af
+		sourceColumn: nivel
+
+	column estado
+		dataType: string
+		lineageTag: 398c4abe-32ad-4e3e-8ae5-2fcb2bd31b58
+		sourceColumn: estado
+
+	column orden_nivel
+		dataType: int64
+		isHidden
+		lineageTag: f4d4aff1-f040-48a6-b87d-bdc2e65f0655
+		summarizeBy: none
+		sourceColumn: orden_nivel
+
+	column en_general
+		dataType: boolean
+		lineageTag: 92bd4a8c-6386-4896-a912-bf2251bf739e
+		sourceColumn: en_general
+
+	column detalle
+		dataType: string
+		lineageTag: 6eb8a4a7-d9ca-4e44-9801-503e4faad552
+		sourceColumn: detalle
+
+	partition Semáforo = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "semaforo.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"orden", Int64.Type}, {"senal", type text}, {"nivel", type text}, {"estado", type text}, {"orden_nivel", Int64.Type}, {"en_general", type logical}, {"detalle", type text}}, "en-US")
+				in
+				    Tipos
+

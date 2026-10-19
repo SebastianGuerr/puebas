@@ -1,0 +1,46 @@
+/// Rango por hora de los días ya verificados frente a las llegadas reales por hora. Sin relaciones: el acierto se mide sobre todo lo verificado.
+table 'Verificación hora'
+	lineageTag: 7ebe5b86-12d7-43bc-b8d7-7671d8c33b2d
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: f8c8a514-e23d-40ef-a0f5-b1a491fe40b9
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: 03a66a15-d7b3-42f3-81c0-c7067845e4a5
+		sourceColumn: modelo
+
+	column hora
+		dataType: int64
+		lineageTag: 1012d513-9e11-4071-8cdd-59448875219e
+		summarizeBy: none
+		sourceColumn: hora
+
+	column q10
+		dataType: double
+		lineageTag: 4ebbe19a-8038-4817-9d9e-f9b3be4ea666
+		sourceColumn: q10
+
+	column q90
+		dataType: double
+		lineageTag: 1d7d3538-92c1-46fd-a51f-93e3c79357ab
+		sourceColumn: q90
+
+	column real
+		dataType: double
+		lineageTag: 774e017e-a7fd-4e22-ac68-41a4fa5ff3fd
+		sourceColumn: real
+
+	partition 'Verificación hora' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "verificacion_hora.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"hora", Int64.Type}, {"q10", type number}, {"q90", type number}, {"real", type number}}, "en-US")
+				in
+				    Tipos
+

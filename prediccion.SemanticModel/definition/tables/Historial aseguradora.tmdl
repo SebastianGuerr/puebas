@@ -1,0 +1,50 @@
+/// Rango (q10-q90) y real de cada aseguradora en el historial (predicho 15-21 días antes). Para medir con qué frecuencia acierta el rango. Sin relación con Calendario a propósito: el acierto se mide sobre todo el historial, no sobre el día elegido.
+table 'Historial aseguradora'
+	lineageTag: 4e9ec1ba-41e3-49e1-921b-cf561e2c86b9
+
+	column fecha
+		dataType: dateTime
+		formatString: d mmm yyyy
+		lineageTag: 5554a8d8-24b2-44a8-a372-64ed432a31fc
+		sourceColumn: fecha
+
+	column modelo
+		dataType: string
+		lineageTag: 29113a84-c646-4866-bd12-4ebf7c4df406
+		sourceColumn: modelo
+
+	column aseguradora
+		dataType: string
+		lineageTag: 82f20d7b-5cfb-427c-83e8-4ca21b67313a
+		sourceColumn: aseguradora
+
+	column q10
+		dataType: double
+		lineageTag: b6271a77-4c12-488a-8212-fdb33422a256
+		sourceColumn: q10
+
+	column q50
+		dataType: double
+		lineageTag: 5f595ea6-c5d8-4cfb-9bd8-db1c0a5cf8ac
+		sourceColumn: q50
+
+	column q90
+		dataType: double
+		lineageTag: cfef003b-5aee-4faf-a389-afacf0f93815
+		sourceColumn: q90
+
+	column real
+		dataType: double
+		lineageTag: 35efc181-06e5-4e0e-825f-0f2edfb560ba
+		sourceColumn: real
+
+	partition 'Historial aseguradora' = m
+		mode: import
+		source =
+				let
+				    Origen = Csv.Document(File.Contents(CarpetaDatos & "historial_aseguradora.csv"), [Delimiter = ",", Encoding = 65001, QuoteStyle = QuoteStyle.Csv]),
+				    Encabezados = Table.PromoteHeaders(Origen, [PromoteAllScalars = true]),
+				    Tipos = Table.TransformColumnTypes(Encabezados, {{"fecha", type date}, {"modelo", type text}, {"aseguradora", type text}, {"q10", type number}, {"q50", type number}, {"q90", type number}, {"real", type number}}, "en-US")
+				in
+				    Tipos
+
