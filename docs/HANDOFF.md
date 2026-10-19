@@ -38,6 +38,11 @@ está en `CONTEXTO.md` «2026-10-19 (rediseño de la operación)».
   - En casa no se modifican `salidas/triage_*.parquet`.
   - Un artefacto entrenado en casa vale aquí solo si se entrena con los mismos datos y las mismas versiones
     (`meta.json` de la fase 1).
+  - **Comprobado el 19-10:** se hizo un clon limpio desde GitHub (con `core.longpaths true`), se borraron las corridas
+    del 18-10 y se corrió `python -m operacion` sin acceso a la base.
+    - M3s (237 s) y C0r (204 s) salen **idénticas** a las guardadas: diferencia 0 en q10, q50 y q90 de los 74 días.
+    - En un clon, la señal «Contexto externo» queda en gris hasta correr `python -m contexto` (no existe
+      `frescura.csv`).
 
 ---
 
